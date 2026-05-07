@@ -1,0 +1,19 @@
+{
+  "name": "dark-princess",
+  "private": true,
+  "packageManager": "pnpm@10.12.1",
+  "scripts": {
+    "dev": "corepack pnpm --filter ui dev",
+    "build": "corepack pnpm --filter ui build",
+    "preview": "corepack pnpm --filter ui preview",
+    "start": "corepack pnpm --filter ui preview",
+    "lint": "corepack pnpm --filter ui lint",
+    "typecheck": "corepack pnpm --filter ui typecheck"
+  },
+  "devDependencies": {
+    "prettier": "^3.0.0"
+  },
+  "dependencies": {
+    "@rsuite/icons": "^1.3.2"
+  }
+}

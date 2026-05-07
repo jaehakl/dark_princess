@@ -1,0 +1,1 @@
+export { DbTypeChildrenImageEdit } from './DbTypeChildrenImageEdit';

@@ -1,0 +1,1 @@
+export { DbTableDetailEdit } from './DbTableDetailEdit';
