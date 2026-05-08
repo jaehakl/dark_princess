@@ -61,6 +61,19 @@ class Tag(TimestampMixin, Base):
     target_status_tags: Mapped[List["TargetStatusTag"]] = relationship("TargetStatusTag", back_populates="tag", cascade="all, delete-orphan")
 
 
+class Target(TimestampMixin, Base):
+    __tablename__ = "targets"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    type: Mapped[str] = mapped_column(Text, nullable=False)    
+    name: Mapped[str] = mapped_column(Text, nullable=False)    
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    properties: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    target_statuses: Mapped[List["TargetStatus"]] = relationship("TargetStatus", back_populates="target", cascade="all, delete-orphan")
+
+
 class Scene(TimestampMixin, Base):
     __tablename__ = "scenes"
 
@@ -119,38 +132,6 @@ class StatusTag(TimestampMixin, Base):
     )
 
 
-class SceneHistory(TimestampMixin, Base):
-    __tablename__ = "scene_histories"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    status_id: Mapped[int] = mapped_column(Integer, ForeignKey("statuses.id", ondelete="CASCADE"), nullable=False)
-    scene_id: Mapped[int] = mapped_column(Integer, ForeignKey("scenes.id", ondelete="CASCADE"), nullable=False)
-    turn: Mapped[int] = mapped_column(Integer, nullable=False)
-    sub_turn: Mapped[int] = mapped_column(Integer, nullable=False)
-    decisions: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-
-    status: Mapped["Status"] = relationship("Status", back_populates="scene_histories")
-    scene: Mapped["Scene"] = relationship("Scene", back_populates="scene_histories")
-
-    __table_args__ = (
-        Index("ix_scene_histories_scene_id", "scene_id"),
-        Index("uq_scene_histories_status_id_turn_sub_turn", "status_id", "turn", "sub_turn", unique=True),
-    )
-
-
-class Target(TimestampMixin, Base):
-    __tablename__ = "targets"
-    
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    type: Mapped[str] = mapped_column(Text, nullable=False)    
-    name: Mapped[str] = mapped_column(Text, nullable=False)    
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    properties: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-
-    target_statuses: Mapped[List["TargetStatus"]] = relationship("TargetStatus", back_populates="target", cascade="all, delete-orphan")
-
-
 class TargetStatus(TimestampMixin, Base):
     __tablename__ = "target_statuses"
     
@@ -183,4 +164,22 @@ class TargetStatusTag(TimestampMixin, Base):
     __table_args__ = (
         Index("ix_target_status_tags_tag_id", "tag_id"),
         Index("uq_target_status_tags_target_status_id_tag_id", "target_status_id", "tag_id", unique=True),
+    )
+
+class SceneHistory(TimestampMixin, Base):
+    __tablename__ = "scene_histories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    status_id: Mapped[int] = mapped_column(Integer, ForeignKey("statuses.id", ondelete="CASCADE"), nullable=False)
+    scene_id: Mapped[int] = mapped_column(Integer, ForeignKey("scenes.id", ondelete="CASCADE"), nullable=False)
+    turn: Mapped[int] = mapped_column(Integer, nullable=False)
+    sub_turn: Mapped[int] = mapped_column(Integer, nullable=False)
+    decisions: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+
+    status: Mapped["Status"] = relationship("Status", back_populates="scene_histories")
+    scene: Mapped["Scene"] = relationship("Scene", back_populates="scene_histories")
+
+    __table_args__ = (
+        Index("ix_scene_histories_scene_id", "scene_id"),
+        Index("uq_scene_histories_status_id_turn_sub_turn", "status_id", "turn", "sub_turn", unique=True),
     )

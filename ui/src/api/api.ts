@@ -94,6 +94,24 @@ export const dbTables = {
     deleteRows: (ids: number[]) => request<null>('delete', '/tag/', ids).then(() => undefined),
   },
 
+  Target: {
+    label: '대상',
+    columns: {
+      id: { label: 'ID', type: 'id' },
+      type: { label: '유형', type: 'text', required: true },
+      name: { label: '이름', type: 'text', required: true },
+      description: { label: '설명', type: 'text' },
+      properties: { label: '속성', type: 'dict-list' },
+      image: { label: '이미지', type: 'image' },
+    },
+    listRows: (listRequest: GetListRequest) =>
+      request<GetListResponse<Record<string, unknown>>>('post', '/target/list', listRequest),
+    upsertRow: (items: unknown) => request<UpsertResponse[]>('post', '/target/upsert', items),
+    deleteRows: (ids: number[]) => request<null>('delete', '/target/', ids).then(() => undefined),
+    upsertFormRow: (item: unknown, files: Record<string, File | null | undefined> = {}) =>
+      request<UpsertResponse>('post', '/target/upsert-form', buildUpsertFormData(item, files)),
+  },
+
   Scene: {
     label: '장면',
     columns: {
@@ -139,6 +157,7 @@ export const dbTables = {
     deleteRows: (ids: number[]) => request<null>('delete', '/status/', ids).then(() => undefined),
   },
 
+
   StatusTag: {
     label: '상태 태그',
     columns: {
@@ -150,40 +169,6 @@ export const dbTables = {
       request<GetListResponse<Record<string, unknown>>>('post', '/status_tag/list', listRequest),
     upsertRow: (items: unknown) => request<UpsertResponse[]>('post', '/status_tag/upsert', items),
     deleteRows: (ids: number[]) => request<null>('delete', '/status_tag/', ids).then(() => undefined),
-  },
-
-  SceneHistory: {
-    label: '장면 기록',
-    columns: {
-      id: { label: 'ID', type: 'id' },
-      status_id: { label: '상태', type: 'fk', targetTable: 'Status', required: true },
-      scene_id: { label: '장면', type: 'fk', targetTable: 'Scene', required: true },
-      turn: { label: '턴', type: 'int', required: true },
-      sub_turn: { label: '서브턴', type: 'int', required: true },
-      decisions: { label: '결정', type: 'dict-list' },
-    },
-    listRows: (listRequest: GetListRequest) =>
-      request<GetListResponse<Record<string, unknown>>>('post', '/scene_history/list', listRequest),
-    upsertRow: (items: unknown) => request<UpsertResponse[]>('post', '/scene_history/upsert', items),
-    deleteRows: (ids: number[]) => request<null>('delete', '/scene_history/', ids).then(() => undefined),
-  },
-
-  Target: {
-    label: '대상',
-    columns: {
-      id: { label: 'ID', type: 'id' },
-      type: { label: '유형', type: 'text', required: true },
-      name: { label: '이름', type: 'text', required: true },
-      description: { label: '설명', type: 'text' },
-      properties: { label: '속성', type: 'dict-list' },
-      image: { label: '이미지', type: 'image' },
-    },
-    listRows: (listRequest: GetListRequest) =>
-      request<GetListResponse<Record<string, unknown>>>('post', '/target/list', listRequest),
-    upsertRow: (items: unknown) => request<UpsertResponse[]>('post', '/target/upsert', items),
-    deleteRows: (ids: number[]) => request<null>('delete', '/target/', ids).then(() => undefined),
-    upsertFormRow: (item: unknown, files: Record<string, File | null | undefined> = {}) =>
-      request<UpsertResponse>('post', '/target/upsert-form', buildUpsertFormData(item, files)),
   },
 
   TargetStatus: {
@@ -213,4 +198,22 @@ export const dbTables = {
     upsertRow: (items: unknown) => request<UpsertResponse[]>('post', '/target_status_tag/upsert', items),
     deleteRows: (ids: number[]) => request<null>('delete', '/target_status_tag/', ids).then(() => undefined),
   },
+
+
+  SceneHistory: {
+    label: '장면 기록',
+    columns: {
+      id: { label: 'ID', type: 'id' },
+      status_id: { label: '상태', type: 'fk', targetTable: 'Status', required: true },
+      scene_id: { label: '장면', type: 'fk', targetTable: 'Scene', required: true },
+      turn: { label: '턴', type: 'int', required: true },
+      sub_turn: { label: '서브턴', type: 'int', required: true },
+      decisions: { label: '결정', type: 'dict-list' },
+    },
+    listRows: (listRequest: GetListRequest) =>
+      request<GetListResponse<Record<string, unknown>>>('post', '/scene_history/list', listRequest),
+    upsertRow: (items: unknown) => request<UpsertResponse[]>('post', '/scene_history/upsert', items),
+    deleteRows: (ids: number[]) => request<null>('delete', '/scene_history/', ids).then(() => undefined),
+  },
+
 };
