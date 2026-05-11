@@ -8,16 +8,12 @@ from models import GetListRequestBase, GetListResponseBase, TargetStatusBase, Up
 from routers.game_utils import delete_owned_items, field_ids, require_existing_ids
 from user_auth.routes import get_db
 from user_auth.utils.auth_wrapper import require_roles
-from utils.crud_helpers import CrudSpec, computed, get_list_response, upsert_items
+from utils.crud_helpers import CrudSpec, get_list_response, upsert_items
 
 router = APIRouter(prefix="/target_status", tags=["target_status"])
 
 
-TARGET_STATUS_CRUD_SPEC = CrudSpec(
-    model=TargetStatus,
-    schema=TargetStatusBase,
-    computed_fields={"target_status_tags": computed("target_status_tags")},
-)
+TARGET_STATUS_CRUD_SPEC = CrudSpec(model=TargetStatus, schema=TargetStatusBase)
 
 
 @router.post("/list", response_model=GetListResponseBase)

@@ -3,7 +3,6 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
-from datetime import datetime, timedelta, timezone
 import requests
 
 from google.oauth2 import id_token as google_id_token
@@ -15,7 +14,6 @@ from db import SessionLocal  # 기존 db.py 모델 임포트
 from user_auth.db import OAuthState, User, Identity, UserRole, Role
 from models import UserData
 from user_auth.utils.auth_utils import random_urlsafe, pkce_challenge, set_return_to_cookie, pop_return_to_cookie
-from user_auth.utils.google_tokens import encrypt_google_token
 from user_auth.utils.jwt import make_access, make_refresh, verify_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -65,9 +63,6 @@ async def google_start(request: Request, return_to: str | None = None, db: Async
         "nonce": nonce,
         "code_challenge": challenge,
         "code_challenge_method": "S256",
-        "access_type": "offline",   # refresh_token 필요 시
-        "include_granted_scopes": "true",
-        "prompt": "consent",
     }
     resp.headers["Location"] = f"{AUTH_URL}?{urlencode(params)}"
     resp.status_code = 307
@@ -97,9 +92,6 @@ async def google_callback(request: Request, state: str = "", code: str = "", db:
         raise HTTPException(400, f"token exchange failed: {tok.text}")
     token_json = tok.json()
     id_tok = token_json.get("id_token")
-    expires_in = token_json.get("expires_in")
-    granted_scopes = token_json.get("scope", "").split() if token_json.get("scope") else None
-    expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in or 0) if expires_in else None
 
     # ID 토큰 검증
     try:
@@ -161,16 +153,6 @@ async def google_callback(request: Request, state: str = "", code: str = "", db:
     ident.email = email
     ident.email_verified = email_verified
     ident.raw_profile = idinfo
-    ident.expires_at = expires_at
-    if granted_scopes is not None:
-        ident.scope = granted_scopes
-
-    access_token = token_json.get("access_token")
-    refresh_token = token_json.get("refresh_token")
-    if access_token:
-        ident.access_token_enc = encrypt_google_token(access_token)
-    if refresh_token:
-        ident.refresh_token_enc = encrypt_google_token(refresh_token)
 
     st.consumed_at = func.now()
     await db.commit()

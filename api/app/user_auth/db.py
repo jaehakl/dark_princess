@@ -3,10 +3,10 @@ from __future__ import annotations
 import enum, uuid
 from typing import Optional, List
 from sqlalchemy import (func,
-    text, String,Text,Boolean,DateTime,LargeBinary,Integer,
+    text, Text,Boolean,DateTime,LargeBinary,Integer,
     UniqueConstraint,CheckConstraint,ForeignKey,Index,)
 from sqlalchemy.orm import (mapped_column,Mapped,relationship,)
-from sqlalchemy.dialects.postgresql import (UUID,JSONB,ARRAY,INET)
+from sqlalchemy.dialects.postgresql import (UUID,JSONB,INET)
 from sqlalchemy import Enum as SAEnum
 
 from db import Base
@@ -67,10 +67,6 @@ class Identity(TimestampMixin, Base):
     provider_user_id: Mapped[str] = mapped_column(Text, nullable=False)  # OIDC 'sub'
     email: Mapped[Optional[str]] = mapped_column(Text)
     email_verified: Mapped[Optional[bool]] = mapped_column(Boolean)
-    access_token_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)   # encrypted app-side
-    refresh_token_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)  # encrypted app-side
-    scope: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String))
-    expires_at: Mapped[Optional[DateTime]] = mapped_column(DateTime(timezone=True))
     raw_profile: Mapped[Optional[dict]] = mapped_column(JSONB)
     user: Mapped[User] = relationship(back_populates="identities")
 

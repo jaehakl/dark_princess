@@ -9,7 +9,6 @@ class Settings(BaseModel):
     google_client_id: str = os.getenv("GOOGLE_CLIENT_ID", "")
     google_client_secret: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
     google_redirect_uri: str = os.getenv("GOOGLE_REDIRECT_URI", "")
-    google_token_encryption_key: str = os.getenv("GOOGLE_TOKEN_ENCRYPTION_KEY", "")
 
     app_base_url: str = os.getenv("APP_BASE_URL", "http://localhost:5173")
     app_timezone: str = os.getenv("APP_TIMEZONE", "Asia/Seoul")

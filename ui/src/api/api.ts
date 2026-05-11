@@ -87,6 +87,11 @@ export const dbTables = {
     columns: {
       id: { label: 'ID', type: 'id' },
       name: { label: '이름', type: 'text', required: true },
+      scope: { label: '범위', type: 'text' },
+      system_key: { label: '시스템 키', type: 'text' },
+      description: { label: '설명', type: 'text' },
+      color: { label: '색상', type: 'text' },
+      trigger_default: { label: '기본 트리거', type: 'boolean' },
     },
     listRows: (listRequest: GetListRequest) =>
       request<GetListResponse<Record<string, unknown>>>('post', '/tag/list', listRequest),
@@ -119,11 +124,15 @@ export const dbTables = {
       name: { label: '이름', type: 'text', required: true },
       description: { label: '설명', type: 'text' },
       prompt: { label: '프롬프트', type: 'text' },
-      triggers: { label: '트리거', type: 'dict-list' },
-      options: { label: '선택지', type: 'dict-list' },
-      results: { label: '결과', type: 'dict-list' },
+      priority: { label: '우선순위', type: 'int' },
+      repeat_policy: { label: '반복 정책', type: 'text', required: true },
+      cooldown_turns: { label: '쿨다운 턴', type: 'int' },
       image: { label: '이미지', type: 'image' },
       audio: { label: '오디오', type: 'file' },
+      scene_histories: { label: '장면 기록', type: 'list-fk', targetTable: 'SceneHistory', linkType: 'children' },
+      trigger_blocks: { label: '트리거 블록', type: 'list-fk', targetTable: 'SceneTriggerBlock', linkType: 'children' },
+      scene_options: { label: '선택지', type: 'list-fk', targetTable: 'SceneOption', linkType: 'children' },
+      scene_results: { label: '결과', type: 'list-fk', targetTable: 'SceneResult', linkType: 'children' },
     },
     listRows: (listRequest: GetListRequest) =>
       request<GetListResponse<Record<string, unknown>>>('post', '/scene/list', listRequest),
@@ -133,12 +142,92 @@ export const dbTables = {
       request<UpsertResponse>('post', '/scene/upsert-form', buildUpsertFormData(item, files)),
   },
 
+  SceneTriggerBlock: {
+    label: '장면 트리거 블록',
+    columns: {
+      id: { label: 'ID', type: 'id' },
+      scene_id: { label: '장면', type: 'fk', targetTable: 'Scene', required: true },
+      label: { label: '라벨', type: 'text' },
+      sort_order: { label: '정렬 순서', type: 'int' },
+      conditions: { label: '조건', type: 'list-fk', targetTable: 'SceneCondition', linkType: 'children' },
+    },
+    listRows: (listRequest: GetListRequest) =>
+      request<GetListResponse<Record<string, unknown>>>('post', '/scene_trigger_block/list', listRequest),
+    upsertRow: (items: unknown) => request<UpsertResponse[]>('post', '/scene_trigger_block/upsert', items),
+    deleteRows: (ids: number[]) => request<null>('delete', '/scene_trigger_block/', ids).then(() => undefined),
+  },
+
+  SceneOption: {
+    label: '장면 선택지',
+    columns: {
+      id: { label: 'ID', type: 'id' },
+      scene_id: { label: '장면', type: 'fk', targetTable: 'Scene', required: true },
+      option_key: { label: '선택지 키', type: 'text', required: true },
+      label: { label: '라벨', type: 'text', required: true },
+      description: { label: '설명', type: 'text' },
+      next_scene_id: { label: '다음 장면', type: 'fk', targetTable: 'Scene' },
+      sort_order: { label: '정렬 순서', type: 'int' },
+      is_active: { label: '활성', type: 'boolean' },
+      conditions: { label: '조건', type: 'list-fk', targetTable: 'SceneCondition', linkType: 'children' },
+      decisions: { label: '결정 기록', type: 'list-fk', targetTable: 'SceneDecision', linkType: 'children' },
+    },
+    listRows: (listRequest: GetListRequest) =>
+      request<GetListResponse<Record<string, unknown>>>('post', '/scene_option/list', listRequest),
+    upsertRow: (items: unknown) => request<UpsertResponse[]>('post', '/scene_option/upsert', items),
+    deleteRows: (ids: number[]) => request<null>('delete', '/scene_option/', ids).then(() => undefined),
+  },
+
+  SceneCondition: {
+    label: '장면 조건',
+    columns: {
+      id: { label: 'ID', type: 'id' },
+      trigger_block_id: { label: '트리거 블록', type: 'fk', targetTable: 'SceneTriggerBlock' },
+      option_id: { label: '선택지', type: 'fk', targetTable: 'SceneOption' },
+      kind: { label: '종류', type: 'text', required: true },
+      operator: { label: '연산자', type: 'text', required: true },
+      tag_id: { label: '태그', type: 'fk', targetTable: 'Tag' },
+      target_id: { label: '대상', type: 'fk', targetTable: 'Target' },
+      scene_ref_id: { label: '참조 장면', type: 'fk', targetTable: 'Scene' },
+      option_ref_id: { label: '참조 선택지', type: 'fk', targetTable: 'SceneOption' },
+      stat_field: { label: '스탯 필드', type: 'text' },
+      numeric_value: { label: '숫자값', type: 'int' },
+      value: { label: '값', type: 'dict-list' },
+      sort_order: { label: '정렬 순서', type: 'int' },
+    },
+    listRows: (listRequest: GetListRequest) =>
+      request<GetListResponse<Record<string, unknown>>>('post', '/scene_condition/list', listRequest),
+    upsertRow: (items: unknown) => request<UpsertResponse[]>('post', '/scene_condition/upsert', items),
+    deleteRows: (ids: number[]) => request<null>('delete', '/scene_condition/', ids).then(() => undefined),
+  },
+
+  SceneResult: {
+    label: '장면 결과',
+    columns: {
+      id: { label: 'ID', type: 'id' },
+      scene_id: { label: '장면', type: 'fk', targetTable: 'Scene' },
+      kind: { label: '종류', type: 'text', required: true },
+      tag_id: { label: '태그', type: 'fk', targetTable: 'Tag' },
+      target_id: { label: '대상', type: 'fk', targetTable: 'Target' },
+      stat_field: { label: '스탯 필드', type: 'text' },
+      numeric_value: { label: '숫자값', type: 'int' },
+      key: { label: '키', type: 'text' },
+      value: { label: '값', type: 'dict-list' },
+      sort_order: { label: '정렬 순서', type: 'int' },
+      applied_results: { label: '적용 결과', type: 'list-fk', targetTable: 'SceneAppliedResult', linkType: 'children' },
+    },
+    listRows: (listRequest: GetListRequest) =>
+      request<GetListResponse<Record<string, unknown>>>('post', '/scene_result/list', listRequest),
+    upsertRow: (items: unknown) => request<UpsertResponse[]>('post', '/scene_result/upsert', items),
+    deleteRows: (ids: number[]) => request<null>('delete', '/scene_result/', ids).then(() => undefined),
+  },
+
   Status: {
     label: '상태',
     columns: {
       id: { label: 'ID', type: 'id' },
       name: { label: '이름', type: 'text', required: true },
       turn: { label: '턴', type: 'int' },
+      sub_turn: { label: '서브턴', type: 'int' },
       cash: { label: '현금', type: 'int' },
       strength: { label: '근력', type: 'int' },
       agility: { label: '민첩', type: 'int' },
@@ -179,6 +268,7 @@ export const dbTables = {
       target_id: { label: '대상', type: 'fk', targetTable: 'Target', required: true },
       interactions: { label: '상호작용', type: 'dict-list' },
       target_status_tags: { label: '대상 상태 태그', type: 'list-fk', targetTable: 'TargetStatusTag', linkType: 'children' },
+      scene_histories: { label: '장면 기록', type: 'list-fk', targetTable: 'SceneHistory', linkType: 'children' },
     },
     listRows: (listRequest: GetListRequest) =>
       request<GetListResponse<Record<string, unknown>>>('post', '/target_status/list', listRequest),
@@ -206,14 +296,51 @@ export const dbTables = {
       id: { label: 'ID', type: 'id' },
       status_id: { label: '상태', type: 'fk', targetTable: 'Status', required: true },
       scene_id: { label: '장면', type: 'fk', targetTable: 'Scene', required: true },
+      target_status_id: { label: '대상 상태', type: 'fk', targetTable: 'TargetStatus' },
       turn: { label: '턴', type: 'int', required: true },
       sub_turn: { label: '서브턴', type: 'int', required: true },
-      decisions: { label: '결정', type: 'dict-list' },
+      scene_decisions: { label: '결정', type: 'list-fk', targetTable: 'SceneDecision', linkType: 'children' },
+      applied_results: { label: '적용 결과', type: 'list-fk', targetTable: 'SceneAppliedResult', linkType: 'children' },
     },
     listRows: (listRequest: GetListRequest) =>
       request<GetListResponse<Record<string, unknown>>>('post', '/scene_history/list', listRequest),
     upsertRow: (items: unknown) => request<UpsertResponse[]>('post', '/scene_history/upsert', items),
     deleteRows: (ids: number[]) => request<null>('delete', '/scene_history/', ids).then(() => undefined),
+  },
+
+  SceneDecision: {
+    label: '장면 결정',
+    columns: {
+      id: { label: 'ID', type: 'id' },
+      scene_history_id: { label: '장면 기록', type: 'fk', targetTable: 'SceneHistory', required: true },
+      option_id: { label: '선택지', type: 'fk', targetTable: 'SceneOption' },
+      option_key: { label: '선택지 키', type: 'text' },
+      option_label: { label: '선택지 라벨', type: 'text' },
+      value: { label: '값', type: 'dict-list' },
+      sort_order: { label: '정렬 순서', type: 'int' },
+    },
+    listRows: (listRequest: GetListRequest) =>
+      request<GetListResponse<Record<string, unknown>>>('post', '/scene_decision/list', listRequest),
+    upsertRow: (items: unknown) => request<UpsertResponse[]>('post', '/scene_decision/upsert', items),
+    deleteRows: (ids: number[]) => request<null>('delete', '/scene_decision/', ids).then(() => undefined),
+  },
+
+  SceneAppliedResult: {
+    label: '장면 적용 결과',
+    columns: {
+      id: { label: 'ID', type: 'id' },
+      scene_history_id: { label: '장면 기록', type: 'fk', targetTable: 'SceneHistory', required: true },
+      result_id: { label: '결과', type: 'fk', targetTable: 'SceneResult' },
+      kind: { label: '종류', type: 'text', required: true },
+      payload: { label: '페이로드', type: 'dict-list' },
+      before: { label: '이전 값', type: 'dict-list' },
+      after: { label: '이후 값', type: 'dict-list' },
+      sort_order: { label: '정렬 순서', type: 'int' },
+    },
+    listRows: (listRequest: GetListRequest) =>
+      request<GetListResponse<Record<string, unknown>>>('post', '/scene_applied_result/list', listRequest),
+    upsertRow: (items: unknown) => request<UpsertResponse[]>('post', '/scene_applied_result/upsert', items),
+    deleteRows: (ids: number[]) => request<null>('delete', '/scene_applied_result/', ids).then(() => undefined),
   },
 
 };

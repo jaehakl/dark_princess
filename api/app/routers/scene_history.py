@@ -3,7 +3,7 @@ from typing import List
 from fastapi import APIRouter, Body, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db import Scene, SceneHistory, Status
+from db import Scene, SceneHistory, Status, TargetStatus
 from models import GetListRequestBase, GetListResponseBase, SceneHistoryBase, UpsertResponseBase
 from routers.game_utils import delete_owned_items, field_ids, require_existing_ids
 from user_auth.routes import get_db
@@ -35,6 +35,13 @@ async def api_upsert_scene_history_list(
     await require_existing_ids(db, SceneHistory, field_ids(items, "id"), "id", SceneHistory.status.has(Status.user_id == user_id))
     await require_existing_ids(db, Status, field_ids(items, "status_id"), "status_id", Status.user_id == user_id)
     await require_existing_ids(db, Scene, field_ids(items, "scene_id"), "scene_id")
+    await require_existing_ids(
+        db,
+        TargetStatus,
+        field_ids(items, "target_status_id"),
+        "target_status_id",
+        TargetStatus.status.has(Status.user_id == user_id),
+    )
     return await upsert_items(db, items, SCENE_HISTORY_CRUD_SPEC)
 
 
