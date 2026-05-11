@@ -190,6 +190,7 @@ class TargetBase(BaseModel):
     description: Optional[str] = None
     properties: Optional[Dict[str, Any]] = None
     image: Optional[str] = None
+    visitable: bool = True
 
 
 class TargetStatusBase(BaseModel):

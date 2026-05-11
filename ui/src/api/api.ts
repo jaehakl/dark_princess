@@ -108,6 +108,7 @@ export const dbTables = {
       description: { label: '설명', type: 'text' },
       properties: { label: '속성', type: 'dict-list' },
       image: { label: '이미지', type: 'image' },
+      visitable: { label: '방문 가능', type: 'boolean' },
     },
     listRows: (listRequest: GetListRequest) =>
       request<GetListResponse<Record<string, unknown>>>('post', '/target/list', listRequest),

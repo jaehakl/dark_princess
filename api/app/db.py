@@ -82,6 +82,7 @@ class Target(TimestampMixin, Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     properties: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    visitable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
 
     target_statuses: Mapped[List["TargetStatus"]] = relationship("TargetStatus", back_populates="target", cascade="all, delete-orphan")
     scene_conditions: Mapped[List["SceneCondition"]] = relationship("SceneCondition", back_populates="target")

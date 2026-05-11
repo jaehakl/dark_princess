@@ -47,6 +47,9 @@ def server():
             except Exception:
                 pass
             await conn.run_sync(Base.metadata.create_all)
+            await conn.exec_driver_sql(
+                "ALTER TABLE targets ADD COLUMN IF NOT EXISTS visitable BOOLEAN NOT NULL DEFAULT true;"
+            )
         app.include_router(auth_router)
 
         print("service is started.")
