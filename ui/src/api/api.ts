@@ -345,3 +345,19 @@ export const dbTables = {
   },
 
 };
+
+export type PlaySnapshot = {
+  phase: 'target_select' | 'scene';
+  status: Record<string, unknown>;
+  scene: Record<string, unknown> | null;
+  scene_history: Record<string, unknown> | null;
+  target_status: (Record<string, unknown> & {target?: Record<string, unknown> | null;}) | null;
+  scene_options: Record<string, unknown>[];
+  target_statuses: (Record<string, unknown> & {target?: Record<string, unknown> | null;})[];
+};
+export const getPlaySnapshot = (statusId: number) => 
+  request<PlaySnapshot>('post', '/play/snapshot', { status_id: statusId });
+export const selectPlayTarget = (statusId: number, targetStatusId: number) => 
+  request<PlaySnapshot>('post', '/play/select-target', { status_id: statusId, target_status_id: targetStatusId });
+export const choosePlayOption = (statusId: number, sceneHistoryId: number, optionId: number) => 
+  request<PlaySnapshot>('post', '/play/choose-option', { status_id: statusId, scene_history_id: sceneHistoryId, option_id: optionId });

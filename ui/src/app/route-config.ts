@@ -17,6 +17,7 @@ import { AppLayout } from './layout';
 import { HomePage } from '../pages/home/HomePage';
 import { ListEditPage } from '../pages/list-edit/ListEditPage';
 import { LoginPage } from '../pages/login/LoginPage';
+import { PlayEditPage } from '../pages/play-edit/PlayEditPage';
 import { useAuthStore, useBootstrapAuth } from '../stores/authStore';
 
 function AdminRouteShell() {
@@ -92,6 +93,14 @@ export const routeObjects: RouteObject[] = [
         handle: {
           breadcrumb: '테이블 편집',
           pageTitle: '테이블 편집',
+        },
+      },
+      {
+        path: 'play-edit',
+        element: createElement(PlayEditPage),
+        handle: {
+          breadcrumb: 'Play+Edit',
+          pageTitle: 'Play+Edit',
         },
       },
       {

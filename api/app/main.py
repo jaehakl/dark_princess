@@ -8,6 +8,7 @@ from routers import (
     scene_option,
     scene_result,
     scene_trigger_block,
+    play,
     status,
     status_tag,
     tag,
@@ -34,4 +35,5 @@ app.include_router(scene_applied_result.router)
 app.include_router(target.router)
 app.include_router(target_status.router)
 app.include_router(target_status_tag.router)
+app.include_router(play.router)
 app.include_router(users.router)

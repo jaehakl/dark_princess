@@ -26,12 +26,21 @@ export const gameDataNav: AppNavigationItem = {
   pageTitle: '게임 데이터',
 };
 
+export const playEditNav: AppNavigationItem = {
+  path: 'play-edit',
+  to: '/play-edit',
+  label: 'Play+Edit',
+  icon: 'list',
+  breadcrumb: 'Play+Edit',
+  pageTitle: 'Play+Edit',
+};
+
 export const dataSection: AppNavigationSection = {
   id: 'data',
   path: 'data',
   label: '데이터',
   breadcrumb: '데이터',
-  children: [gameDataNav],
+  children: [playEditNav, gameDataNav],
 };
 
 export const navigationSections: AppNavigationSection[] = [dataSection];
