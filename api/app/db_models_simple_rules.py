@@ -82,7 +82,6 @@ class Target(TimestampMixin, Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     properties: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    visitable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
 
     target_statuses: Mapped[List["TargetStatus"]] = relationship("TargetStatus", back_populates="target", cascade="all, delete-orphan")
     scene_conditions: Mapped[List["SceneCondition"]] = relationship("SceneCondition", back_populates="target")
@@ -275,6 +274,7 @@ class TargetStatus(TimestampMixin, Base):
     status_id: Mapped[int] = mapped_column(Integer, ForeignKey("statuses.id", ondelete="CASCADE"), nullable=False)
     target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id", ondelete="CASCADE"), nullable=False)
     interactions: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    visitable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
 
     status: Mapped["Status"] = relationship("Status", back_populates="target_statuses")
     target: Mapped["Target"] = relationship("Target", back_populates="target_statuses")

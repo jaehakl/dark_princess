@@ -48,7 +48,28 @@ def server():
                 pass
             await conn.run_sync(Base.metadata.create_all)
             await conn.exec_driver_sql(
-                "ALTER TABLE targets ADD COLUMN IF NOT EXISTS visitable BOOLEAN NOT NULL DEFAULT true;"
+                "ALTER TABLE target_statuses ADD COLUMN IF NOT EXISTS visitable BOOLEAN NOT NULL DEFAULT true;"
+            )
+            await conn.exec_driver_sql(
+                """
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1
+                        FROM information_schema.columns
+                        WHERE table_schema = current_schema()
+                          AND table_name = 'targets'
+                          AND column_name = 'visitable'
+                    ) THEN
+                        UPDATE target_statuses AS ts
+                        SET visitable = tgt.visitable
+                        FROM targets AS tgt
+                        WHERE ts.target_id = tgt.id;
+
+                        ALTER TABLE targets DROP COLUMN visitable;
+                    END IF;
+                END $$;
+                """
             )
         app.include_router(auth_router)
 

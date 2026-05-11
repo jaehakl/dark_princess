@@ -190,7 +190,6 @@ class TargetBase(BaseModel):
     description: Optional[str] = None
     properties: Optional[Dict[str, Any]] = None
     image: Optional[str] = None
-    visitable: bool = True
 
 
 class TargetStatusBase(BaseModel):
@@ -198,6 +197,7 @@ class TargetStatusBase(BaseModel):
     status_id: int
     target_id: int
     interactions: Optional[Dict[str, Any]] = None
+    visitable: bool = True
     target_status_tags: Optional[List[int]] = None
     scene_histories: Optional[List[int]] = None
 

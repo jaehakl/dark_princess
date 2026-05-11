@@ -108,7 +108,6 @@ export const dbTables = {
       description: { label: '설명', type: 'text' },
       properties: { label: '속성', type: 'dict-list' },
       image: { label: '이미지', type: 'image' },
-      visitable: { label: '방문 가능', type: 'boolean' },
     },
     listRows: (listRequest: GetListRequest) =>
       request<GetListResponse<Record<string, unknown>>>('post', '/target/list', listRequest),
@@ -268,6 +267,7 @@ export const dbTables = {
       status_id: { label: '상태', type: 'fk', targetTable: 'Status', required: true },
       target_id: { label: '대상', type: 'fk', targetTable: 'Target', required: true },
       interactions: { label: '상호작용', type: 'dict-list' },
+      visitable: { label: '방문 가능', type: 'boolean' },
       target_status_tags: { label: '대상 상태 태그', type: 'list-fk', targetTable: 'TargetStatusTag', linkType: 'children' },
       scene_histories: { label: '장면 기록', type: 'list-fk', targetTable: 'SceneHistory', linkType: 'children' },
     },
