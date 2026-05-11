@@ -23,9 +23,12 @@ export function buildInitialDraftRow(
     typeof currentRowId === 'number'
       ? ownerFkColumns.map(([key]) => [key, currentRowId])
       : [];
+  const optionValues = requiredColumns
+    .filter(([, config]) => config.type === 'text' && config.options?.[0])
+    .map(([key, config]) => [key, config.options?.[0]?.key]);
   const textValues = trimmedTextValue
     ? requiredColumns
-        .filter(([, config]) => config.type === 'text')
+        .filter(([, config]) => config.type === 'text' && !config.options)
         .map(([key]) => [key, trimmedTextValue])
     : [];
   const requiredDatetimeDefault = getCurrentDateTimeIsoFloor30();
@@ -33,7 +36,7 @@ export function buildInitialDraftRow(
     .filter(([, config]) => config.type === 'datetime')
     .map(([key]) => [key, requiredDatetimeDefault]);
 
-  return Object.fromEntries([...ownerValues, ...textValues, ...datetimeValues]);
+  return Object.fromEntries([...ownerValues, ...optionValues, ...textValues, ...datetimeValues]);
 }
 
 export function isOwnerFkColumn(
@@ -193,7 +196,7 @@ export function formatRowTooltip(
 ) {
   return Object.entries(columns)
     .filter(([, config]) => config.required && config.type === 'text')
-    .map(([key]) => formatValue(row[key]) ?? '')
+    .map(([key, config]) => formatColumnValue(config, row[key]) ?? '')
     .filter(Boolean)
     .join('\n');
 }
@@ -269,6 +272,10 @@ export function formatExpandedCellValue(
     return fkSummaries?.[String(value)] ?? String(value);
   }
 
+  if (config.type === 'text' && config.options) {
+    return formatColumnValue(config, value) ?? '-';
+  }
+
   if (config.type === 'datetime') {
     return formatDatetimeValue(value) ?? '-';
   }
@@ -285,7 +292,7 @@ function findRequiredTextValue(columns: Record<string, DbColumn>, row: DbRow) {
     ([, config]) => config.required && config.type === 'text'
   );
 
-  return textColumn ? formatValue(row[textColumn[0]]) : null;
+  return textColumn ? formatColumnValue(textColumn[1], row[textColumn[0]]) : null;
 }
 
 function findDatetimeValue(columns: Record<string, DbColumn>, row: DbRow) {
@@ -347,4 +354,12 @@ export function formatValue(value: unknown) {
   }
 
   return String(value).trim() || null;
+}
+
+function formatColumnValue(config: DbColumn, value: unknown) {
+  if (typeof value === 'string' && config.options) {
+    return config.options.find((option) => option.key === value)?.label ?? value;
+  }
+
+  return formatValue(value);
 }

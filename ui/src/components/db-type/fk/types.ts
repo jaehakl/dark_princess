@@ -24,6 +24,7 @@ export type DbColumn = {
   type: string;
   targetTable?: DbTableName;
   required?: boolean;
+  options?: { key: string; label: string }[];
 };
 
 export type FkTableConfig = {

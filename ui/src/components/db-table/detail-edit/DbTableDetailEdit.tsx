@@ -23,6 +23,7 @@ type DbColumn = {
   targetTable?: DbTableName;
   required?: boolean;
   linkType?: 'children' | 'computed' | 'secondary';
+  options?: { key: string; label: string }[];
 };
 
 type DetailTableConfig = {
@@ -228,6 +229,38 @@ export function DbTableDetailEdit({
                     setDraftRow((current) => ({ ...current, [key]: value }))
                   }
                 />
+              ) : config.type === 'text' && config.options ? (
+                <div className="grid gap-1 md:grid-cols-[var(--edit-label-width,5.5rem)_minmax(0,1fr)] md:items-center md:gap-3">
+                  <p
+                    className={[
+                      'edit-label edit-text',
+                      config.required ? 'edit-label--required' : '',
+                    ].join(' ')}
+                  >
+                    <span className="edit-label__text">{config.label}</span>
+                  </p>
+                  <select
+                    value={typeof draftRow[key] === 'string' ? draftRow[key] : ''}
+                    className="h-8 min-w-0 rounded border border-[var(--app-border)] bg-transparent px-2 text-[var(--app-text)] outline-none transition focus:border-[var(--app-accent)] edit-text"
+                    onChange={(event) =>
+                      setDraftRow((current) => ({ ...current, [key]: event.target.value }))
+                    }
+                  >
+                    <option value="">선택</option>
+                    {typeof draftRow[key] === 'string' &&
+                    draftRow[key] &&
+                    !config.options.some((option) => option.key === draftRow[key]) ? (
+                      <option value={draftRow[key]}>
+                        기존 값: {draftRow[key]}
+                      </option>
+                    ) : null}
+                    {config.options.map((option) => (
+                      <option key={option.key} value={option.key}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               ) : config.type === 'text' ? (
                 <DbTypeTextEdit
                   label={config.label}

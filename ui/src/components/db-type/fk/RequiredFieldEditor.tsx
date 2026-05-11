@@ -33,6 +33,50 @@ export function RequiredFieldEditor({
   renderFkEditor: RenderFkEditor;
   onChange: (value: unknown) => void;
 }) {
+  if (config.type === 'text' && config.options) {
+    const selectedValue = typeof value === 'string' ? value : '';
+
+    return (
+      <div
+        className={
+          hideLabel
+            ? 'grid grid-cols-1 items-center gap-2'
+            : 'grid grid-cols-[var(--edit-label-width,5.5rem)_minmax(0,1fr)] items-center gap-2 md:gap-3'
+        }
+      >
+        {hideLabel ? null : (
+          <p
+            className={[
+              'edit-label edit-text',
+              config.required ? 'edit-label--required' : '',
+            ].join(' ')}
+          >
+            <span className="edit-label__text">{config.label}</span>
+          </p>
+        )}
+        <select
+          value={selectedValue}
+          className={[
+            'h-8 min-w-0 rounded border border-[var(--app-border)] px-2 text-[var(--app-text)] outline-none transition focus:border-[var(--app-accent)]',
+            FK_EDITOR_BACKGROUND_CLASS,
+            'edit-text',
+          ].join(' ')}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          <option value="">선택</option>
+          {selectedValue && !config.options.some((option) => option.key === selectedValue) ? (
+            <option value={selectedValue}>기존 값: {selectedValue}</option>
+          ) : null}
+          {config.options.map((option) => (
+            <option key={option.key} value={option.key}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
   if (config.type === 'text') {
     return (
       <DbTypeTextEdit

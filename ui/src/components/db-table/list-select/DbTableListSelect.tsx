@@ -20,6 +20,7 @@ type DbColumn = {
   label: string;
   type: string;
   targetTable?: DbTableName;
+  options?: { key: string; label: string }[];
 };
 
 type ListTableConfig = {
@@ -873,7 +874,7 @@ function renderCell({
       );
     case 'text':
       return (
-        <span className="block truncate">{formatSimpleValue(value)}</span>
+        <span className="block truncate">{formatOptionValue(columnConfig, value)}</span>
       );
     case 'boolean':
       return (
@@ -979,8 +980,16 @@ function formatMobileCellValue({
     case 'file':
       return typeof value === 'string' && value.trim() ? '파일' : '-';
     default:
-      return formatSimpleValue(value);
+      return formatOptionValue(columnConfig, value);
   }
+}
+
+function formatOptionValue(config: DbColumn, value: unknown) {
+  if (typeof value === 'string' && config.options) {
+    return config.options.find((option) => option.key === value)?.label ?? value;
+  }
+
+  return formatSimpleValue(value);
 }
 
 function formatSimpleValue(value: unknown) {
