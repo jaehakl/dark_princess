@@ -15,6 +15,13 @@ import {
 import { findById, type GameData } from './snapshot';
 import type { DbRow } from './types';
 
+type AppliedResult = {
+  payload: DbRow;
+  before: unknown;
+  after: unknown;
+  statusChanged?: boolean;
+};
+
 export async function applySceneResults({
   data,
   status,
@@ -39,6 +46,7 @@ export async function applySceneResults({
 
   const sceneId = rowId(scene);
   const appliedRows: DbRow[] = [];
+  let statusChanged = false;
   const statusFields = new Set<string>(STATUS_STAT_FIELDS);
   const sortedResults = data.results
     .filter((result) => optionalNumberField(result, 'scene_id') === sceneId)
@@ -57,6 +65,7 @@ export async function applySceneResults({
     });
 
     if (applied) {
+      statusChanged = statusChanged || applied.statusChanged === true;
       appliedRows.push({
         scene_history_id: historyId,
         result_id: rowId(result),
@@ -67,6 +76,10 @@ export async function applySceneResults({
         sort_order: index,
       });
     }
+  }
+
+  if (statusChanged) {
+    await dbTables.Status.upsertRow([statusWriteRow(status)]);
   }
 
   if (appliedRows.length > 0) {
@@ -94,7 +107,7 @@ async function applySingleResult({
   result: DbRow;
   kind: string;
   statusFields: Set<string>;
-}) {
+}): Promise<AppliedResult | null> {
   const statField = stringField(result, 'stat_field');
   const numericValue = optionalNumberField(result, 'numeric_value') ?? 0;
 
@@ -102,7 +115,7 @@ async function applySingleResult({
     const before = numberField(status, statField);
     const after = kind === 'status_stat_delta' ? before + numericValue : numericValue;
     status[statField] = after;
-    return { payload: { field: statField }, before, after };
+    return { payload: { field: statField }, before, after, statusChanged: true };
   }
 
   if (kind === 'target_interaction_delta' || kind === 'target_interaction_set') {
