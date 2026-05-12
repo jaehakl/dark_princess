@@ -11,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.datastructures import UploadFile
 
 from settings import settings
-from utils.aws_s3 import build_object_key, is_allowed_content_type, upload_fileobj
 from utils.crud_helpers import CrudSpec, cleanup_orphaned_object_keys, upsert_items
+from utils.local_storage import build_object_key, is_allowed_content_type, upload_fileobj
 
 
 SchemaT = TypeVar("SchemaT", bound=BaseModel)

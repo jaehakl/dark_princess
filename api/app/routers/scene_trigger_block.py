@@ -1,12 +1,11 @@
-from typing import List
+﻿from typing import List
 
 from fastapi import APIRouter, Body, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import SceneTriggerBlock
 from models import GetListRequestBase, GetListResponseBase, SceneTriggerBlockBase, UpsertResponseBase
-from user_auth.routes import get_db
-from user_auth.utils.auth_wrapper import require_roles
+from db import get_db
 from utils.crud_helpers import CrudSpec, delete_items, get_list_response, upsert_items
 
 router = APIRouter(prefix="/scene_trigger_block", tags=["scene_trigger_block"])
@@ -19,9 +18,7 @@ SCENE_TRIGGER_BLOCK_CRUD_SPEC = CrudSpec(model=SceneTriggerBlock, schema=SceneTr
 async def api_get_scene_trigger_block_list(
     request: GetListRequestBase,
     db: AsyncSession = Depends(get_db),
-    user=Depends(require_roles(["admin"])),
 ):
-    del user
     return await get_list_response(db, request, SCENE_TRIGGER_BLOCK_CRUD_SPEC)
 
 
@@ -29,9 +26,7 @@ async def api_get_scene_trigger_block_list(
 async def api_upsert_scene_trigger_block_list(
     items: List[SceneTriggerBlockBase],
     db: AsyncSession = Depends(get_db),
-    user=Depends(require_roles(["admin"])),
 ):
-    del user
     return await upsert_items(db, items, SCENE_TRIGGER_BLOCK_CRUD_SPEC)
 
 
@@ -39,8 +34,6 @@ async def api_upsert_scene_trigger_block_list(
 async def api_delete_scene_trigger_block_list(
     ids: List[int] = Body(...),
     db: AsyncSession = Depends(get_db),
-    user=Depends(require_roles(["admin"])),
 ):
-    del user
     await delete_items(db, SCENE_TRIGGER_BLOCK_CRUD_SPEC, ids)
     return None

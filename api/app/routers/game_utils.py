@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from typing import Any
@@ -39,7 +39,7 @@ async def delete_owned_items(
     db: AsyncSession,
     spec: CrudSpec[Any, Any],
     ids: Iterable[Any],
-    base_clause: Any,
+    base_clause: Any | None = None,
 ) -> None:
     normalized_ids = normalize_int_ids(ids, sort=True)
     if not normalized_ids:

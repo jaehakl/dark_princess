@@ -10,20 +10,12 @@ python = ">=3.11,<3.15"
 sqlalchemy = "^2.0.41"
 uvicorn = "^0.34.3"
 fastapi = "^0.115.14"
-pgvector = "^0.4.1"
 dotenv = "^0.9.9"
-asyncpg = "^0.30.0"
+aiosqlite = "^0.21.0"
 python-multipart = "^0.0.20"
 python-dotenv = "^1.1.1"
-requests = ">=2.32"
-psycopg = {extras = ["binary"], version = "^3.2.9"}
-google-auth = ">=2.30"
-google-auth-oauthlib = ">=1.2"
-psycopg2-binary = "^2.9.10"
-boto3 = "^1.40.19"
 pydantic-settings = "^2.10.1"
-pyjwt = "^2.10.1"
-pydantic = {extras = ["email"], version = "^2.12.5"}
+pydantic = "^2.12.5"
 
 [build-system]
 requires = ["poetry-core"]

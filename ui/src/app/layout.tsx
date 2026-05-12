@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import {
   Link,
   NavLink,
@@ -20,8 +20,6 @@ import {
   PlusIcon,
   SidebarMenuIcon,
 } from './icons';
-import type { UserData } from '../api/api';
-import { useAuthStore } from '../stores/authStore';
 import { useUiStore } from '../stores/uiStore';
 
 type QuickAddAction = {
@@ -154,7 +152,7 @@ export function AppLayout() {
         <div className="fixed inset-0 z-40 lg:hidden">
           <button
             type="button"
-            aria-label="사이드바 닫기"
+            aria-label="?ъ씠?쒕컮 ?リ린"
             className="modal-backdrop absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]"
             onClick={() => setMobileSidebarOpen(false)}
           />
@@ -177,12 +175,11 @@ function Sidebar({
   onCollapseToggle,
   onClose,
 }: SidebarProps) {
-  const user = useAuthStore((state) => state.user);
   const toggleLabel = mobile
-    ? '사이드바 닫기'
+    ? 'Close sidebar'
     : collapsed
-      ? '사이드바 펼치기'
-      : '사이드바 접기';
+      ? 'Expand sidebar'
+      : 'Collapse sidebar';
 
   return (
     <aside
@@ -219,7 +216,7 @@ function Sidebar({
                   Dark Princess
                 </p>
                 <p className="truncate text-sm font-semibold text-[var(--app-text)]">
-                  게임 데이터 관리
+                  Game data
                 </p>
               </Link>
             </div>
@@ -239,126 +236,7 @@ function Sidebar({
           ))}
         </nav>
       </div>
-
-      {user ? (
-        <SidebarUserMenu user={user} collapsed={collapsed} mobile={mobile} />
-      ) : null}
     </aside>
-  );
-}
-
-function SidebarUserMenu({
-  user,
-  collapsed,
-  mobile,
-}: {
-  user: UserData;
-  collapsed: boolean;
-  mobile: boolean;
-}) {
-  const logoutUser = useAuthStore((state) => state.logoutUser);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const displayName = user.display_name?.trim() || user.email || '사용자';
-  const email = user.email ?? '';
-  const initial = (displayName || email).trim().charAt(0).toUpperCase() || 'U';
-  const compact = collapsed && !mobile;
-
-  useEffect(() => {
-    if (!isMenuOpen) {
-      return;
-    }
-
-    const handleMouseDown = (event: MouseEvent) => {
-      if (
-        menuRef.current &&
-        event.target instanceof Node &&
-        !menuRef.current.contains(event.target)
-      ) {
-        setIsMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleMouseDown);
-
-    return () => {
-      document.removeEventListener('mousedown', handleMouseDown);
-    };
-  }, [isMenuOpen]);
-
-  const handleLogoutClick = () => {
-    setIsLoggingOut(true);
-    void logoutUser().catch((error) => {
-      console.error('로그아웃 중 오류가 발생했습니다.', error);
-    });
-  };
-
-  return (
-    <div
-      ref={menuRef}
-      className="relative border-t border-[var(--app-border)] px-3 py-3"
-    >
-      <button
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={isMenuOpen}
-        title={compact ? `${displayName}${email ? ` ${email}` : ''}` : undefined}
-        className={[
-          'group flex min-w-0 items-center rounded-md transition',
-          compact ? 'mx-auto h-11 w-11 justify-center' : 'h-12 w-full gap-2 px-2',
-        ].join(' ')}
-        onClick={() => setIsMenuOpen((value) => !value)}
-      >
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--app-border)] bg-[var(--app-accent-soft)]">
-          {user.picture_url ? (
-            <img
-              src={user.picture_url}
-              alt=""
-              referrerPolicy="no-referrer"
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            initial
-          )}
-        </span>
-
-        {compact ? null : (
-          <span className="flex min-w-0 flex-1 items-baseline gap-1 overflow-hidden text-left">
-            <span className="truncate">
-              {displayName}
-            </span>
-            {email ? (
-              <span className="truncate">
-                {email}
-              </span>
-            ) : null}
-          </span>
-        )}
-      </button>
-
-      {isMenuOpen ? (
-        <div
-          role="menu"
-          className={[
-            'absolute z-50 rounded-md border border-[var(--app-border)] bg-white p-1 shadow-[var(--app-shadow)]',
-            compact
-              ? 'bottom-3 left-full ml-2 w-40'
-              : 'bottom-full left-3 right-3 mb-2',
-          ].join(' ')}
-        >
-          <button
-            type="button"
-            role="menuitem"
-            className="flex h-10 w-full items-center rounded-md px-3 text-left transition disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={isLoggingOut}
-            onClick={handleLogoutClick}
-          >
-            {isLoggingOut ? '로그아웃 중' : '로그아웃'}
-          </button>
-        </div>
-      ) : null}
-    </div>
   );
 }
 
@@ -497,19 +375,19 @@ function TopBar({
 }: TopBarProps) {
   const navigate = useNavigate();
   const mobileBreadcrumb = breadcrumbs[breadcrumbs.length - 2] ?? 'Dark Princess';
-  const quickAddLabel = quickAddAction?.label ?? '새 항목 등록';
+  const quickAddLabel = quickAddAction?.label ?? 'Add item';
   const isQuickAddDisabled = !quickAddAction || quickAddAction.disabled === true;
 
   return (
     <header className="sticky top-0 z-20 border-b border-[var(--app-border)] bg-[rgba(247,250,252,0.92)] backdrop-blur">
       <div className="hidden h-[4.75rem] items-center gap-6 px-6 py-4 lg:flex">
         <div className="min-w-0 flex-1">
-          <nav aria-label="브레드크럼">
+          <nav aria-label="Breadcrumb">
             <ol className="flex items-center gap-2 overflow-hidden text-sm">
               <li className="flex shrink-0 items-center gap-2">
                 <Link
                   to="/"
-                  aria-label="홈으로 이동"
+                  aria-label="Go home"
                   className="truncate rounded-sm text-[var(--app-muted)] transition hover:text-[var(--app-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-accent)]"
                 >
                   Dark Princess
@@ -551,7 +429,7 @@ function TopBar({
       <div className="flex h-[4.25rem] items-center gap-3 px-4 py-3 lg:hidden">
         <button
           type="button"
-          aria-label="사이드바 열기"
+          aria-label="Open sidebar"
           className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md"
           onClick={onMobileMenuClick}
         >

@@ -42,6 +42,7 @@ yarn-error.log*
 Thumbs.db
 
 ### User Data ###
-#*.sqlite3
+*.sqlite3
+api/uploads/
 alembic.ini
 .obsidian/

@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, MetaData, Text, func, text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, JSON, MetaData, String, Text, event, func, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -13,17 +12,27 @@ from settings import settings
 def make_async_db_url(url: str) -> str:
     if not url:
         return url
-    if url.startswith("postgresql+asyncpg://"):
-        return url
-    if url.startswith("postgresql://"):
-        return url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    if url.startswith("postgres://"):
-        return url.replace("postgres://", "postgresql+asyncpg://", 1)
+    if url.startswith("sqlite:///"):
+        return url.replace("sqlite:///", "sqlite+aiosqlite:///", 1)
     return url
 
 
 DB_URL = make_async_db_url(settings.db_url)
-engine = create_async_engine(DB_URL, future=True, pool_pre_ping=True, echo=False)
+engine_kwargs = {"future": True, "echo": False}
+if DB_URL.startswith("sqlite+aiosqlite://"):
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    engine_kwargs["pool_pre_ping"] = True
+
+engine = create_async_engine(DB_URL, **engine_kwargs)
+
+if DB_URL.startswith("sqlite+aiosqlite://"):
+    @event.listens_for(engine.sync_engine, "connect")
+    def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
 SessionLocal = async_sessionmaker(
     bind=engine,
     class_=AsyncSession,
@@ -31,6 +40,15 @@ SessionLocal = async_sessionmaker(
     autocommit=False,
     expire_on_commit=False,
 )
+
+
+async def get_db():
+    async with SessionLocal() as db:
+        try:
+            yield db
+        except Exception:
+            await db.rollback()
+            raise
 
 
 naming_convention = {
@@ -80,7 +98,7 @@ class Target(TimestampMixin, Base):
     type: Mapped[str] = mapped_column(Text, nullable=False)    
     name: Mapped[str] = mapped_column(Text, nullable=False)    
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    properties: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    properties: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     target_statuses: Mapped[List["TargetStatus"]] = relationship("TargetStatus", back_populates="target", cascade="all, delete-orphan")
@@ -170,7 +188,7 @@ class SceneCondition(TimestampMixin, Base):
 
     stat_field: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     numeric_value: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    value: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    value: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
@@ -208,7 +226,7 @@ class SceneResult(TimestampMixin, Base):
     numeric_value: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    value: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    value: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
     scene: Mapped[Optional["Scene"]] = relationship("Scene", back_populates="scene_results")
@@ -229,7 +247,6 @@ class Status(TimestampMixin, Base):
     
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     turn: Mapped[int] = mapped_column(Integer, nullable=False)
     cash: Mapped[int] = mapped_column(Integer, nullable=False)
     strength: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -245,8 +262,7 @@ class Status(TimestampMixin, Base):
     target_statuses: Mapped[List["TargetStatus"]] = relationship("TargetStatus", back_populates="status", cascade="all, delete-orphan")
 
     __table_args__ = (
-        Index("ix_statuses_user_id", "user_id"),
-        Index("uq_statuses_user_id_name", "user_id", "name", unique=True),
+        Index("uq_statuses_name", "name", unique=True),
     )
 
 
@@ -272,7 +288,7 @@ class TargetStatus(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     status_id: Mapped[int] = mapped_column(Integer, ForeignKey("statuses.id", ondelete="CASCADE"), nullable=False)
     target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id", ondelete="CASCADE"), nullable=False)
-    interactions: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    interactions: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     visitable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
 
     status: Mapped["Status"] = relationship("Status", back_populates="target_statuses")
@@ -336,7 +352,7 @@ class SceneDecision(TimestampMixin, Base):
     option_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("scene_options.id", ondelete="SET NULL"), nullable=True)
     option_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     option_label: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    value: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    value: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
     scene_history: Mapped["SceneHistory"] = relationship("SceneHistory", back_populates="scene_decisions")
@@ -355,9 +371,9 @@ class SceneAppliedResult(TimestampMixin, Base):
     scene_history_id: Mapped[int] = mapped_column(Integer, ForeignKey("scene_histories.id", ondelete="CASCADE"), nullable=False)
     result_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("scene_results.id", ondelete="SET NULL"), nullable=True)
     kind: Mapped[str] = mapped_column(Text, nullable=False)
-    payload: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    before: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    after: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    payload: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    before: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    after: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
     scene_history: Mapped["SceneHistory"] = relationship("SceneHistory", back_populates="applied_results")

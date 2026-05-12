@@ -4,45 +4,6 @@ import { API_URL, request } from './http';
 
 export { API_URL };
 
-export type UserData = {
-  id: string;
-  email?: string | null;
-  display_name?: string | null;
-  picture_url?: string | null;
-  is_active?: boolean | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-  roles: string[];
-};
-
-export async function fetchMe() {
-  try {
-    return await request<UserData>('get', '/auth/me');
-  } catch {
-    return null;
-  }
-}
-
-export function startGoogleLogin() {
-  const returnTo = window.location.href;
-  window.location.href = `${API_URL}/auth/google/start?return_to=${encodeURIComponent(returnTo)}`;
-}
-
-export async function logout() {
-  await request<{ ok: true }>('post', '/auth/logout');
-}
-
-export const getAllUsersAdmin = (limit: number, offset: number) =>
-  request<UserData[]>(
-    'get',
-    `/user_admin/get_all_users/${encodeURIComponent(String(limit))}/${encodeURIComponent(String(offset))}`,
-  );
-export const deleteUserAdmin = (id: string) =>
-  request<boolean>('get', `/user_admin/delete/${encodeURIComponent(id)}`);
-export const getUserSummaryAdmin = (userId: string) =>
-  request<UserData | null>('get', `/user_data/summary/admin/${encodeURIComponent(userId)}`);
-export const getUserSummaryUser = () => request<UserData | null>('get', '/user_data/summary/user');
-
 export type GetListRequest = {
   offset: number;
   limit: number | null;

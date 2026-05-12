@@ -14,7 +14,6 @@ export const STATUS_STAT_FIELDS = [
 const STATUS_WRITE_FIELDS = [
   'id',
   'name',
-  'user_id',
   'turn',
   ...STATUS_STAT_FIELDS,
 ] as const;

@@ -13,8 +13,8 @@ from sqlalchemy.orm import selectinload
 
 from db import Scene, Target
 from models import GetListResponseBase, UpsertResponseBase
-from utils.aws_s3 import delete_object, presign_get_url
 from utils.datetime_utils import db_datetime_to_utc, parse_api_datetime_to_utc
+from utils.local_storage import delete_object, public_file_url
 
 
 ModelT = TypeVar("ModelT")
@@ -28,7 +28,7 @@ class CrudSpec(Generic[ModelT, SchemaT]):
     relation_aliases: Mapping[str, str] = field(default_factory=dict)
     computed_fields: Mapping[str, tuple[tuple[str, ...], str]] = field(default_factory=dict)
     search_aliases: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
-    presigned_fields: tuple[str, ...] = field(default_factory=tuple)
+    public_url_fields: tuple[str, ...] = field(default_factory=tuple)
 
 
 FILE_REFERENCE_COLUMNS = (
@@ -415,8 +415,8 @@ async def get_list_response(
             field_value = getattr(entity, field_name)
             if _get_column_python_type(field_name) is datetime and isinstance(field_value, datetime):
                 field_value = db_datetime_to_utc(field_value)
-            if field_name in spec.presigned_fields and isinstance(field_value, str) and field_value:
-                field_value = presign_get_url(field_value)
+            if field_name in spec.public_url_fields and isinstance(field_value, str) and field_value:
+                field_value = public_file_url(field_value)
             item_data[field_name] = field_value
 
         items.append(spec.schema.model_validate(item_data))

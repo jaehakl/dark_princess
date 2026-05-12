@@ -1,8 +1,7 @@
 from datetime import datetime
-from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel as PydanticBaseModel, EmailStr, field_serializer
+from pydantic import BaseModel as PydanticBaseModel, field_serializer
 
 from utils.datetime_utils import serialize_datetime_utc
 
@@ -11,22 +10,6 @@ class BaseModel(PydanticBaseModel):
     @field_serializer("*", when_used="json")
     def serialize_datetimes(self, value: Any) -> Any:
         return serialize_datetime_utc(value)
-
-
-class RoleEnum(str, Enum):
-    admin = "admin"
-    user = "user"
-
-
-class UserData(BaseModel):
-    id: str
-    email: Optional[EmailStr] = None
-    display_name: Optional[str] = None
-    picture_url: Optional[str] = None
-    is_active: Optional[bool] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    roles: List[RoleEnum]
 
 
 class GetListRequestBase(BaseModel):
@@ -129,7 +112,6 @@ class SceneResultBase(BaseModel):
 class StatusBase(BaseModel):
     id: Optional[int] = None
     name: str
-    user_id: Optional[str] = None
     turn: int = 0
     cash: int = 0
     strength: int = 0
