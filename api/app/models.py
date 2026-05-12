@@ -131,7 +131,6 @@ class StatusBase(BaseModel):
     name: str
     user_id: Optional[str] = None
     turn: int = 0
-    sub_turn: int = 0
     cash: int = 0
     strength: int = 0
     agility: int = 0

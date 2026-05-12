@@ -1,7 +1,6 @@
 export const STATUS_COLUMNS = [
   'name',
   'turn',
-  'sub_turn',
   'cash',
   'strength',
   'agility',

@@ -1,4 +1,5 @@
-import { dbTables, type PlaySnapshot } from '../../api/api';
+import { dbTables } from '../../api/api';
+import type { PlaySnapshot } from '../../engine';
 import { DbTableDetailEdit } from '../../components/db-table/detail-edit';
 import { SCENE_COLUMNS } from './columns';
 import { EditModalShell } from './EditModalShell';

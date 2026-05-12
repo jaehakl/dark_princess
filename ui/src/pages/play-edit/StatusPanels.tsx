@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { PlaySnapshot } from '../../api/api';
 import { dbTables } from '../../api/api';
+import type { PlaySnapshot } from '../../engine';
 import { HISTORY_COLUMNS, TARGET_STATUS_COLUMNS } from './columns';
 import { InlineEditor } from './InlineEditor';
 import type { DbRow, TableConfig } from './types';

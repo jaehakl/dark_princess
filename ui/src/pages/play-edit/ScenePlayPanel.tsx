@@ -1,4 +1,4 @@
-import type { PlaySnapshot } from '../../api/api';
+import type { PlaySnapshot } from '../../engine';
 
 export function ScenePlayPanel({
   snapshot,
@@ -6,12 +6,14 @@ export function ScenePlayPanel({
   busy,
   onSelectTarget,
   onChooseOption,
+  onAdvanceTurn,
 }: {
   snapshot: PlaySnapshot | null;
   loading: boolean;
   busy: boolean;
   onSelectTarget: (targetStatusId: number) => Promise<void>;
   onChooseOption: (optionId: number) => Promise<void>;
+  onAdvanceTurn: () => Promise<void>;
 }) {
   if (loading && !snapshot) {
     return (
@@ -123,9 +125,16 @@ export function ScenePlayPanel({
 
       <div className="grid gap-2 border-t border-[var(--app-border)] bg-white p-3">
         {snapshot.scene_options.length === 0 ? (
-          <p className="rounded-md border border-dashed border-[var(--app-border)] px-3 py-4 text-center text-sm text-[var(--app-muted)]">
-            선택지가 없습니다.
-          </p>
+          <button
+            type="button"
+            disabled={busy || typeof snapshot.scene_history?.id !== 'number'}
+            className="rounded-md border border-[var(--app-border)] bg-[var(--app-panel)] px-4 py-3 text-left font-semibold transition hover:border-[var(--app-accent)] disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => {
+              void onAdvanceTurn();
+            }}
+          >
+            다음 턴으로
+          </button>
         ) : (
           snapshot.scene_options.map((option) => (
             <button

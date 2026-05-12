@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { PlaySnapshot } from '../../api/api';
 import { dbTables } from '../../api/api';
 import { DbTableDetailEdit } from '../../components/db-table/detail-edit';
+import type { PlaySnapshot } from '../../engine';
 import { SCENE_COLUMNS, TARGET_COLUMNS } from './columns';
 import { EditModalShell } from './EditModalShell';
 import { RowEditModal } from './RowEditModal';

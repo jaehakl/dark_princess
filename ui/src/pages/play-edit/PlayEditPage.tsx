@@ -1,12 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useOutletContext, useSearchParams } from 'react-router-dom';
-import {
-  choosePlayOption,
-  getPlaySnapshot,
-  selectPlayTarget,
-  type PlaySnapshot,
-} from '../../api/api';
 import type { LayoutOutletContext } from '../../app/layout';
+import { PlayEngineProvider, usePlayEngine } from '../../engine';
 import { OPTION_COLUMNS, STATUS_COLUMNS } from './columns';
 import { InlineEditor } from './InlineEditor';
 import { RowEditModal } from './RowEditModal';
@@ -23,37 +18,6 @@ export function PlayEditPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const statusId = Number(searchParams.get('status_id'));
   const resolvedStatusId = Number.isSafeInteger(statusId) && statusId > 0 ? statusId : null;
-  const [snapshot, setSnapshot] = useState<PlaySnapshot | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<PlayEditTab>('status');
-  const [targetModalOpen, setTargetModalOpen] = useState(false);
-  const [sceneModalMode, setSceneModalMode] = useState<'new' | 'edit' | null>(null);
-  const [optionModalOpen, setOptionModalOpen] = useState(false);
-  const [newOptionKey, setNewOptionKey] = useState('option_new');
-
-  const refresh = useCallback(async () => {
-    if (resolvedStatusId === null) {
-      setSnapshot(null);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    try {
-      setSnapshot(await getPlaySnapshot(resolvedStatusId));
-    } catch (caughtError) {
-      setSnapshot(null);
-      setError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : '플레이 정보를 불러오지 못했습니다.'
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [resolvedStatusId]);
 
   useEffect(() => {
     setPageChrome({
@@ -68,12 +32,6 @@ export function PlayEditPage() {
     };
   }, [setPageChrome, setQuickAddAction]);
 
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
   if (resolvedStatusId === null) {
     return (
       <StatusStart
@@ -85,6 +43,30 @@ export function PlayEditPage() {
       />
     );
   }
+
+  return (
+    <PlayEngineProvider statusId={resolvedStatusId}>
+      <PlayEditWorkspace statusId={resolvedStatusId} />
+    </PlayEngineProvider>
+  );
+}
+
+function PlayEditWorkspace({ statusId }: { statusId: number }) {
+  const {
+    snapshot,
+    loading,
+    busy,
+    error,
+    refresh,
+    selectTarget,
+    chooseOption,
+    advanceTurn,
+  } = usePlayEngine();
+  const [activeTab, setActiveTab] = useState<PlayEditTab>('status');
+  const [targetModalOpen, setTargetModalOpen] = useState(false);
+  const [sceneModalMode, setSceneModalMode] = useState<'new' | 'edit' | null>(null);
+  const [optionModalOpen, setOptionModalOpen] = useState(false);
+  const [newOptionKey, setNewOptionKey] = useState('option_new');
 
   return (
     <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-3">
@@ -144,19 +126,7 @@ export function PlayEditPage() {
             loading={loading}
             busy={busy}
             onSelectTarget={async (targetStatusId) => {
-              setBusy(true);
-              setError(null);
-              try {
-                setSnapshot(await selectPlayTarget(resolvedStatusId, targetStatusId));
-              } catch (caughtError) {
-                setError(
-                  caughtError instanceof Error
-                    ? caughtError.message
-                    : '방문처를 선택하지 못했습니다.'
-                );
-              } finally {
-                setBusy(false);
-              }
+              await selectTarget(targetStatusId);
             }}
             onChooseOption={async (optionId) => {
               const historyId = snapshot?.scene_history?.id;
@@ -164,19 +134,15 @@ export function PlayEditPage() {
                 return;
               }
 
-              setBusy(true);
-              setError(null);
-              try {
-                setSnapshot(await choosePlayOption(resolvedStatusId, historyId, optionId));
-              } catch (caughtError) {
-                setError(
-                  caughtError instanceof Error
-                    ? caughtError.message
-                    : '선택지를 적용하지 못했습니다.'
-                );
-              } finally {
-                setBusy(false);
+              await chooseOption(historyId, optionId);
+            }}
+            onAdvanceTurn={async () => {
+              const historyId = snapshot?.scene_history?.id;
+              if (typeof historyId !== 'number') {
+                return;
               }
+
+              await advanceTurn(historyId);
             }}
           />
         </section>
@@ -215,12 +181,12 @@ export function PlayEditPage() {
               />
             ) : activeTab === 'target' ? (
               <TargetStatusPanel
-                statusId={resolvedStatusId}
+                statusId={statusId}
                 snapshot={snapshot}
                 onChanged={refresh}
               />
             ) : (
-              <SceneHistoryPanel statusId={resolvedStatusId} onChanged={refresh} />
+              <SceneHistoryPanel statusId={statusId} onChanged={refresh} />
             )}
           </div>
         </section>
@@ -228,7 +194,7 @@ export function PlayEditPage() {
 
       {targetModalOpen ? (
         <TargetEditModal
-          statusId={resolvedStatusId}
+          statusId={statusId}
           snapshot={snapshot}
           onClose={() => setTargetModalOpen(false)}
           onChanged={async () => {

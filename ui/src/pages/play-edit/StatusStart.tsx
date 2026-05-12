@@ -11,7 +11,7 @@ export function StatusStart({ onStatusSelected }: { onStatusSelected: (statusId:
         </h1>
         <DbTableListSelect
           tableName="Status"
-          columns={['name', 'turn', 'sub_turn']}
+          columns={['name', 'turn']}
           onSelectedIdsChange={(selectedIds) => {
             const nextStatusId = selectedIds[0];
             if (typeof nextStatusId === 'number') {
@@ -29,7 +29,7 @@ export function StatusStart({ onStatusSelected }: { onStatusSelected: (statusId:
         </h2>
         <DbTableDetailEdit
           tableName="Status"
-          row={{ name: '새 게임', turn: 0, sub_turn: 0 }}
+          row={{ name: '새 게임', turn: 0 }}
           columns={STATUS_COLUMNS}
           onSaved={(response) => {
             const savedId = response[0]?.id;

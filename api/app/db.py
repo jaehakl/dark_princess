@@ -231,7 +231,6 @@ class Status(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     turn: Mapped[int] = mapped_column(Integer, nullable=False)
-    sub_turn: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     cash: Mapped[int] = mapped_column(Integer, nullable=False)
     strength: Mapped[int] = mapped_column(Integer, nullable=False)
     agility: Mapped[int] = mapped_column(Integer, nullable=False)
