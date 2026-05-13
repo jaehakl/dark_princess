@@ -2,12 +2,13 @@ import asyncio
 import gc
 import random
 from io import BytesIO
+from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from settings import settings
+from settings import API_ROOT, settings
 from utils.crud_helpers import cleanup_orphaned_object_keys
 from utils.local_storage import build_object_key, public_file_url, upload_fileobj
 
@@ -35,17 +36,29 @@ async def generate_prompt_image_for_entity(
     if not prompt:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{entity_name} prompt is required")
 
-    if not settings.stable_diffusion_model_path.strip():
+    model_path_value = settings.stable_diffusion_model_path.strip()
+    if not model_path_value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="stable diffusion model path is required",
         )
 
+    model_path = Path(model_path_value).expanduser()
+    if not model_path.is_absolute():
+        model_path = API_ROOT / model_path
+    try:
+        model_path = model_path.resolve(strict=True)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"stable diffusion model file not found: {model_path}",
+        ) from exc
+
     seed = random.randint(GEN_IMAGE_SEED_MIN, GEN_IMAGE_SEED_MAX)
     async with _generation_lock:
         images, _seeds = await asyncio.to_thread(
             generate_images_batch,
-            settings.stable_diffusion_model_path,
+            str(model_path),
             [prompt],
             [GEN_IMAGE_NEGATIVE_PROMPT],
             [seed],
