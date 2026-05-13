@@ -1,11 +1,12 @@
 ﻿from typing import List
 
-from fastapi import APIRouter, Body, Depends, Request as FastAPIRequest
+from fastapi import APIRouter, Body, Depends, HTTPException, Request as FastAPIRequest, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import Scene
 from models import GetListRequestBase, GetListResponseBase, SceneBase, UpsertResponseBase
 from db import get_db
+from service.image_generation import generate_prompt_image_for_entity
 from utils.crud_helpers import CrudSpec, delete_items, get_list_response, upsert_items
 from utils.upsert_form import preserve_existing_upload_fields, upsert_form_item
 
@@ -38,6 +39,18 @@ async def api_upsert_scene_form(
     db: AsyncSession = Depends(get_db),
 ):
     return await upsert_form_item(request, db, SCENE_CRUD_SPEC, {"image": "image", "audio": "file"})
+
+
+@router.post("/{scene_id}/gen-image")
+async def api_generate_scene_image(
+    scene_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, int | str]:
+    scene = await db.get(Scene, scene_id)
+    if scene is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="scene not found")
+
+    return await generate_prompt_image_for_entity(db, scene, "scene")
 
 
 @router.delete("/", status_code=200)

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { UpsertResponse } from '../../../api/api';
+import type { GenImageResponse, UpsertResponse } from '../../../api/api';
 import { dbTables } from '../../../api/api';
 import {
   addMinutesToDateTimeIso,
@@ -34,6 +34,7 @@ type DetailTableConfig = {
     item: unknown,
     files?: Record<string, File | null | undefined>
   ) => Promise<UpsertResponse>;
+  generateImage?: (id: number) => Promise<GenImageResponse>;
   deleteRows: (ids: number[]) => Promise<void>;
 };
 
@@ -145,6 +146,7 @@ export function DbTableDetailEdit({
   );
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [uploadModalMode, setUploadModalMode] =
     useState<UploadModalMode>('closed');
   const [uploadElapsedSeconds, setUploadElapsedSeconds] = useState(0);
@@ -167,7 +169,24 @@ export function DbTableDetailEdit({
     );
   }, [autoSyncedFieldKeys, baseRow, hasPendingFiles, draftRow]);
   const canSave =
-    hasDraftChanges && !isSaving && !isDeleting && !isUploadModalOpen;
+    hasDraftChanges &&
+    !isSaving &&
+    !isDeleting &&
+    !isGeneratingImage &&
+    !isUploadModalOpen;
+  const generateImage = tableConfig.generateImage;
+  const savedPrompt =
+    typeof baseRow.prompt === 'string' ? baseRow.prompt.trim() : '';
+  const canGenerateImage =
+    Boolean(generateImage) &&
+    rowId !== null &&
+    Boolean(savedPrompt) &&
+    !hasDraftChanges &&
+    !hasPendingUpload &&
+    !isSaving &&
+    !isDeleting &&
+    !isGeneratingImage &&
+    !isUploadModalOpen;
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -179,6 +198,7 @@ export function DbTableDetailEdit({
     setError(null);
     setUploadModalMode('closed');
     setUploadElapsedSeconds(0);
+    setIsGeneratingImage(false);
   }, [rowWithDefaults]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -446,7 +466,22 @@ export function DbTableDetailEdit({
           </p>
         ) : null}
 
-        <div className="mt-2 flex flex-row justify-end gap-2">
+        <div className="mt-2 flex flex-row flex-wrap justify-end gap-2">
+          {generateImage ? (
+            <button
+              type="button"
+              disabled={!canGenerateImage}
+              className={[
+                'inline-flex h-10 min-w-24 items-center justify-center whitespace-nowrap rounded-md px-4 transition disabled:cursor-not-allowed disabled:opacity-50',
+                'edit-text',
+              ].join(' ')}
+              onClick={() => {
+                void handleGenerateImage();
+              }}
+            >
+              {isGeneratingImage ? '생성 중' : '이미지 생성'}
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={!canSave}
@@ -464,6 +499,7 @@ export function DbTableDetailEdit({
               !hasDraftChanges ||
               isSaving ||
               isDeleting ||
+              isGeneratingImage ||
               isUploadModalOpen
             }
             className={[
@@ -477,7 +513,11 @@ export function DbTableDetailEdit({
           <button
             type="button"
             disabled={
-              rowId === null || isSaving || isDeleting || isUploadModalOpen
+              rowId === null ||
+              isSaving ||
+              isDeleting ||
+              isGeneratingImage ||
+              isUploadModalOpen
             }
             className={[
               'inline-flex h-10 min-w-16 items-center justify-center whitespace-nowrap rounded-md px-4 transition disabled:cursor-not-allowed disabled:opacity-50',
@@ -664,6 +704,34 @@ export function DbTableDetailEdit({
 
     setUploadModalMode('closed');
     setUploadElapsedSeconds(0);
+  }
+
+  async function handleGenerateImage() {
+    if (!generateImage || rowId === null || !canGenerateImage) {
+      return;
+    }
+
+    setError(null);
+    setMessage(null);
+    setIsGeneratingImage(true);
+    try {
+      const response = await generateImage(rowId);
+      const nextRow = { ...baseRow, image: response.image };
+      setDraftRow(nextRow);
+      setBaseRow(nextRow);
+      setPendingFiles((current) => ({ ...current, image: null }));
+      setAutoSyncedFieldKeys(new Set());
+      setMessage(`이미지를 생성했습니다. seed: ${response.seed}`);
+      onSaved?.([{ id: response.id }]);
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : '이미지를 생성하지 못했습니다.'
+      );
+    } finally {
+      setIsGeneratingImage(false);
+    }
   }
 
   function handleReset() {

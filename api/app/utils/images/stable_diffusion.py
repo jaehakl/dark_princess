@@ -8,6 +8,18 @@ from concurrent.futures import ThreadPoolExecutor
 import os
 from PIL import Image
 
+TARGET_GEN_IMAGE_NEGATIVE_PROMPT = "blurry, low quality, bad anatomy, disfigured, deformed, bad hands, missing fingers, extra fingers, worst quality, jpeg artifacts, signature, watermark, text, bad eyes, grotesque, sketchy, logo, rough, incomplete, disgusting, distorted, deformed face, poorly drawn, bad quality"
+TARGET_GEN_IMAGE_STEPS = 30
+TARGET_GEN_IMAGE_CFG = 10.0
+TARGET_GEN_IMAGE_HEIGHT = 1216
+TARGET_GEN_IMAGE_WIDTH = 832
+TARGET_GEN_IMAGE_MAX_CHUNK_SIZE = 1
+TARGET_GEN_IMAGE_OUTPUT_FORMAT = "JPEG"
+TARGET_GEN_IMAGE_OUTPUT_EXTENSION = ".jpg"
+TARGET_GEN_IMAGE_OUTPUT_QUALITY = 85
+TARGET_GEN_IMAGE_SEED_MIN = 0
+TARGET_GEN_IMAGE_SEED_MAX = 1_000_000
+
 _generation_lock = asyncio.Semaphore(1)
 
 def get_available_cuda_devices() -> List[int]:
@@ -464,7 +476,7 @@ def generate_images_from_image_batch(
 
 if __name__ == "__main__":
     images = generate_images_from_image_batch(
-        ckpt_path="E:\media\ComfyUI\models\checkpoints\waiNSFWIllustrious_v150.safetensors",
+        ckpt_path=r"E:\media\ComfyUI\models\checkpoints\waiNSFWIllustrious_v150.safetensors",
         positive_prompt_list=["a dog"]*4,
         negative_prompt_list=["blurry, low quality, bad anatomy, disfigured, deformed, bad hands, missing fingers, extra fingers, worst quality, jpeg artifacts, signature, watermark, text, bad eyes, grotesque, sketchy, logo, rough, incomplete, disgusting, distorted, deformed face, poorly drawn, bad quality"]*4,
         seed_list=[random.randint(0, 1_000_000) for _ in range(4)],

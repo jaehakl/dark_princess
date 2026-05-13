@@ -30,6 +30,12 @@ export type StableDiffusionModelPathSettings = {
   files: string[];
 };
 
+export type GenImageResponse = {
+  id: number;
+  image: string;
+  seed: number;
+};
+
 function buildUpsertFormData(
   payload: unknown,
   files: Record<string, File | null | undefined> = {},
@@ -89,6 +95,8 @@ export const dbTables = {
     deleteRows: (ids: number[]) => request<null>('delete', '/target/', ids).then(() => undefined),
     upsertFormRow: (item: unknown, files: Record<string, File | null | undefined> = {}) =>
       request<UpsertResponse>('post', '/target/upsert-form', buildUpsertFormData(item, files)),
+    generateImage: (id: number) =>
+      request<GenImageResponse>('post', `/target/${id}/gen-image`),
   },
 
   Scene: {
@@ -114,6 +122,8 @@ export const dbTables = {
     deleteRows: (ids: number[]) => request<null>('delete', '/scene/', ids).then(() => undefined),
     upsertFormRow: (item: unknown, files: Record<string, File | null | undefined> = {}) =>
       request<UpsertResponse>('post', '/scene/upsert-form', buildUpsertFormData(item, files)),
+    generateImage: (id: number) =>
+      request<GenImageResponse>('post', `/scene/${id}/gen-image`),
   },
 
   SceneTriggerBlock: {

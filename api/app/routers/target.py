@@ -1,11 +1,12 @@
-﻿from typing import List
+from typing import List
 
-from fastapi import APIRouter, Body, Depends, Request as FastAPIRequest
+from fastapi import APIRouter, Body, Depends, HTTPException, Request as FastAPIRequest, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import Target
-from models import GetListRequestBase, GetListResponseBase, TargetBase, UpsertResponseBase
 from db import get_db
+from models import GetListRequestBase, GetListResponseBase, TargetBase, UpsertResponseBase
+from service.image_generation import generate_prompt_image_for_entity
 from utils.crud_helpers import CrudSpec, delete_items, get_list_response, upsert_items
 from utils.upsert_form import preserve_existing_upload_fields, upsert_form_item
 
@@ -38,6 +39,18 @@ async def api_upsert_target_form(
     db: AsyncSession = Depends(get_db),
 ):
     return await upsert_form_item(request, db, TARGET_CRUD_SPEC, {"image": "image"})
+
+
+@router.post("/{target_id}/gen-image")
+async def api_generate_target_image(
+    target_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, int | str]:
+    target = await db.get(Target, target_id)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="target not found")
+
+    return await generate_prompt_image_for_entity(db, target, "target")
 
 
 @router.delete("/", status_code=200)
