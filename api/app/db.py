@@ -132,6 +132,7 @@ class SceneTriggerBlock(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     scene_id: Mapped[int] = mapped_column(Integer, ForeignKey("scenes.id", ondelete="CASCADE"), nullable=False)
     label: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    chance_percent: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("100"))
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
     scene: Mapped["Scene"] = relationship("Scene", back_populates="trigger_blocks")

@@ -7,7 +7,6 @@ import {
 } from 'react-router-dom';
 import type { RouteObject } from 'react-router-dom';
 import { AppLayout } from './layout';
-import { HomePage } from '../pages/home/HomePage';
 import { ListEditPage } from '../pages/list-edit/ListEditPage';
 import { PlayEditPage } from '../pages/play-edit/PlayEditPage';
 import { SettingsPage } from '../pages/settings/SettingsPage';
@@ -30,11 +29,10 @@ export const routeObjects: RouteObject[] = [
     children: [
       {
         index: true,
-        element: createElement(HomePage),
-        handle: {
-          breadcrumb: 'Home',
-          pageTitle: 'Home',
-        },
+        element: createElement(Navigate, {
+          to: '/play-edit',
+          replace: true,
+        }),
       },
       {
         path: 'list-edit',
@@ -63,7 +61,7 @@ export const routeObjects: RouteObject[] = [
       {
         path: '*',
         element: createElement(Navigate, {
-          to: '/',
+          to: '/play-edit',
           replace: true,
         }),
       },

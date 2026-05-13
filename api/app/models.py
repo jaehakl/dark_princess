@@ -62,6 +62,7 @@ class SceneTriggerBlockBase(BaseModel):
     id: Optional[int] = None
     scene_id: int
     label: Optional[str] = None
+    chance_percent: int = 100
     sort_order: int = 0
     conditions: Optional[List[int]] = None
 

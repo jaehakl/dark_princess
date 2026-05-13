@@ -336,7 +336,6 @@ export function DbTypeFkEdit({
           renderFkEditor={renderRequiredFkEditor}
           onClose={() => setEditingCell(null)}
           onSaved={() => {
-            setEditingCell(null);
             setRefreshKey((current) => current + 1);
           }}
         />

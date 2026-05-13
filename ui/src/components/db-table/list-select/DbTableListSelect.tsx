@@ -125,10 +125,14 @@ export function DbTableListSelect({
         config.type === 'int' ||
         config.type === 'list-fk'
     ) ?? null;
+  const mobileImageColumn =
+    visibleColumns.find(({ config }) => config.type === 'image') ?? null;
   const mobileSecondaryColumns = visibleColumns
     .filter(
       ({ key }) =>
-        key !== mobilePrimaryTextColumn?.key && key !== mobilePrimaryCountColumn?.key
+        key !== mobilePrimaryTextColumn?.key &&
+        key !== mobilePrimaryCountColumn?.key &&
+        key !== mobileImageColumn?.key
     )
     .slice(0, 5);
   const rangeFiltersKey = JSON.stringify(rangeFilters);
@@ -446,6 +450,10 @@ export function DbTableListSelect({
                 : '';
               const primaryLineValue = primaryText || primaryCount || '-';
               const showSeparateCount = Boolean(primaryText && primaryCount);
+              const mobileImageUrl =
+                mobileImageColumn && hasDisplayValue(item[mobileImageColumn.key])
+                  ? String(item[mobileImageColumn.key])
+                  : null;
 
               return (
                 <button
@@ -458,27 +466,40 @@ export function DbTableListSelect({
                   ].join(' ')}
                   onClick={(event) => handleRowClick(event, rowId, rowIndex)}
                 >
-                  <div className="flex items-center justify-between gap-2 font-medium leading-tight">
-                    <span className="min-w-0 truncate">
-                      {primaryLineValue}
-                    </span>
-                    {showSeparateCount ? (
-                      <span className="shrink-0">
-                        {primaryCount}
-                      </span>
+                  <div className="flex min-w-0 gap-3">
+                    {mobileImageUrl ? (
+                      <div className="dp-image-frame w-16 shrink-0 overflow-hidden rounded-md border border-[var(--app-border)] bg-white">
+                        <img
+                          src={mobileImageUrl}
+                          alt=""
+                          className="dp-image-media"
+                        />
+                      </div>
                     ) : null}
-                  </div>
-                  <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[0.72rem] leading-tight text-[var(--app-muted)]">
-                    {mobileSecondaryColumns.map(({ key, config }) => (
-                      <span key={`${buildRowKey(item, rowIndex)}-mobile-${key}`}>
-                        {formatMobileCellValue({
-                          item,
-                          columnKey: key,
-                          columnConfig: config,
-                          foreignNames,
-                        })}
-                      </span>
-                    ))}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2 font-medium leading-tight">
+                        <span className="min-w-0 truncate">
+                          {primaryLineValue}
+                        </span>
+                        {showSeparateCount ? (
+                          <span className="shrink-0">
+                            {primaryCount}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[0.72rem] leading-tight text-[var(--app-muted)]">
+                        {mobileSecondaryColumns.map(({ key, config }) => (
+                          <span key={`${buildRowKey(item, rowIndex)}-mobile-${key}`}>
+                            {formatMobileCellValue({
+                              item,
+                              columnKey: key,
+                              columnConfig: config,
+                              foreignNames,
+                            })}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </button>
               );
@@ -587,7 +608,7 @@ export function DbTableListSelect({
                           key={`${buildRowKey(item, rowIndex)}-${key}`}
                           className={[
                             'max-w-[18rem] px-3 py-1.5 text-[0.8125rem] leading-tight text-[var(--app-text)]',
-                            rowHasImage ? 'h-[72px]' : '',
+                            rowHasImage ? 'h-[92px]' : '',
                             ['id', 'int', 'float'].includes(config.type)
                               ? 'text-right'
                               : 'text-left',
@@ -917,12 +938,14 @@ function renderCell({
       );
     case 'image':
       return hasDisplayValue(value) ? (
-        <div className="flex h-[72px] items-center">
-          <img
-            src={String(value)}
-            alt=""
-            className="max-h-[72px] max-w-[72px] rounded-md border border-[var(--app-border)] object-contain"
-          />
+        <div className="flex h-[88px] items-center">
+          <div className="dp-image-frame w-14 overflow-hidden rounded-md border border-[var(--app-border)] bg-white">
+            <img
+              src={String(value)}
+              alt=""
+              className="dp-image-media"
+            />
+          </div>
         </div>
       ) : (
         <span className="block truncate text-[var(--app-muted)]">-</span>

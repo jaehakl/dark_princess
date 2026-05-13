@@ -120,7 +120,7 @@ export function DbTypeImageFileEdit({
                 <img
                   src={imagePreviewUrl}
                   alt=""
-                  className="h-5 w-5 shrink-0 rounded border border-[var(--app-border)] object-cover"
+                  className="h-5 w-3.5 shrink-0 rounded border border-[var(--app-border)] bg-white object-contain"
                 />
               ) : null}
               <span className="min-w-0 truncate">{displayText}</span>
@@ -306,7 +306,7 @@ function ImagePreviewModal({
         className="modal-backdrop absolute inset-0 bg-slate-950/70"
         onClick={onClose}
       />
-      <section className="relative z-10 flex max-h-[calc(100vh-2rem)] w-full max-w-[min(64rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-md border border-[var(--app-border)] bg-[var(--app-panel)] shadow-xl">
+      <section className="relative z-10 flex max-h-[calc(100vh-2rem)] w-full max-w-[min(31rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-md border border-[var(--app-border)] bg-[var(--app-panel)] shadow-xl">
         <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-[var(--app-border)] px-3">
           <p className="min-w-0 truncate text-xs font-semibold text-[var(--app-text)]">
             {label}
@@ -320,12 +320,10 @@ function ImagePreviewModal({
             x
           </button>
         </div>
-        <div className="flex min-h-0 flex-1 items-center justify-center bg-white p-2">
-          <img
-            src={imageUrl}
-            alt=""
-            className="max-h-[calc(100vh-6rem)] max-w-full object-contain"
-          />
+        <div className="min-h-0 flex-1 overflow-auto bg-[var(--app-panel-strong)] p-3">
+          <div className="dp-image-frame mx-auto w-full overflow-hidden rounded-md border border-[var(--app-border)] bg-white">
+            <img src={imageUrl} alt="" className="dp-image-media" />
+          </div>
         </div>
       </section>
     </div>
@@ -363,7 +361,7 @@ function ClipboardImageModal({
         className="modal-backdrop absolute inset-0 bg-slate-950/30"
         onClick={onClose}
       />
-      <section className="relative z-10 w-full max-w-[min(32rem,calc(100vw-1.5rem))] overflow-hidden rounded-md border border-[var(--app-border)] bg-[var(--app-panel)] shadow-xl">
+      <section className="relative z-10 w-full max-w-[min(30rem,calc(100vw-1.5rem))] overflow-hidden rounded-md border border-[var(--app-border)] bg-[var(--app-panel)] shadow-xl">
         <div className="flex h-10 items-center justify-between gap-2 border-b border-[var(--app-border)] px-3">
           <p className="min-w-0 truncate text-xs font-semibold text-[var(--app-text)]">
             {label} 클립보드 이미지
@@ -379,7 +377,7 @@ function ClipboardImageModal({
         </div>
 
         <div className="px-3 py-3">
-          <div className="flex min-h-56 items-center justify-center rounded border border-[var(--app-border)] bg-white p-2">
+          <div className="dp-image-frame mx-auto flex w-full max-w-[18rem] items-center justify-center overflow-hidden rounded border border-[var(--app-border)] bg-white p-2">
             {isReading ? (
               <p className="text-xs text-[var(--app-muted)]">
                 클립보드 이미지를 읽는 중입니다.
@@ -388,7 +386,7 @@ function ClipboardImageModal({
               <img
                 src={image.url}
                 alt=""
-                className="max-h-[60vh] max-w-full rounded object-contain"
+                className="dp-image-media rounded"
               />
             ) : (
               <p className="text-xs text-[var(--app-muted)]">

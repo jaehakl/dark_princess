@@ -190,11 +190,8 @@ export function findNextScene(data: GameData, status: DbRow, targetStatus: DbRow
     }
 
     const seenTurns = state.seenSceneTurns.get(sceneId) ?? [];
-    const repeatPolicy = stringField(scene, 'repeat_policy', 'once_per_status');
+    const repeatPolicy = normalizeRepeatPolicy(stringField(scene, 'repeat_policy', 'once_per_status'));
     if (repeatPolicy === 'once_per_status' && seenTurns.length > 0) {
-      continue;
-    }
-    if (repeatPolicy === 'once_per_turn' && seenTurns.includes(numberField(status, 'turn'))) {
       continue;
     }
     const cooldownTurns = numberField(scene, 'cooldown_turns');
@@ -211,9 +208,10 @@ export function findNextScene(data: GameData, status: DbRow, targetStatus: DbRow
       const blockConditions = data.conditions.filter(
         (condition) => optionalNumberField(condition, 'trigger_block_id') === blockId,
       );
-      return blockConditions.every((condition) =>
+      const conditionsMatch = blockConditions.every((condition) =>
         conditionMatches(condition, status, targetStatus, state),
       );
+      return conditionsMatch && triggerChanceMatches(block);
     });
     if (matchingBlock) {
       return scene;
@@ -221,6 +219,24 @@ export function findNextScene(data: GameData, status: DbRow, targetStatus: DbRow
   }
 
   return null;
+}
+
+function triggerChanceMatches(block: DbRow) {
+  const rawChance = optionalNumberField(block, 'chance_percent') ?? 100;
+  const chancePercent = Math.min(100, Math.max(0, rawChance));
+
+  if (chancePercent >= 100) {
+    return true;
+  }
+  if (chancePercent <= 0) {
+    return false;
+  }
+
+  return Math.random() * 100 < chancePercent;
+}
+
+function normalizeRepeatPolicy(value: string) {
+  return value === 'always' ? 'always' : 'once_per_status';
 }
 
 export function findById(rows: DbRow[], id: number | null) {

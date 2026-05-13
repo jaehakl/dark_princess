@@ -20,10 +20,7 @@ export function PlayEditPage() {
   const resolvedStatusId = Number.isSafeInteger(statusId) && statusId > 0 ? statusId : null;
 
   useEffect(() => {
-    setPageChrome({
-      breadcrumbSuffix: 'Play+Edit',
-      pageTitleSuffix: 'Play+Edit',
-    });
+    setPageChrome(null);
     setQuickAddAction(null);
 
     return () => {
@@ -210,7 +207,6 @@ function PlayEditWorkspace({ statusId }: { statusId: number }) {
           onClose={() => setSceneModalMode(null)}
           onChanged={async () => {
             await refresh();
-            setSceneModalMode(null);
           }}
         />
       ) : null}

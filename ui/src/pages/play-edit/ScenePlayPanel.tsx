@@ -42,7 +42,7 @@ export function ScenePlayPanel({
             Turn {String(snapshot.status.turn ?? 0)}
           </p>
         </div>
-        <div className="grid flex-1 auto-rows-min gap-3 overflow-y-auto p-4 sm:grid-cols-2">
+        <div className="grid flex-1 auto-rows-min gap-3 overflow-y-auto p-4 sm:grid-cols-2 xl:grid-cols-3">
           {snapshot.target_statuses.length === 0 ? (
             <div className="col-span-full rounded-md border border-dashed border-[var(--app-border)] px-4 py-10 text-center text-sm text-[var(--app-muted)]">
               TargetStatus가 없습니다. 방문처 추가로 현재 Status에 대상을 연결하세요.
@@ -72,11 +72,15 @@ export function ScenePlayPanel({
                     }
                   }}
                 >
-                  {image ? (
-                    <img src={image} alt="" className="h-36 w-full object-cover" />
-                  ) : (
-                    <div className="h-24 bg-[var(--app-panel-strong)]" />
-                  )}
+                  <div className="dp-image-frame overflow-hidden border-b border-[var(--app-border)]">
+                    {image ? (
+                      <img src={image} alt="" className="dp-image-media" />
+                    ) : (
+                      <div className="flex h-full items-center justify-center px-3 text-sm text-[var(--app-muted)]">
+                        이미지 없음
+                      </div>
+                    )}
+                  </div>
                   <div className="space-y-1 p-3">
                     <div className="flex items-center justify-between gap-2">
                       <span className="min-w-0 truncate font-semibold">{name}</span>
@@ -104,31 +108,49 @@ export function ScenePlayPanel({
     typeof snapshot.scene.description === 'string' ? snapshot.scene.description : '';
 
   return (
-    <div className="flex h-full min-h-[32rem] flex-col">
-      <div className="relative min-h-[22rem] flex-1 overflow-hidden bg-slate-950">
+    <div className="flex h-full min-h-[32rem] flex-col bg-[var(--app-panel-strong)]">
+      <div className="relative min-h-[26rem] flex-1 overflow-hidden bg-slate-950">
         {sceneImage ? (
-          <img src={sceneImage} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          <img
+            src={sceneImage}
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover"
+          />
         ) : (
           <div className="absolute inset-0 bg-[var(--app-panel-strong)]" />
         )}
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/78 to-transparent p-5">
-          <h2 className="text-xl font-semibold text-white">
-            {String(snapshot.scene.name ?? '장면')}
-          </h2>
-          {sceneDescription ? (
-            <p className="mt-3 whitespace-pre-wrap text-base leading-7 text-white">
-              {sceneDescription}
+        <div className="absolute inset-0 bg-gradient-to-r from-black/78 via-black/42 to-black/10" />
+
+        <div className="relative z-10 flex h-full min-h-[26rem] flex-col">
+          <div className="border-b border-white/20 px-4 py-3">
+            <p className="text-sm font-semibold text-white/82">
+              Turn {String(snapshot.status.turn ?? 0)}
             </p>
-          ) : null}
+            <h2 className="mt-1 text-xl font-semibold text-white">
+              {String(snapshot.scene.name ?? '장면')}
+            </h2>
+          </div>
+
+          <div className="min-h-[10rem] max-w-3xl flex-1 overflow-y-auto px-4 py-4">
+            {sceneDescription ? (
+              <p className="whitespace-pre-wrap text-base font-normal leading-7 text-white drop-shadow">
+                {sceneDescription}
+              </p>
+            ) : (
+              <p className="text-sm text-white/75">
+                장면 설명이 없습니다.
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="grid gap-2 border-t border-[var(--app-border)] bg-white p-3">
+      <div className="grid gap-2 border-t border-[var(--app-border)] bg-[var(--app-panel-strong)] p-3">
         {snapshot.scene_options.length === 0 ? (
           <button
             type="button"
             disabled={busy || typeof snapshot.scene_history?.id !== 'number'}
-            className="rounded-md border border-[var(--app-border)] bg-[var(--app-panel)] px-4 py-3 text-left font-semibold transition hover:border-[var(--app-accent)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-md border border-[var(--app-border)] bg-white px-4 py-3 text-left font-semibold transition hover:border-[var(--app-accent)] disabled:cursor-not-allowed disabled:opacity-50"
             onClick={() => {
               void onAdvanceTurn();
             }}
@@ -141,7 +163,7 @@ export function ScenePlayPanel({
               key={String(option.id)}
               type="button"
               disabled={busy || typeof option.id !== 'number'}
-              className="rounded-md border border-[var(--app-border)] bg-[var(--app-panel)] px-4 py-3 text-left transition hover:border-[var(--app-accent)] disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-md border border-[var(--app-border)] bg-white px-4 py-3 text-left transition hover:border-[var(--app-accent)] disabled:cursor-not-allowed disabled:opacity-50"
               onClick={() => {
                 if (typeof option.id === 'number') {
                   void onChooseOption(option.id);

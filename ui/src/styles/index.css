@@ -34,9 +34,9 @@
   --edit-required-color: #e11d48;
   --button-font-size: var(--edit-font-size);
   --button-font-weight: 800;
-  background:
-    radial-gradient(circle at top left, rgba(20, 85, 217, 0.08), transparent 26%),
-    linear-gradient(180deg, #f4f7fb 0%, #eef2f7 100%);
+  --dp-image-aspect: 832 / 1216;
+  --dp-image-bg: #f8fafc;
+  background: linear-gradient(180deg, #f4f7fb 0%, #eef2f7 100%);
   color: var(--app-text);
 }
 
@@ -124,9 +124,7 @@ body::before {
   inset: 0;
   z-index: -1;
   content: "";
-  background:
-    radial-gradient(circle at top left, rgba(20, 85, 217, 0.08), transparent 22%),
-    linear-gradient(180deg, #f5f8fb 0%, #eef2f7 100%);
+  background: linear-gradient(180deg, #f5f8fb 0%, #eef2f7 100%);
 }
 
 input {
@@ -201,6 +199,18 @@ button:focus-visible {
 
 .datetime-edit-control {
   font-size: var(--datetime-edit-font-size);
+}
+
+.dp-image-frame {
+  aspect-ratio: var(--dp-image-aspect);
+  background: var(--dp-image-bg);
+}
+
+.dp-image-media {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 #root {

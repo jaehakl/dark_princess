@@ -21,6 +21,31 @@ async def add_target_prompt_column(conn):
             await conn.exec_driver_sql("ALTER TABLE targets ADD COLUMN prompt TEXT;")
 
 
+async def add_scene_trigger_block_chance_percent_column(conn):
+    if engine.dialect.name == "postgresql":
+        await conn.exec_driver_sql(
+            "ALTER TABLE scene_trigger_blocks "
+            "ADD COLUMN IF NOT EXISTS chance_percent INTEGER NOT NULL DEFAULT 100;"
+        )
+        return
+
+    if engine.dialect.name == "sqlite":
+        columns = await conn.exec_driver_sql("PRAGMA table_info(scene_trigger_blocks);")
+        column_names = {row[1] for row in columns}
+        if "chance_percent" not in column_names:
+            await conn.exec_driver_sql(
+                "ALTER TABLE scene_trigger_blocks "
+                "ADD COLUMN chance_percent INTEGER NOT NULL DEFAULT 100;"
+            )
+
+
+async def normalize_scene_repeat_policy_values(conn):
+    await conn.exec_driver_sql(
+        "UPDATE scenes SET repeat_policy = 'once_per_status' "
+        "WHERE repeat_policy = 'once_per_turn';"
+    )
+
+
 def server():
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -65,6 +90,8 @@ def server():
                     pass
             await conn.run_sync(Base.metadata.create_all)
             await add_target_prompt_column(conn)
+            await add_scene_trigger_block_chance_percent_column(conn)
+            await normalize_scene_repeat_policy_values(conn)
 
         print("service is started.")
 

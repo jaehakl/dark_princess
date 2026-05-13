@@ -38,7 +38,12 @@ export function SceneEditModal({
             const sceneId = response[0]?.id;
             if (mode === 'new' && typeof sceneId === 'number' && typeof currentTargetId === 'number') {
               const blockResponse = await (dbTables.SceneTriggerBlock as TableConfig).upsertRow([
-                { scene_id: sceneId, label: '현재 방문처', sort_order: 0 },
+                {
+                  scene_id: sceneId,
+                  label: '현재 방문처',
+                  chance_percent: 100,
+                  sort_order: 0,
+                },
               ]);
               const blockId = blockResponse[0]?.id;
               if (typeof blockId === 'number') {

@@ -251,8 +251,6 @@ function TargetScenePanel({
           onChanged={async () => {
             await loadScenes();
             await onChanged();
-            setSceneMode(null);
-            setEditingScene(null);
           }}
         />
       ) : null}
@@ -288,6 +286,7 @@ function TargetSceneEditModal({
               {
                 scene_id: sceneId,
                 label: targetName ? `방문처: ${targetName}` : '방문처',
+                chance_percent: 100,
                 sort_order: 0,
               },
             ]);

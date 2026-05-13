@@ -417,7 +417,7 @@ export function DbTypeChildrenImageEdit({
               {panelTitle} 데이터가 없습니다.
             </p>
           ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(min(9rem,100%),1fr))] gap-x-3 gap-y-4 p-3">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(min(8rem,100%),1fr))] gap-x-3 gap-y-4 p-3">
               {childrenImageItems.map((item) => (
                 <ChildrenImageTile
                   key={item.key}
@@ -704,7 +704,7 @@ function ChildrenImageTile({
     >
       <span
         className={[
-          'relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-md border bg-white transition',
+          'dp-image-frame relative flex w-full items-center justify-center overflow-hidden rounded-md border bg-white transition',
           isActive
             ? 'border-[var(--app-accent)] shadow-sm'
             : 'border-[var(--app-border)] group-hover:border-[var(--app-accent)]',
@@ -714,7 +714,7 @@ function ChildrenImageTile({
           <img
             src={imagePreviewUrl}
             alt=""
-            className="h-full w-full object-cover"
+            className="dp-image-media"
           />
         ) : (
           <span className="px-2 text-[0.68rem] leading-4 text-[var(--app-muted)]">
@@ -798,7 +798,7 @@ function ChildrenImageDetailModal({
     >
       <div className="absolute inset-0 bg-slate-950/30" />
       <section
-        className="relative z-10 flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-md border border-[var(--app-border)] bg-[var(--app-panel)] shadow-xl"
+        className="relative z-10 flex max-h-[calc(100vh-2rem)] w-full max-w-4xl flex-col overflow-hidden rounded-md border border-[var(--app-border)] bg-[var(--app-panel)] shadow-xl"
         onClick={(event) => event.stopPropagation()}
       >
         <header className="flex items-center justify-between gap-3 border-b border-[var(--app-border)] px-4 py-3">
@@ -931,8 +931,10 @@ function ChildrenImageDetailEditor({
   return (
     <article className="space-y-3 bg-[var(--app-panel-strong)] p-3">
       {imagePreviewUrl ? (
-        <div className="-mx-3 overflow-hidden border-y border-[var(--app-border)] bg-white">
-          <img src={imagePreviewUrl} alt="" className="block h-auto w-full" />
+        <div className="-mx-3 border-y border-[var(--app-border)] bg-white p-3">
+          <div className="dp-image-frame mx-auto w-full max-w-[18rem] overflow-hidden rounded-md border border-[var(--app-border)] bg-white">
+            <img src={imagePreviewUrl} alt="" className="dp-image-media" />
+          </div>
         </div>
       ) : null}
 

@@ -224,6 +224,22 @@ export function DbTableDetailEdit({
         'edit-text',
       ].join(' ')}
     >
+      {hasDetailImagePreview ? (
+        <section className="rounded-md border border-[var(--app-border)] bg-[var(--app-panel-strong)] p-3">
+          <div className="grid gap-3 sm:grid-cols-[repeat(auto-fit,minmax(10rem,16rem))]">
+            {imageColumns.map(({ key, config }) => (
+              <DetailImagePreview
+                key={key}
+                label={config.label}
+                value={draftRow[key]}
+                pendingFile={pendingFiles[key] ?? null}
+                textClassName="edit-text"
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <section>
         <div className="grid grid-cols-2">
           {columns.map(({ key, config }) => (
@@ -530,22 +546,6 @@ export function DbTableDetailEdit({
         </div>
       </section>
 
-      {hasDetailImagePreview ? (
-        <section>
-          <div className="flex flex-wrap gap-3">
-            {imageColumns.map(({ key, config }) => (
-              <DetailImagePreview
-                key={key}
-                label={config.label}
-                value={draftRow[key]}
-                pendingFile={pendingFiles[key] ?? null}
-                textClassName="edit-text"
-              />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
       {uploadModalMode !== 'closed' ? (
         <div
           role="dialog"
@@ -824,12 +824,10 @@ function DetailImagePreview({
   }
 
   return (
-    <figure className="max-w-[250px]">
-      <img
-        src={imageUrl}
-        alt=""
-        className="max-h-[250px] max-w-[250px] rounded-md border border-[var(--app-border)] bg-white object-contain"
-      />
+    <figure className="w-full max-w-[16rem]">
+      <div className="dp-image-frame overflow-hidden rounded-md border border-[var(--app-border)] bg-white">
+        <img src={imageUrl} alt="" className="dp-image-media" />
+      </div>
       <figcaption
         className={[
           'mt-1 truncate font-semibold text-[var(--app-muted)]',

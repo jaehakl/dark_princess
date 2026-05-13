@@ -15,14 +15,14 @@ type HomeIconItem = {
 };
 
 const HOME_ICON_COLORS = [
-  'from-sky-500 to-blue-700',
-  'from-emerald-500 to-teal-700',
-  'from-amber-400 to-orange-600',
-  'from-rose-500 to-pink-700',
-  'from-indigo-500 to-violet-700',
-  'from-cyan-500 to-slate-700',
-  'from-lime-500 to-green-700',
-  'from-fuchsia-500 to-purple-700',
+  'bg-sky-700',
+  'bg-emerald-700',
+  'bg-amber-600',
+  'bg-rose-700',
+  'bg-indigo-700',
+  'bg-cyan-700',
+  'bg-lime-700',
+  'bg-fuchsia-700',
 ];
 
 export function HomePage() {
@@ -51,7 +51,7 @@ export function HomePage() {
   }, [setPageChrome, setQuickAddAction]);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-7">
+    <div className="mx-auto max-w-6xl space-y-6">
       <HomeIconGridSection title="Dark Princess 데이터" items={tableItems} />
     </div>
   );
@@ -66,7 +66,7 @@ function HomeIconGridSection({
 }) {
   return (
     <section className="space-y-3">
-      <div className="rounded-md border border-[var(--app-border)] bg-[var(--app-panel)] p-5 shadow-sm">
+      <div className="border-b border-[var(--app-border)] pb-3">
         <h1 className="text-xl font-semibold text-[var(--app-text)]">
           {title}
         </h1>
@@ -91,7 +91,7 @@ function HomeIconLink({ item }: { item: HomeIconItem }) {
     >
       <span
         aria-hidden="true"
-        className={`flex h-[72px] w-[72px] max-w-full items-center justify-center rounded-[20px] bg-gradient-to-br text-lg font-black text-white shadow-[0_10px_24px_rgba(15,23,42,0.16)] ring-1 ring-white/70 transition group-hover:-translate-y-0.5 group-hover:shadow-[0_14px_28px_rgba(15,23,42,0.2)] sm:h-[92px] sm:w-[92px] sm:rounded-[24px] sm:text-2xl ${item.iconClassName}`}
+        className={`flex h-[72px] w-[72px] max-w-full items-center justify-center rounded-md text-lg font-black text-white shadow-sm ring-1 ring-black/5 transition group-hover:-translate-y-0.5 group-hover:shadow-md sm:h-[92px] sm:w-[92px] sm:text-2xl ${item.iconClassName}`}
       >
         {item.iconText}
       </span>
