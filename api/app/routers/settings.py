@@ -9,7 +9,7 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 
 
 @router.get("/stable-diffusion-model-path")
-async def api_get_stable_diffusion_model_path() -> dict[str, str]:
+async def api_get_stable_diffusion_model_path() -> dict[str, object]:
     return get_stable_diffusion_model_path_config()
 
 

@@ -1,4 +1,4 @@
-export type SidebarIconName = 'list';
+export type SidebarIconName = 'list' | 'settings';
 
 export type AppNavigationItem = {
   path: string;
@@ -43,4 +43,24 @@ export const dataSection: AppNavigationSection = {
   children: [playEditNav, gameDataNav],
 };
 
-export const navigationSections: AppNavigationSection[] = [dataSection];
+export const settingsNav: AppNavigationItem = {
+  path: 'settings',
+  to: '/settings',
+  label: '환경설정',
+  icon: 'settings',
+  breadcrumb: '환경설정',
+  pageTitle: '환경설정',
+};
+
+export const settingsSection: AppNavigationSection = {
+  id: 'settings',
+  path: 'settings',
+  label: '설정',
+  breadcrumb: '설정',
+  children: [settingsNav],
+};
+
+export const navigationSections: AppNavigationSection[] = [
+  dataSection,
+  settingsSection,
+];

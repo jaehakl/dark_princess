@@ -10,6 +10,7 @@ import { AppLayout } from './layout';
 import { HomePage } from '../pages/home/HomePage';
 import { ListEditPage } from '../pages/list-edit/ListEditPage';
 import { PlayEditPage } from '../pages/play-edit/PlayEditPage';
+import { SettingsPage } from '../pages/settings/SettingsPage';
 
 function RouteErrorBoundary() {
   const error = useRouteError();
@@ -49,6 +50,14 @@ export const routeObjects: RouteObject[] = [
         handle: {
           breadcrumb: 'Play+Edit',
           pageTitle: 'Play+Edit',
+        },
+      },
+      {
+        path: 'settings',
+        element: createElement(SettingsPage),
+        handle: {
+          breadcrumb: '환경설정',
+          pageTitle: '환경설정',
         },
       },
       {

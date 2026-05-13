@@ -24,6 +24,12 @@ export type UpsertResponse = {
   fk_not_found?: Record<string, number[]> | null;
 };
 
+export type StableDiffusionModelPathSettings = {
+  value: string;
+  directory: string;
+  files: string[];
+};
+
 function buildUpsertFormData(
   payload: unknown,
   files: Record<string, File | null | undefined> = {},
@@ -44,7 +50,7 @@ function buildUpsertFormData(
 
 
 export const settings = {
-  getStableDiffusionModelPath: () => request<{ value: string }>('get', '/settings/stable-diffusion-model-path'),
+  getStableDiffusionModelPath: () => request<StableDiffusionModelPathSettings>('get', '/settings/stable-diffusion-model-path'),
   updateStableDiffusionModelPath: (value: string) => request<{ value: string }>('post', '/settings/stable-diffusion-model-path', { value }),
 };
 

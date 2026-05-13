@@ -3,7 +3,7 @@ from pathlib import Path
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-API_ROOT = Path(__file__).resolve().parents[1]
+API_ROOT = Path(__file__).resolve().parents[1] 
 ENV_PATH = API_ROOT / ".env"
 DEFAULT_DB_URL = f"sqlite+aiosqlite:///{(API_ROOT / 'local.sqlite3').as_posix()}"
 DEFAULT_LOCAL_UPLOAD_DIR = str(API_ROOT / "uploads")
