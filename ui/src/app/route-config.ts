@@ -9,6 +9,7 @@ import type { RouteObject } from 'react-router-dom';
 import { AppLayout } from './layout';
 import { ListEditPage } from '../pages/list-edit/ListEditPage';
 import { PlayEditPage } from '../pages/play-edit/PlayEditPage';
+import { SceneEditPage } from '../pages/scene-edit/SceneEditPage';
 import { SettingsPage } from '../pages/settings/SettingsPage';
 
 function RouteErrorBoundary() {
@@ -48,6 +49,14 @@ export const routeObjects: RouteObject[] = [
         handle: {
           breadcrumb: 'Play+Edit',
           pageTitle: 'Play+Edit',
+        },
+      },
+      {
+        path: 'scene-edit',
+        element: createElement(SceneEditPage),
+        handle: {
+          breadcrumb: '장면 편집',
+          pageTitle: '장면 편집',
         },
       },
       {

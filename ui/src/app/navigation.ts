@@ -35,12 +35,21 @@ export const playEditNav: AppNavigationItem = {
   pageTitle: 'Play+Edit',
 };
 
+export const sceneEditNav: AppNavigationItem = {
+  path: 'scene-edit',
+  to: '/scene-edit',
+  label: '장면 편집',
+  icon: 'list',
+  breadcrumb: '장면 편집',
+  pageTitle: '장면 편집',
+};
+
 export const dataSection: AppNavigationSection = {
   id: 'data',
   path: 'data',
   label: '데이터',
   breadcrumb: '데이터',
-  children: [playEditNav, gameDataNav],
+  children: [playEditNav, sceneEditNav, gameDataNav],
 };
 
 export const settingsNav: AppNavigationItem = {

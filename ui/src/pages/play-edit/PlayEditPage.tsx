@@ -2,10 +2,9 @@ import { useEffect, useState } from 'react';
 import { useOutletContext, useSearchParams } from 'react-router-dom';
 import type { LayoutOutletContext } from '../../app/layout';
 import { PlayEngineProvider, usePlayEngine } from '../../engine';
-import { OPTION_COLUMNS, STATUS_COLUMNS } from './columns';
+import { openFocusedWindow } from '../../utils/openFocusedWindow';
+import { STATUS_COLUMNS } from './columns';
 import { InlineEditor } from './InlineEditor';
-import { RowEditModal } from './RowEditModal';
-import { SceneEditModal } from './SceneEditModal';
 import { ScenePlayPanel } from './ScenePlayPanel';
 import { StatusStart } from './StatusStart';
 import { SceneHistoryPanel, TargetStatusPanel } from './StatusPanels';
@@ -61,9 +60,12 @@ function PlayEditWorkspace({ statusId }: { statusId: number }) {
   } = usePlayEngine();
   const [activeTab, setActiveTab] = useState<PlayEditTab>('status');
   const [targetModalOpen, setTargetModalOpen] = useState(false);
-  const [sceneModalMode, setSceneModalMode] = useState<'new' | 'edit' | null>(null);
-  const [optionModalOpen, setOptionModalOpen] = useState(false);
-  const [newOptionKey, setNewOptionKey] = useState('option_new');
+  const currentSceneId =
+    typeof snapshot?.scene?.id === 'number' ? snapshot.scene.id : null;
+  const currentTargetId =
+    typeof snapshot?.target_status?.target_id === 'number'
+      ? snapshot.target_status.target_id
+      : null;
 
   return (
     <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-3">
@@ -78,28 +80,39 @@ function PlayEditWorkspace({ statusId }: { statusId: number }) {
         <button
           type="button"
           className="inline-flex h-10 items-center justify-center rounded-md px-3 transition"
-          onClick={() => setSceneModalMode('new')}
+          onClick={() => {
+            const nextSearchParams = new URLSearchParams();
+            if (currentTargetId !== null) {
+              nextSearchParams.set('target_id', String(currentTargetId));
+            }
+            openFocusedWindow(buildSceneEditorPath(nextSearchParams));
+          }}
         >
           새 장면 추가
         </button>
         <button
           type="button"
-          disabled={!snapshot?.scene}
+          disabled={currentSceneId === null}
           className="inline-flex h-10 items-center justify-center rounded-md px-3 transition disabled:cursor-not-allowed disabled:opacity-45"
-          onClick={() => setSceneModalMode('edit')}
+          onClick={() => {
+            if (currentSceneId !== null) {
+              openFocusedWindow(`/scene-edit?scene_id=${encodeURIComponent(String(currentSceneId))}`);
+            }
+          }}
         >
           현재 장면 편집
         </button>
         <button
           type="button"
-          disabled={!snapshot?.scene}
+          disabled={currentSceneId === null}
           className="inline-flex h-10 items-center justify-center rounded-md px-3 transition disabled:cursor-not-allowed disabled:opacity-45"
           onClick={() => {
-            setNewOptionKey(`option_${Date.now()}`);
-            setOptionModalOpen(true);
+            if (currentSceneId !== null) {
+              openFocusedWindow(`/scene-edit?scene_id=${encodeURIComponent(String(currentSceneId))}`);
+            }
           }}
         >
-          선택지 추가
+          선택지 편집
         </button>
         <button
           type="button"
@@ -200,36 +213,11 @@ function PlayEditWorkspace({ statusId }: { statusId: number }) {
         />
       ) : null}
 
-      {sceneModalMode ? (
-        <SceneEditModal
-          mode={sceneModalMode}
-          snapshot={snapshot}
-          onClose={() => setSceneModalMode(null)}
-          onChanged={async () => {
-            await refresh();
-          }}
-        />
-      ) : null}
-
-      {optionModalOpen && snapshot?.scene ? (
-        <RowEditModal
-          title="선택지 편집"
-          tableName="SceneOption"
-          columns={OPTION_COLUMNS}
-          listFilter={{ scene_id: [snapshot.scene.id, snapshot.scene.id] }}
-          newRow={{
-            scene_id: snapshot.scene.id,
-            option_key: newOptionKey,
-            label: '새 선택지',
-            sort_order: 0,
-            is_active: true,
-          }}
-          onClose={() => setOptionModalOpen(false)}
-          onSaved={async () => {
-            await refresh();
-          }}
-        />
-      ) : null}
     </div>
   );
+}
+
+function buildSceneEditorPath(searchParams: URLSearchParams) {
+  const queryString = searchParams.toString();
+  return queryString ? `/scene-edit?${queryString}` : '/scene-edit';
 }

@@ -43,8 +43,8 @@ type DbTableDetailEditProps = {
   row: DbRow;
   columns: string[];
   datetimeColumnSpan?: 'auto' | 'full';
-  onSaved?: (response: UpsertResponse[]) => void;
-  onDeleted?: () => void;
+  onSaved?: (response: UpsertResponse[]) => void | Promise<void>;
+  onDeleted?: () => void | Promise<void>;
 };
 
 const dbTypeRenderers = {};
@@ -673,7 +673,7 @@ export function DbTableDetailEdit({
       setDraftRow(savedRow);
       setBaseRow(savedRow);
       setAutoSyncedFieldKeys(new Set());
-      onSaved?.(response);
+      await onSaved?.(response);
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -722,7 +722,7 @@ export function DbTableDetailEdit({
       setPendingFiles((current) => ({ ...current, image: null }));
       setAutoSyncedFieldKeys(new Set());
       setMessage(`이미지를 생성했습니다. seed: ${response.seed}`);
-      onSaved?.([{ id: response.id }]);
+      await onSaved?.([{ id: response.id }]);
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -759,7 +759,7 @@ export function DbTableDetailEdit({
     setIsDeleting(true);
     try {
       await tableConfig.deleteRows([rowId]);
-      onDeleted?.();
+      await onDeleted?.();
     } catch (caughtError) {
       setError(
         caughtError instanceof Error

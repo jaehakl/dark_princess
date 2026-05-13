@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { dbTables } from '../../api/api';
-import { DbTableDetailEdit } from '../../components/db-table/detail-edit';
 import type { PlaySnapshot } from '../../engine';
-import { SCENE_COLUMNS, TARGET_COLUMNS } from './columns';
-import { EditModalShell } from './EditModalShell';
+import { openFocusedWindow } from '../../utils/openFocusedWindow';
+import { TARGET_COLUMNS } from './columns';
 import { RowEditModal } from './RowEditModal';
 import type { DbRow, TableConfig } from './types';
 
@@ -25,14 +25,7 @@ export function TargetEditModal({
       columns={TARGET_COLUMNS}
       newRow={{ type: 'place', name: '새 방문처' }}
       onClose={onClose}
-      renderAction={(selectedRow) => (
-        <TargetScenePanel
-          targetRow={selectedRow}
-          onChanged={async () => {
-            await onChanged();
-          }}
-        />
-      )}
+      renderAction={(selectedRow) => <TargetScenePanel targetRow={selectedRow} />}
       onSaved={async (response) => {
         const targetId = response[0]?.id;
         if (typeof targetId !== 'number') {
@@ -74,18 +67,17 @@ export function TargetEditModal({
 
 function TargetScenePanel({
   targetRow,
-  onChanged,
 }: {
   targetRow: DbRow | null;
-  onChanged: () => Promise<void>;
 }) {
   const targetId = typeof targetRow?.id === 'number' ? targetRow.id : null;
-  const targetName = typeof targetRow?.name === 'string' ? targetRow.name : '';
   const [scenes, setScenes] = useState<DbRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [editingScene, setEditingScene] = useState<DbRow | null>(null);
-  const [sceneMode, setSceneMode] = useState<'new' | 'edit' | null>(null);
+  const targetSceneCreatePath =
+    targetId === null
+      ? null
+      : `/scene-edit?target_id=${encodeURIComponent(String(targetId))}`;
 
   const loadScenes = useCallback(async () => {
     if (targetId === null) {
@@ -172,22 +164,28 @@ function TargetScenePanel({
         <h3 className="text-sm font-semibold text-[var(--app-text)]">
           방문처 장면
         </h3>
-        <button
-          type="button"
-          disabled={targetId === null}
-          className="inline-flex h-8 items-center justify-center rounded px-2.5 text-xs transition disabled:cursor-not-allowed disabled:opacity-50"
-          onClick={() => {
-            setEditingScene({
-              name: targetName ? `${targetName} 장면` : '새 장면',
-              priority: 0,
-              repeat_policy: 'once_per_status',
-              cooldown_turns: 0,
-            });
-            setSceneMode('new');
-          }}
-        >
-          새 장면 추가
-        </button>
+        {targetId === null ? (
+          <button
+            type="button"
+            disabled
+            className="inline-flex h-8 items-center justify-center rounded px-2.5 text-xs transition disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            새 장면 추가
+          </button>
+        ) : (
+          <Link
+            to={targetSceneCreatePath ?? '/scene-edit'}
+            className="inline-flex h-8 items-center justify-center rounded px-2.5 text-xs font-semibold transition"
+            onClick={(event) => {
+              event.preventDefault();
+              if (targetSceneCreatePath) {
+                openFocusedWindow(targetSceneCreatePath);
+              }
+            }}
+          >
+            새 장면 추가
+          </Link>
+        )}
       </div>
 
       {targetId === null ? (
@@ -209,6 +207,7 @@ function TargetScenePanel({
       ) : (
         <div className="grid gap-1">
           {scenes.map((scene) => {
+            const sceneEditPath = `/scene-edit?scene_id=${encodeURIComponent(String(scene.id))}`;
             const repeatPolicy =
               typeof scene.repeat_policy === 'string'
                 ? dbTables.Scene.columns.repeat_policy.options.find(
@@ -217,13 +216,13 @@ function TargetScenePanel({
                 : '-';
 
             return (
-              <button
+              <Link
                 key={String(scene.id)}
-                type="button"
                 className="rounded px-2 py-1.5 text-left text-sm transition hover:bg-[var(--app-panel-strong)]"
-                onClick={() => {
-                  setEditingScene(scene);
-                  setSceneMode('edit');
+                to={sceneEditPath}
+                onClick={(event) => {
+                  event.preventDefault();
+                  openFocusedWindow(sceneEditPath);
                 }}
               >
                 <span className="block truncate font-semibold">
@@ -232,81 +231,11 @@ function TargetScenePanel({
                 <span className="block truncate text-xs text-[var(--app-muted)]">
                   priority {String(scene.priority ?? 0)} · {repeatPolicy}
                 </span>
-              </button>
+              </Link>
             );
           })}
         </div>
       )}
-
-      {sceneMode && editingScene && targetId !== null ? (
-        <TargetSceneEditModal
-          mode={sceneMode}
-          targetId={targetId}
-          targetName={targetName}
-          row={editingScene}
-          onClose={() => {
-            setSceneMode(null);
-            setEditingScene(null);
-          }}
-          onChanged={async () => {
-            await loadScenes();
-            await onChanged();
-          }}
-        />
-      ) : null}
     </section>
-  );
-}
-
-function TargetSceneEditModal({
-  mode,
-  targetId,
-  targetName,
-  row,
-  onClose,
-  onChanged,
-}: {
-  mode: 'new' | 'edit';
-  targetId: number;
-  targetName: string;
-  row: DbRow;
-  onClose: () => void;
-  onChanged: () => Promise<void>;
-}) {
-  return (
-    <EditModalShell title={mode === 'new' ? '방문처 장면 추가' : '방문처 장면 편집'} onClose={onClose}>
-      <DbTableDetailEdit
-        tableName="Scene"
-        row={row}
-        columns={SCENE_COLUMNS}
-        onSaved={async (response) => {
-          const sceneId = response[0]?.id;
-          if (mode === 'new' && typeof sceneId === 'number') {
-            const blockResponse = await (dbTables.SceneTriggerBlock as TableConfig).upsertRow([
-              {
-                scene_id: sceneId,
-                label: targetName ? `방문처: ${targetName}` : '방문처',
-                chance_percent: 100,
-                sort_order: 0,
-              },
-            ]);
-            const blockId = blockResponse[0]?.id;
-            if (typeof blockId === 'number') {
-              await (dbTables.SceneCondition as TableConfig).upsertRow([
-                {
-                  trigger_block_id: blockId,
-                  kind: 'target',
-                  operator: 'eq',
-                  target_id: targetId,
-                  sort_order: 0,
-                },
-              ]);
-            }
-          }
-          await onChanged();
-        }}
-        onDeleted={onChanged}
-      />
-    </EditModalShell>
   );
 }
