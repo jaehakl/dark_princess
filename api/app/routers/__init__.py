@@ -8,6 +8,7 @@ from . import scene_history  # noqa: F401
 from . import scene_option  # noqa: F401
 from . import scene_result  # noqa: F401
 from . import scene_trigger_block  # noqa: F401
+from . import settings  # noqa: F401
 from . import status  # noqa: F401
 from . import status_tag  # noqa: F401
 from . import tag  # noqa: F401

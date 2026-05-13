@@ -42,6 +42,12 @@ function buildUpsertFormData(
   return formData;
 }
 
+
+export const settings = {
+  getStableDiffusionModelPath: () => request<{ value: string }>('get', '/settings/stable-diffusion-model-path'),
+  updateStableDiffusionModelPath: (value: string) => request<{ value: string }>('post', '/settings/stable-diffusion-model-path', { value }),
+};
+
 export const dbTables = {
   Tag: {
     label: '태그',

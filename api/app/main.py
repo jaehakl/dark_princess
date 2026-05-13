@@ -8,6 +8,7 @@ from routers import (
     scene_option,
     scene_result,
     scene_trigger_block,
+    settings,
     status,
     status_tag,
     tag,
@@ -25,6 +26,7 @@ app.include_router(scene_trigger_block.router)
 app.include_router(scene_option.router)
 app.include_router(scene_condition.router)
 app.include_router(scene_result.router)
+app.include_router(settings.router)
 app.include_router(status.router)
 app.include_router(status_tag.router)
 app.include_router(scene_history.router)
