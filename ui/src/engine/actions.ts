@@ -79,7 +79,6 @@ export async function chooseOption(
     statusTags: data.statusTags,
     targetStatusTags: data.targetStatusTags,
     histories: data.histories,
-    decisions: data.decisions,
   });
   const optionConditions = data.conditions.filter(
     (condition) => optionalNumberField(condition, 'option_id') === optionId,

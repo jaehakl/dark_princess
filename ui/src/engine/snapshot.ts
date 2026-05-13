@@ -173,7 +173,6 @@ export function findNextScene(data: GameData, status: DbRow, targetStatus: DbRow
     statusTags: data.statusTags,
     targetStatusTags: data.targetStatusTags,
     histories: data.histories,
-    decisions: data.decisions,
   });
 
   for (const scene of data.scenes.slice().sort(byNumberDescIdAsc('priority'))) {
@@ -254,7 +253,6 @@ function getAvailableOptions(data: GameData, scene: DbRow, targetStatus: DbRow) 
     statusTags: data.statusTags,
     targetStatusTags: data.targetStatusTags,
     histories: data.histories,
-    decisions: data.decisions,
   });
 
   return data.options

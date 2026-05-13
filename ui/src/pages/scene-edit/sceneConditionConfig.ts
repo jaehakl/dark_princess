@@ -5,7 +5,6 @@ export type ConditionKind =
   | 'status_tag'
   | 'target_tag'
   | 'scene_seen'
-  | 'option_chosen'
   | 'status_stat'
   | 'target_interaction';
 
@@ -14,7 +13,6 @@ export const CONDITION_KINDS = [
   'status_tag',
   'target_tag',
   'scene_seen',
-  'option_chosen',
   'status_stat',
   'target_interaction',
 ] as const satisfies readonly ConditionKind[];
@@ -24,7 +22,6 @@ export const CONDITION_COLUMNS_BY_KIND: Record<ConditionKind, string[]> = {
   status_tag: ['operator', 'tag_id', 'sort_order'],
   target_tag: ['operator', 'tag_id', 'sort_order'],
   scene_seen: ['operator', 'scene_ref_id', 'sort_order'],
-  option_chosen: ['operator', 'option_ref_id', 'sort_order'],
   status_stat: ['operator', 'stat_field', 'numeric_value', 'sort_order'],
   target_interaction: ['operator', 'stat_field', 'numeric_value', 'sort_order'],
 };
@@ -41,7 +38,7 @@ export function getConditionKindLabel(kind: ConditionKind) {
 }
 
 export function getDefaultConditionOperator(kind: ConditionKind) {
-  return ['status_tag', 'target_tag', 'scene_seen', 'option_chosen'].includes(kind)
+  return ['status_tag', 'target_tag', 'scene_seen'].includes(kind)
     ? 'has'
     : 'eq';
 }

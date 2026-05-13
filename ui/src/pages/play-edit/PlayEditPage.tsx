@@ -75,7 +75,7 @@ function PlayEditWorkspace({ statusId }: { statusId: number }) {
           className="inline-flex h-10 items-center justify-center rounded-md px-3 transition"
           onClick={() => setTargetModalOpen(true)}
         >
-          방문처 추가
+          방문처 편집
         </button>
         <button
           type="button"
@@ -88,7 +88,7 @@ function PlayEditWorkspace({ statusId }: { statusId: number }) {
             openFocusedWindow(buildSceneEditorPath(nextSearchParams));
           }}
         >
-          새 장면 추가
+          장면 편집
         </button>
         <button
           type="button"
@@ -101,18 +101,6 @@ function PlayEditWorkspace({ statusId }: { statusId: number }) {
           }}
         >
           현재 장면 편집
-        </button>
-        <button
-          type="button"
-          disabled={currentSceneId === null}
-          className="inline-flex h-10 items-center justify-center rounded-md px-3 transition disabled:cursor-not-allowed disabled:opacity-45"
-          onClick={() => {
-            if (currentSceneId !== null) {
-              openFocusedWindow(`/scene-edit?scene_id=${encodeURIComponent(String(currentSceneId))}`);
-            }
-          }}
-        >
-          선택지 편집
         </button>
         <button
           type="button"

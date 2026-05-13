@@ -18,5 +18,4 @@ export type ConditionState = {
   statusTags: Set<number>;
   targetTags: Set<number>;
   seenSceneTurns: Map<number, number[]>;
-  chosenOptions: Set<number>;
 };

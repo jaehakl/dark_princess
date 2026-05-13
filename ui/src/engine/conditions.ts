@@ -13,22 +13,15 @@ export function buildConditionState({
   statusTags,
   targetStatusTags,
   histories,
-  decisions,
 }: {
   status: DbRow;
   targetStatus: DbRow;
   statusTags: DbRow[];
   targetStatusTags: DbRow[];
   histories: DbRow[];
-  decisions: DbRow[];
 }): ConditionState {
   const statusId = rowId(status);
   const targetStatusId = rowId(targetStatus);
-  const historyIds = new Set(
-    histories
-      .map((history) => rowId(history))
-      .filter((id): id is number => id !== null),
-  );
   const seenSceneTurns = new Map<number, number[]>();
 
   histories.forEach((history) => {
@@ -54,15 +47,6 @@ export function buildConditionState({
         .filter((id): id is number => id !== null),
     ),
     seenSceneTurns,
-    chosenOptions: new Set(
-      decisions
-        .filter((decision) => {
-          const historyId = optionalNumberField(decision, 'scene_history_id');
-          return historyId !== null && historyIds.has(historyId);
-        })
-        .map((decision) => optionalNumberField(decision, 'option_id'))
-        .filter((id): id is number => id !== null),
-    ),
   };
 }
 
@@ -90,9 +74,6 @@ export function conditionMatches(
   }
   if (kind === 'scene_seen') {
     return matchExists(state.seenSceneTurns.has(numberField(condition, 'scene_ref_id', -1)), operator);
-  }
-  if (kind === 'option_chosen') {
-    return matchExists(state.chosenOptions.has(numberField(condition, 'option_ref_id', -1)), operator);
   }
   if (kind === 'status_stat') {
     return compareValues(

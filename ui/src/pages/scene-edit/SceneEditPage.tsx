@@ -192,7 +192,7 @@ export function SceneEditPage() {
     () => ({
       name: '새 장면',
       priority: 0,
-      repeat_policy: 'once_per_status',
+      repeat_policy: 'always',
       cooldown_turns: 0,
     }),
     []
@@ -286,11 +286,49 @@ export function SceneEditPage() {
     setListResetKey((current) => current + 1);
 
     if (isCreateMode && typeof savedId === 'number') {
-      await createAutoTriggerConditions({
-        sceneId: savedId,
-        targetId,
-        optionId,
-      });
+      if (optionId !== null) {
+        const optionResponse = await (dbTables.SceneOption as TableConfig).listRows({
+          offset: 0,
+          limit: null,
+          selected_ids: [optionId],
+          search_text: null,
+          text_filter: {},
+          filter: {},
+          sort: null,
+        });
+        const optionRow = optionResponse.items[0] ?? null;
+        const optionSceneId =
+          typeof optionRow?.scene_id === 'number' ? optionRow.scene_id : null;
+        const optionKey =
+          typeof optionRow?.option_key === 'string' ? optionRow.option_key : null;
+        const optionLabel =
+          typeof optionRow?.label === 'string' ? optionRow.label : null;
+
+        if (optionSceneId === null || optionKey === null || optionLabel === null) {
+          throw new Error('다음 장면을 연결할 선택지를 불러오지 못했습니다.');
+        }
+
+        await (dbTables.SceneOption as TableConfig).upsertRow([
+          {
+            id: optionId,
+            scene_id: optionSceneId,
+            option_key: optionKey,
+            label: optionLabel,
+            description:
+              typeof optionRow.description === 'string' ? optionRow.description : null,
+            next_scene_id: savedId,
+            sort_order:
+              typeof optionRow.sort_order === 'number' ? optionRow.sort_order : 0,
+            is_active:
+              typeof optionRow.is_active === 'boolean' ? optionRow.is_active : true,
+          },
+        ]);
+      } else {
+        await createAutoTriggerConditions({
+          sceneId: savedId,
+          targetId,
+        });
+      }
 
       updateUrl((nextSearchParams) => {
         nextSearchParams.set('scene_id', String(savedId));
@@ -407,31 +445,11 @@ function DetailMessage({
 async function createAutoTriggerConditions({
   sceneId,
   targetId,
-  optionId,
 }: {
   sceneId: number;
   targetId: number | null;
-  optionId: number | null;
 }) {
-  const conditionRows: DbRow[] = [];
-
-  if (targetId !== null) {
-    conditionRows.push({
-      kind: 'target',
-      operator: 'eq',
-      target_id: targetId,
-    });
-  }
-
-  if (optionId !== null) {
-    conditionRows.push({
-      kind: 'option_chosen',
-      operator: 'has',
-      option_ref_id: optionId,
-    });
-  }
-
-  if (conditionRows.length === 0) {
+  if (targetId === null) {
     return;
   }
 
@@ -449,11 +467,15 @@ async function createAutoTriggerConditions({
   }
 
   await (dbTables.SceneCondition as TableConfig).upsertRow(
-    conditionRows.map((conditionRow, index) => ({
-      ...conditionRow,
-      trigger_block_id: blockId,
-      sort_order: index,
-    }))
+    [
+      {
+        kind: 'target',
+        operator: 'eq',
+        target_id: targetId,
+        trigger_block_id: blockId,
+        sort_order: 0,
+      },
+    ]
   );
 }
 

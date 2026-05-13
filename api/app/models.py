@@ -89,7 +89,6 @@ class SceneConditionBase(BaseModel):
     tag_id: Optional[int] = None
     target_id: Optional[int] = None
     scene_ref_id: Optional[int] = None
-    option_ref_id: Optional[int] = None
     stat_field: Optional[str] = None
     numeric_value: Optional[int] = None
     value: Optional[Dict[str, Any]] = None

@@ -504,11 +504,9 @@ function formatConditionDescription(row: DbRow) {
         ? row.tag_id
         : kind === 'scene_seen'
           ? row.scene_ref_id
-          : kind === 'option_chosen'
-            ? row.option_ref_id
-            : kind === 'status_stat' || kind === 'target_interaction'
-              ? `${String(row.stat_field ?? '-')} ${String(row.numeric_value ?? '-')}`
-              : null;
+          : kind === 'status_stat' || kind === 'target_interaction'
+            ? `${String(row.stat_field ?? '-')} ${String(row.numeric_value ?? '-')}`
+            : null;
 
   return `${operator} ${String(value ?? '-')}`;
 }

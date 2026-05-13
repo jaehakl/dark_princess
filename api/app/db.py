@@ -186,7 +186,6 @@ class SceneCondition(TimestampMixin, Base):
     tag_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("tags.id", ondelete="CASCADE"), nullable=True)
     target_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("targets.id", ondelete="CASCADE"), nullable=True)
     scene_ref_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("scenes.id", ondelete="CASCADE"), nullable=True)
-    option_ref_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("scene_options.id", ondelete="SET NULL"), nullable=True)
 
     stat_field: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     numeric_value: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -196,7 +195,6 @@ class SceneCondition(TimestampMixin, Base):
 
     trigger_block: Mapped[Optional["SceneTriggerBlock"]] = relationship("SceneTriggerBlock", back_populates="conditions")
     option: Mapped[Optional["SceneOption"]] = relationship("SceneOption", back_populates="conditions", foreign_keys=[option_id])
-    option_ref: Mapped[Optional["SceneOption"]] = relationship("SceneOption", foreign_keys=[option_ref_id])
     tag: Mapped[Optional["Tag"]] = relationship("Tag", back_populates="scene_conditions")
     target: Mapped[Optional["Target"]] = relationship("Target", back_populates="scene_conditions")
     scene_ref: Mapped[Optional["Scene"]] = relationship("Scene", foreign_keys=[scene_ref_id])
@@ -208,7 +206,6 @@ class SceneCondition(TimestampMixin, Base):
         Index("ix_scene_conditions_tag_id", "tag_id"),
         Index("ix_scene_conditions_target_id", "target_id"),
         Index("ix_scene_conditions_scene_ref_id", "scene_ref_id"),
-        Index("ix_scene_conditions_option_ref_id", "option_ref_id"),
     )
 
 
