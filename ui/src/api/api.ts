@@ -79,6 +79,7 @@ export const dbTables = {
       type: { label: '유형', type: 'text', required: true, options: [{ key: 'place', label: '방문처' }, { key: 'person', label: '인물' }] },
       name: { label: '이름', type: 'text', required: true },
       description: { label: '설명', type: 'text' },
+      prompt: { label: '프롬프트', type: 'text' },
       properties: { label: '속성', type: 'dict-list' },
       image: { label: '이미지', type: 'image' },
     },

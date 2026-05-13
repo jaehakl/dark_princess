@@ -98,6 +98,7 @@ class Target(TimestampMixin, Base):
     type: Mapped[str] = mapped_column(Text, nullable=False)    
     name: Mapped[str] = mapped_column(Text, nullable=False)    
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     properties: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 

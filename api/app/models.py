@@ -169,6 +169,7 @@ class TargetBase(BaseModel):
     type: str
     name: str
     description: Optional[str] = None
+    prompt: Optional[str] = None
     properties: Optional[Dict[str, Any]] = None
     image: Optional[str] = None
 

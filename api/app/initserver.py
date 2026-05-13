@@ -9,6 +9,18 @@ from db import Base, engine
 from settings import settings
 
 
+async def add_target_prompt_column(conn):
+    if engine.dialect.name == "postgresql":
+        await conn.exec_driver_sql("ALTER TABLE targets ADD COLUMN IF NOT EXISTS prompt TEXT;")
+        return
+
+    if engine.dialect.name == "sqlite":
+        columns = await conn.exec_driver_sql("PRAGMA table_info(targets);")
+        column_names = {row[1] for row in columns}
+        if "prompt" not in column_names:
+            await conn.exec_driver_sql("ALTER TABLE targets ADD COLUMN prompt TEXT;")
+
+
 def server():
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -52,6 +64,7 @@ def server():
                 except Exception:
                     pass
             await conn.run_sync(Base.metadata.create_all)
+            await add_target_prompt_column(conn)
 
         print("service is started.")
 

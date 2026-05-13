@@ -472,8 +472,8 @@ if __name__ == "__main__":
         strength=0.85,
         step=30,
         cfg=10.0,
-        height=768,
-        width=1280,
+        height=1216,
+        width=832,
         max_chunk_size=4,
     )[0]
     for i, image in enumerate(images):

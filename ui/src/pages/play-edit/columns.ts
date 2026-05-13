@@ -11,7 +11,7 @@ export const STATUS_COLUMNS = [
   'stress',
 ];
 
-export const TARGET_COLUMNS = ['type', 'name', 'description', 'properties', 'image'];
+export const TARGET_COLUMNS = ['type', 'name', 'description', 'prompt', 'properties', 'image'];
 
 export const SCENE_COLUMNS = [
   'name',
