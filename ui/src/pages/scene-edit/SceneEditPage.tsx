@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useOutletContext, useSearchParams } from 'react-router-dom';
-import type { GetListRequest, UpsertResponse } from '../../api/api';
 import { dbTables } from '../../api/api';
+import type { GetListRequest, UpsertResponse } from '../../api/type';
 import type { LayoutOutletContext } from '../../app/layout';
 import { DbTableDetailEdit } from '../../components/db-table/detail-edit';
 import { DbTableListSelect } from '../../components/db-table/list-select';

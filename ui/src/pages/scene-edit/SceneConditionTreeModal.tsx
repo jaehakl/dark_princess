@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { GetListRequest, UpsertResponse } from '../../api/api';
 import { dbTables } from '../../api/api';
+import type { GetListRequest, UpsertResponse } from '../../api/type';
 import { DbTableDetailEdit } from '../../components/db-table/detail-edit';
 import { openFocusedWindow } from '../../utils/openFocusedWindow';
 import { EditModalShell } from '../play-edit/EditModalShell';

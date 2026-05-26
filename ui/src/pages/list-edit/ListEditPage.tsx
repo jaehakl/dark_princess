@@ -8,7 +8,7 @@ import type {
   GetListRequest,
   GetListResponse,
   UpsertResponse,
-} from '../../api/api';
+} from '../../api/type';
 import { dbTables } from '../../api/api';
 import { GearIcon } from '../../app/icons';
 import type { LayoutOutletContext } from '../../app/layout';

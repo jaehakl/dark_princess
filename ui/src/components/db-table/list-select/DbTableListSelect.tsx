@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import { DiskIcon, LinkIcon, SearchIcon } from '../../../app/icons';
-import type { GetListRequest, GetListResponse } from '../../../api/api';
 import { dbTables } from '../../../api/api';
+import type { GetListRequest, GetListResponse } from '../../../api/type';
 import {
   formatLocalDateTimeLabel,
   localDateTimeInputToUtcIso,

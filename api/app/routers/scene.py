@@ -44,13 +44,14 @@ async def api_upsert_scene_form(
 @router.post("/{scene_id}/gen-image")
 async def api_generate_scene_image(
     scene_id: int,
+    generation_options: dict[str, object] | None = Body(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, int | str]:
     scene = await db.get(Scene, scene_id)
     if scene is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="scene not found")
 
-    return await generate_prompt_image_for_entity(db, scene, "scene")
+    return await generate_prompt_image_for_entity(db, scene, "scene", generation_options)
 
 
 @router.delete("/", status_code=200)

@@ -114,7 +114,7 @@ export function ScenePlayPanel({
           <img
             src={sceneImage}
             alt=""
-            className="absolute inset-0 h-full w-full object-cover"
+            className="absolute inset-0 h-full w-full object-contain"
           />
         ) : (
           <div className="absolute inset-0 bg-[var(--app-panel-strong)]" />

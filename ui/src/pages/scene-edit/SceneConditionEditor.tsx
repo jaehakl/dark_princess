@@ -1,4 +1,4 @@
-import type { UpsertResponse } from '../../api/api';
+import type { UpsertResponse } from '../../api/type';
 import { DbTableDetailEdit } from '../../components/db-table/detail-edit';
 import {
   CONDITION_COLUMNS_BY_KIND,

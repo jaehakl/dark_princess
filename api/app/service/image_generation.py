@@ -1,5 +1,6 @@
 import asyncio
 import gc
+import math
 import random
 from io import BytesIO
 from pathlib import Path
@@ -13,6 +14,7 @@ from utils.crud_helpers import cleanup_orphaned_object_keys
 from utils.local_storage import build_object_key, public_file_url, upload_fileobj
 
 GEN_IMAGE_NEGATIVE_PROMPT = "blurry, low quality, bad anatomy, disfigured, deformed, bad hands, missing fingers, extra fingers, worst quality, jpeg artifacts, signature, watermark, text, bad eyes, grotesque, sketchy, logo, rough, incomplete, disgusting, distorted, deformed face, poorly drawn, bad quality"
+GEN_IMAGE_POSITIVE_PROMPT = ""
 GEN_IMAGE_STEPS = 30
 GEN_IMAGE_CFG = 10.0
 GEN_IMAGE_HEIGHT = 1216
@@ -31,10 +33,15 @@ async def generate_prompt_image_for_entity(
     db: AsyncSession,
     entity: Any,
     entity_name: str,
+    generation_options: dict[str, object] | None = None,
 ) -> dict[str, int | str]:
-    prompt = (getattr(entity, "prompt", None) or "").strip()
-    if not prompt:
+    entity_prompt = (getattr(entity, "prompt", None) or "").strip()
+    if not entity_prompt:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{entity_name} prompt is required")
+
+    image_settings = _normalize_generation_options(generation_options)
+    prompt_prefix = image_settings["positive_prompt"]
+    prompt = f"{prompt_prefix}, {entity_prompt}" if prompt_prefix else entity_prompt
 
     model_path_value = settings.stable_diffusion_model_path.strip()
     if not model_path_value:
@@ -54,19 +61,21 @@ async def generate_prompt_image_for_entity(
             detail=f"stable diffusion model file not found: {model_path}",
         ) from exc
 
-    seed = random.randint(GEN_IMAGE_SEED_MIN, GEN_IMAGE_SEED_MAX)
+    seed = random.randint(image_settings["seed_min"], image_settings["seed_max"])
     async with _generation_lock:
         images, _seeds = await asyncio.to_thread(
             generate_images_batch,
             str(model_path),
             [prompt],
-            [GEN_IMAGE_NEGATIVE_PROMPT],
+            [image_settings["negative_prompt"]],
             [seed],
-            GEN_IMAGE_STEPS,
-            GEN_IMAGE_CFG,
-            GEN_IMAGE_HEIGHT,
-            GEN_IMAGE_WIDTH,
+            image_settings["steps"],
+            image_settings["cfg"],
+            image_settings["height"],
+            image_settings["width"],
             GEN_IMAGE_MAX_CHUNK_SIZE,
+            image_settings["seed_min"],
+            image_settings["seed_max"],
         )
 
     image = images[0] if images else None
@@ -115,10 +124,19 @@ def generate_images_batch(
     height: int,
     width: int,
     max_chunk_size: int = 4,
+    seed_min: int = GEN_IMAGE_SEED_MIN,
+    seed_max: int = GEN_IMAGE_SEED_MAX,
 ) -> tuple[list[Any], list[int]]:
     torch, pipeline_class = _load_generation_dependencies()
 
+    cached_ckpt_path = getattr(generate_images_batch, "pipe_ckpt_path", None)
+    if hasattr(generate_images_batch, "pipe") and cached_ckpt_path != ckpt_path:
+        delattr(generate_images_batch, "pipe")
+        torch.cuda.empty_cache()
+        gc.collect()
+
     if not hasattr(generate_images_batch, "pipe"):
+        print(f"Loading Stable Diffusion checkpoint: {ckpt_path}", flush=True)
         generate_images_batch.pipe = pipeline_class.from_single_file(
             ckpt_path,
             torch_dtype=torch.float16,
@@ -127,6 +145,7 @@ def generate_images_batch(
         generate_images_batch.pipe.to("cuda")
         generate_images_batch.pipe.enable_attention_slicing()
         generate_images_batch.pipe.enable_vae_slicing()
+        generate_images_batch.pipe_ckpt_path = ckpt_path
 
     images: list[Any] = []
     seeds: list[int] = []
@@ -136,7 +155,7 @@ def generate_images_batch(
         positive_prompt_chunk = positive_prompt_list[i:i + chunk_size]
         negative_prompt_chunk = negative_prompt_list[i:i + chunk_size]
         seed_chunk = [
-            random.randint(GEN_IMAGE_SEED_MIN, GEN_IMAGE_SEED_MAX)
+            random.randint(seed_min, seed_max)
             if seed_list[i + j] is None
             else seed_list[i + j]
             for j in range(chunk_size)
@@ -169,6 +188,47 @@ def _load_generation_dependencies():
     from diffusers import StableDiffusionXLPipeline
 
     return torch, StableDiffusionXLPipeline
+
+
+def _normalize_generation_options(options: dict[str, object] | None) -> dict[str, Any]:
+    values = options or {}
+
+    try:
+        steps = int(values.get("steps", GEN_IMAGE_STEPS))
+        cfg = float(values.get("cfg", GEN_IMAGE_CFG))
+        height = int(values.get("height", GEN_IMAGE_HEIGHT))
+        width = int(values.get("width", GEN_IMAGE_WIDTH))
+        seed_min = int(values.get("seed_min", GEN_IMAGE_SEED_MIN))
+        seed_max = int(values.get("seed_max", GEN_IMAGE_SEED_MAX))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="image generation numeric settings are invalid",
+        ) from exc
+
+    if not math.isfinite(cfg):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="cfg must be finite")
+    if steps <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="steps must be greater than 0")
+    if cfg <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="cfg must be greater than 0")
+    if height <= 0 or width <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="height and width must be greater than 0")
+    if seed_min < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="seed_min must be greater than or equal to 0")
+    if seed_max < seed_min:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="seed_max must be greater than or equal to seed_min")
+
+    return {
+        "positive_prompt": str(values.get("positive_prompt", GEN_IMAGE_POSITIVE_PROMPT)).strip(),
+        "negative_prompt": str(values.get("negative_prompt", GEN_IMAGE_NEGATIVE_PROMPT)).strip(),
+        "steps": steps,
+        "cfg": cfg,
+        "height": height,
+        "width": width,
+        "seed_min": seed_min,
+        "seed_max": seed_max,
+    }
 
 
 def _image_content_type(output_format: str) -> str:

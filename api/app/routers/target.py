@@ -44,13 +44,14 @@ async def api_upsert_target_form(
 @router.post("/{target_id}/gen-image")
 async def api_generate_target_image(
     target_id: int,
+    generation_options: dict[str, object] | None = Body(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, int | str]:
     target = await db.get(Target, target_id)
     if target is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="target not found")
 
-    return await generate_prompt_image_for_entity(db, target, "target")
+    return await generate_prompt_image_for_entity(db, target, "target", generation_options)
 
 
 @router.delete("/", status_code=200)

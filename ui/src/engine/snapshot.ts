@@ -1,4 +1,5 @@
-import { dbTables, type GetListRequest } from '../api/api';
+import { dbTables } from '../api/api';
+import type { GetListRequest } from '../api/type';
 import { buildConditionState, conditionMatches } from './conditions';
 import {
   booleanField,

@@ -1,7 +1,11 @@
-import type { GetListRequest, UpsertResponse, dbTables } from '../../api/api';
+import type {
+  DbTableName as ApiDbTableName,
+  GetListRequest,
+  UpsertResponse,
+} from '../../api/type';
 
 export type DbRow = Record<string, unknown>;
-export type DbTableName = keyof typeof dbTables;
+export type DbTableName = ApiDbTableName;
 export type PlayEditTab = 'status' | 'target' | 'history';
 
 export type TableConfig = {

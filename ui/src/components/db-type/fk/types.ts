@@ -1,11 +1,11 @@
 import type {
+  DbTableName as ApiDbTableName,
   GetListRequest,
   GetListResponse,
   UpsertResponse,
-  dbTables,
-} from '../../../api/api';
+} from '../../../api/type';
 
-export type DbTableName = keyof typeof dbTables;
+export type DbTableName = ApiDbTableName;
 export type DbRow = Record<string, unknown>;
 export type DbTypeFkEditMode = 'single' | 'list';
 export type LinkType = 'secondary' | 'children' | 'computed';

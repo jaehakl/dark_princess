@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { UpsertResponse } from '../../api/api';
 import { dbTables } from '../../api/api';
+import type { UpsertResponse } from '../../api/type';
 import { DbTableDetailEdit } from '../../components/db-table/detail-edit';
 import { EditModalShell } from './EditModalShell';
 import type { DbRow, DbTableName, TableConfig } from './types';

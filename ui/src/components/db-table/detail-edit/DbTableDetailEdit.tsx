@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { GenImageResponse, UpsertResponse } from '../../../api/api';
 import { dbTables } from '../../../api/api';
+import type {
+  GenImageResponse,
+  ImageGenerationSettings,
+  UpsertResponse,
+} from '../../../api/type';
+import { readImageGenerationSettings } from '../../../utils/imageGenerationSettings';
 import {
   addMinutesToDateTimeIso,
   getCurrentDateTimeIsoFloor30,
@@ -34,7 +39,10 @@ type DetailTableConfig = {
     item: unknown,
     files?: Record<string, File | null | undefined>
   ) => Promise<UpsertResponse>;
-  generateImage?: (id: number) => Promise<GenImageResponse>;
+  generateImage?: (
+    id: number,
+    imageSettings?: ImageGenerationSettings
+  ) => Promise<GenImageResponse>;
   deleteRows: (ids: number[]) => Promise<void>;
 };
 
@@ -715,7 +723,7 @@ export function DbTableDetailEdit({
     setMessage(null);
     setIsGeneratingImage(true);
     try {
-      const response = await generateImage(rowId);
+      const response = await generateImage(rowId, readImageGenerationSettings());
       const nextRow = { ...baseRow, image: response.image };
       setDraftRow(nextRow);
       setBaseRow(nextRow);

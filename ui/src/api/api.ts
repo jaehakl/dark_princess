@@ -1,40 +1,16 @@
 // YOU MUST OPEN ALL FRONTEND SOURCE FILES with UTF-8 ENCODING to READ KOREAN CHARACTERS CORRECTLY.
 
 import { API_URL, request } from './http';
+import type {
+  GenImageResponse,
+  GetListRequest,
+  GetListResponse,
+  ImageGenerationSettings,
+  StableDiffusionModelPathSettings,
+  UpsertResponse,
+} from './type';
 
 export { API_URL };
-
-export type GetListRequest = {
-  offset: number;
-  limit: number | null;
-  selected_ids: number[];
-  search_text: string | null;
-  text_filter: Record<string, string[]>;
-  filter: Record<string, unknown[]>;
-  sort: [string, 'asc' | 'desc'] | null;
-};
-
-export type GetListResponse<T> = {
-  total: number;
-  items: T[];
-};
-
-export type UpsertResponse = {
-  id: number;
-  fk_not_found?: Record<string, number[]> | null;
-};
-
-export type StableDiffusionModelPathSettings = {
-  value: string;
-  directory: string;
-  files: string[];
-};
-
-export type GenImageResponse = {
-  id: number;
-  image: string;
-  seed: number;
-};
 
 function buildUpsertFormData(
   payload: unknown,
@@ -95,8 +71,8 @@ export const dbTables = {
     deleteRows: (ids: number[]) => request<null>('delete', '/target/', ids).then(() => undefined),
     upsertFormRow: (item: unknown, files: Record<string, File | null | undefined> = {}) =>
       request<UpsertResponse>('post', '/target/upsert-form', buildUpsertFormData(item, files)),
-    generateImage: (id: number) =>
-      request<GenImageResponse>('post', `/target/${id}/gen-image`),
+    generateImage: (id: number, imageSettings?: ImageGenerationSettings) =>
+      request<GenImageResponse>('post', `/target/${id}/gen-image`, imageSettings),
   },
 
   Scene: {
@@ -122,8 +98,8 @@ export const dbTables = {
     deleteRows: (ids: number[]) => request<null>('delete', '/scene/', ids).then(() => undefined),
     upsertFormRow: (item: unknown, files: Record<string, File | null | undefined> = {}) =>
       request<UpsertResponse>('post', '/scene/upsert-form', buildUpsertFormData(item, files)),
-    generateImage: (id: number) =>
-      request<GenImageResponse>('post', `/scene/${id}/gen-image`),
+    generateImage: (id: number, imageSettings?: ImageGenerationSettings) =>
+      request<GenImageResponse>('post', `/scene/${id}/gen-image`, imageSettings),
   },
 
   SceneTriggerBlock: {

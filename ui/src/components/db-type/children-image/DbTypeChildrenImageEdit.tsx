@@ -3,7 +3,7 @@ import type {
   GetListRequest,
   GetListResponse,
   UpsertResponse,
-} from '../../../api/api';
+} from '../../../api/type';
 import { dbTables } from '../../../api/api';
 import { formatLocalDateTimeLabel } from '../../../utils/datetime';
 import { DbTypeDatetimeEdit } from '../datetime';
