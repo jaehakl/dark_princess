@@ -41,18 +41,68 @@ export type GenImageResponse = {
   seed: number;
 };
 
+export type GenerateSceneRequest = {
+  scene_id?: number | null;
+  prompt: string;
+  scripts: Record<string, unknown> | unknown[];
+  status_change: Record<string, unknown>;
+};
+
+export type GenerateSceneOptionRequest = {
+  option_id?: number | null;
+  scene_id: number;
+  option_text: string;
+};
+
+export type SceneRecord = {
+  id?: number | null;
+  prompt: string;
+  image_url?: string | null;
+  scripts: Record<string, unknown> | unknown[];
+  status_change: Record<string, unknown>;
+};
+
+export type SceneOptionRecord = {
+  id?: number | null;
+  scene_id: number;
+  option_text: string;
+};
+
+export type NextSceneRequest = {
+  scene_id: number;
+  status_id: number;
+  scene_option_id: number;
+};
+
+export type GenerateSelectionModelRequest = {
+  model_id?: number | null;
+  name: string;
+  parameters: Record<string, unknown>;
+};
+
+export type SelectionModelRecord = {
+  id?: number | null;
+  name: string;
+  file_url?: string | null;
+};
+
+export type StatusRecord = {
+  id?: number | null;
+  selection_model_id?: number | null;
+  name: string;
+  turn: number;
+  cash: number;
+  strength: number;
+  agility: number;
+  intelligence: number;
+  sense: number;
+  attractiveness: number;
+  toughness: number;
+  stress: number;
+};
+
 export type DbTableName =
-  | 'Tag'
-  | 'Target'
   | 'Scene'
-  | 'SceneTriggerBlock'
   | 'SceneOption'
-  | 'SceneCondition'
-  | 'SceneResult'
-  | 'Status'
-  | 'StatusTag'
-  | 'TargetStatus'
-  | 'TargetStatusTag'
-  | 'SceneHistory'
-  | 'SceneDecision'
-  | 'SceneAppliedResult';
+  | 'SelectionModel'
+  | 'Status';

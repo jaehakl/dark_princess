@@ -1,12 +1,12 @@
-﻿from typing import List
+from typing import List
 
 from fastapi import APIRouter, Body, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db import Status, get_db
+from db import SelectionModel, Status, get_db
 from models import GetListRequestBase, GetListResponseBase, StatusBase, UpsertResponseBase
-from routers.game_utils import delete_owned_items, field_ids, require_existing_ids
-from utils.crud_helpers import CrudSpec, get_list_response, upsert_items
+from routers.game_utils import field_ids, require_existing_ids
+from utils.crud_helpers import CrudSpec, delete_items, get_list_response, upsert_items
 
 router = APIRouter(prefix="/status", tags=["status"])
 
@@ -27,7 +27,7 @@ async def api_upsert_status_list(
     items: List[StatusBase],
     db: AsyncSession = Depends(get_db),
 ):
-    await require_existing_ids(db, Status, field_ids(items, "id"), "id")
+    await require_existing_ids(db, SelectionModel, field_ids(items, "selection_model_id"), "selection_model_id")
     return await upsert_items(db, items, STATUS_CRUD_SPEC)
 
 
@@ -36,5 +36,5 @@ async def api_delete_status_list(
     ids: List[int] = Body(...),
     db: AsyncSession = Depends(get_db),
 ):
-    await delete_owned_items(db, STATUS_CRUD_SPEC, ids)
+    await delete_items(db, STATUS_CRUD_SPEC, ids)
     return None

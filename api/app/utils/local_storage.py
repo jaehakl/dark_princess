@@ -6,7 +6,7 @@ import shutil
 import uuid
 from pathlib import Path
 from typing import BinaryIO
-from urllib.parse import quote
+from urllib.parse import quote, unquote, urlparse
 
 from settings import settings
 
@@ -67,6 +67,19 @@ def public_file_url(key: str) -> str:
     normalized = normalize_object_key(key)
     quoted_key = "/".join(quote(part) for part in normalized.split("/"))
     return f"{settings.API_BASE_URL.rstrip('/')}/uploads/{quoted_key}"
+
+
+def object_key_from_public_url(value: str | None) -> str | None:
+    if not value:
+        return None
+
+    path = unquote(urlparse(value).path)
+    marker = "/uploads/"
+    key = path.split(marker, 1)[1] if marker in path else value
+    try:
+        return normalize_object_key(key)
+    except ValueError:
+        return None
 
 
 def delete_object(key: str) -> None:

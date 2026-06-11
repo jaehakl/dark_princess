@@ -1,15 +1,10 @@
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel as PydanticBaseModel, field_serializer
-
-from utils.datetime_utils import serialize_datetime_utc
+from pydantic import BaseModel as PydanticBaseModel, Field
 
 
 class BaseModel(PydanticBaseModel):
-    @field_serializer("*", when_used="json")
-    def serialize_datetimes(self, value: Any) -> Any:
-        return serialize_datetime_utc(value)
+    pass
 
 
 class GetListRequestBase(BaseModel):
@@ -32,159 +27,61 @@ class UpsertResponseBase(BaseModel):
     fk_not_found: Optional[Dict[str, List[int]]] = None
 
 
-class TagBase(BaseModel):
-    id: Optional[int] = None
+class NextSceneRequestBase(BaseModel):
+    scene_id: int
+    status_id: int
+    scene_option_id: int
+
+
+class GenerateSceneRequestBase(BaseModel):
+    scene_id: Optional[int] = None
+    prompt: str
+    scripts: Dict[str, Any] | List[Any] = Field(default_factory=list)
+    status_change: Dict[str, Any] = Field(default_factory=dict)
+
+
+class GenerateSceneOptionRequestBase(BaseModel):
+    option_id: Optional[int] = None
+    scene_id: int
+    option_text: str
+
+
+class GenerateSelectionModelRequestBase(BaseModel):
+    model_id: Optional[int] = None
     name: str
-    scope: Optional[str] = None
-    system_key: Optional[str] = None
-    description: Optional[str] = None
-    color: Optional[str] = None
-    trigger_default: bool = False
+    parameters: Dict[str, Any] = Field(default_factory=dict)
 
 
 class SceneBase(BaseModel):
     id: Optional[int] = None
-    name: str
-    description: Optional[str] = None
-    prompt: Optional[str] = None
-    priority: int = 0
-    repeat_policy: str = "once_per_status"
-    cooldown_turns: int = 0
-    image: Optional[str] = None
-    audio: Optional[str] = None
-    scene_histories: Optional[List[int]] = None
-    trigger_blocks: Optional[List[int]] = None
-    scene_options: Optional[List[int]] = None
-    scene_results: Optional[List[int]] = None
-
-
-class SceneTriggerBlockBase(BaseModel):
-    id: Optional[int] = None
-    scene_id: int
-    label: Optional[str] = None
-    chance_percent: int = 100
-    sort_order: int = 0
-    conditions: Optional[List[int]] = None
+    prompt: str
+    image_url: Optional[str] = None
+    scripts: Dict[str, Any] | List[Any] = Field(default_factory=list)
+    status_change: Dict[str, Any] = Field(default_factory=dict)
 
 
 class SceneOptionBase(BaseModel):
     id: Optional[int] = None
     scene_id: int
-    option_key: str
-    label: str
-    description: Optional[str] = None
-    next_scene_id: Optional[int] = None
-    sort_order: int = 0
-    is_active: bool = True
-    conditions: Optional[List[int]] = None
-    decisions: Optional[List[int]] = None
+    option_text: str
 
 
-class SceneConditionBase(BaseModel):
+class SelectionModelBase(BaseModel):
     id: Optional[int] = None
-    trigger_block_id: Optional[int] = None
-    option_id: Optional[int] = None
-    kind: str
-    operator: str
-    tag_id: Optional[int] = None
-    target_id: Optional[int] = None
-    scene_ref_id: Optional[int] = None
-    stat_field: Optional[str] = None
-    numeric_value: Optional[int] = None
-    value: Optional[Dict[str, Any]] = None
-    sort_order: int = 0
-
-
-class SceneResultBase(BaseModel):
-    id: Optional[int] = None
-    scene_id: Optional[int] = None
-    kind: str
-    tag_id: Optional[int] = None
-    target_id: Optional[int] = None
-    stat_field: Optional[str] = None
-    numeric_value: Optional[int] = None
-    key: Optional[str] = None
-    value: Optional[Dict[str, Any]] = None
-    sort_order: int = 0
-    applied_results: Optional[List[int]] = None
+    name: str
+    file_url: Optional[str] = None
 
 
 class StatusBase(BaseModel):
     id: Optional[int] = None
+    selection_model_id: Optional[int] = None
     name: str
-    turn: int = 0
-    cash: int = 0
-    strength: int = 0
-    agility: int = 0
-    intelligence: int = 0
-    sense: int = 0
-    attractiveness: int = 0
-    toughness: int = 0
-    stress: int = 0
-    status_tags: Optional[List[int]] = None
-    scene_histories: Optional[List[int]] = None
-    target_statuses: Optional[List[int]] = None
-
-
-class StatusTagBase(BaseModel):
-    id: Optional[int] = None
-    status_id: int
-    tag_id: int
-
-
-class SceneHistoryBase(BaseModel):
-    id: Optional[int] = None
-    status_id: int
-    scene_id: int
-    target_status_id: Optional[int] = None
     turn: int
-    sub_turn: int
-    scene_decisions: Optional[List[int]] = None
-    applied_results: Optional[List[int]] = None
-
-
-class SceneDecisionBase(BaseModel):
-    id: Optional[int] = None
-    scene_history_id: int
-    option_id: Optional[int] = None
-    option_key: Optional[str] = None
-    option_label: Optional[str] = None
-    value: Optional[Dict[str, Any]] = None
-    sort_order: int = 0
-
-
-class SceneAppliedResultBase(BaseModel):
-    id: Optional[int] = None
-    scene_history_id: int
-    result_id: Optional[int] = None
-    kind: str
-    payload: Optional[Dict[str, Any]] = None
-    before: Optional[Dict[str, Any]] = None
-    after: Optional[Dict[str, Any]] = None
-    sort_order: int = 0
-
-
-class TargetBase(BaseModel):
-    id: Optional[int] = None
-    type: str
-    name: str
-    description: Optional[str] = None
-    prompt: Optional[str] = None
-    properties: Optional[Dict[str, Any]] = None
-    image: Optional[str] = None
-
-
-class TargetStatusBase(BaseModel):
-    id: Optional[int] = None
-    status_id: int
-    target_id: int
-    interactions: Optional[Dict[str, Any]] = None
-    visitable: bool = True
-    target_status_tags: Optional[List[int]] = None
-    scene_histories: Optional[List[int]] = None
-
-
-class TargetStatusTagBase(BaseModel):
-    id: Optional[int] = None
-    target_status_id: int
-    tag_id: int
+    cash: int
+    strength: int
+    agility: int
+    intelligence: int
+    sense: int
+    attractiveness: int
+    toughness: int
+    stress: int

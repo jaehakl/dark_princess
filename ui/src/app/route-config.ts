@@ -7,10 +7,8 @@ import {
 } from 'react-router-dom';
 import type { RouteObject } from 'react-router-dom';
 import { AppLayout } from './layout';
-import { ListEditPage } from '../pages/list-edit/ListEditPage';
-import { PlayEditPage } from '../pages/play-edit/PlayEditPage';
-import { SceneEditPage } from '../pages/scene-edit/SceneEditPage';
-import { SettingsPage } from '../pages/settings/SettingsPage';
+import { LandingPage } from '../pages/landing/LandingPage';
+import { PlayPage } from '../pages/play/PlayPage';
 
 function RouteErrorBoundary() {
   const error = useRouteError();
@@ -30,47 +28,24 @@ export const routeObjects: RouteObject[] = [
     children: [
       {
         index: true,
-        element: createElement(Navigate, {
-          to: '/play-edit',
-          replace: true,
-        }),
-      },
-      {
-        path: 'list-edit',
-        element: createElement(ListEditPage),
+        element: createElement(LandingPage),
         handle: {
-          breadcrumb: 'Table Edit',
-          pageTitle: 'Table Edit',
+          breadcrumb: 'Create/Select Status',
+          pageTitle: 'Create/Select Status',
         },
       },
       {
-        path: 'play-edit',
-        element: createElement(PlayEditPage),
+        path: 'play/:statusId',
+        element: createElement(PlayPage),
         handle: {
-          breadcrumb: 'Play+Edit',
-          pageTitle: 'Play+Edit',
-        },
-      },
-      {
-        path: 'scene-edit',
-        element: createElement(SceneEditPage),
-        handle: {
-          breadcrumb: '장면 편집',
-          pageTitle: '장면 편집',
-        },
-      },
-      {
-        path: 'settings',
-        element: createElement(SettingsPage),
-        handle: {
-          breadcrumb: '환경설정',
-          pageTitle: '환경설정',
+          breadcrumb: 'Play',
+          pageTitle: 'Play',
         },
       },
       {
         path: '*',
         element: createElement(Navigate, {
-          to: '/play-edit',
+          to: '/',
           replace: true,
         }),
       },

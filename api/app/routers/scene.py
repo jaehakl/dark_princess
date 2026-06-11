@@ -1,19 +1,25 @@
-﻿from typing import List
+from typing import List
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request as FastAPIRequest, status
+from fastapi import APIRouter, Body, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db import Scene
-from models import GetListRequestBase, GetListResponseBase, SceneBase, UpsertResponseBase
-from db import get_db
-from service.image_generation import generate_prompt_image_for_entity
+from db import Scene, get_db
+from models import (
+    GenerateSceneRequestBase,
+    GetListRequestBase,
+    GetListResponseBase,
+    NextSceneRequestBase,
+    SceneBase,
+    UpsertResponseBase,
+)
+from service.next_scene import get_next_scene
+from service.scene_generation import generate_scene
 from utils.crud_helpers import CrudSpec, delete_items, get_list_response, upsert_items
-from utils.upsert_form import preserve_existing_upload_fields, upsert_form_item
 
 router = APIRouter(prefix="/scene", tags=["scene"])
 
 
-SCENE_CRUD_SPEC = CrudSpec(model=Scene, schema=SceneBase, public_url_fields=("image", "audio"))
+SCENE_CRUD_SPEC = CrudSpec(model=Scene, schema=SceneBase)
 
 
 @router.post("/list", response_model=GetListResponseBase)
@@ -29,29 +35,42 @@ async def api_upsert_scene_list(
     items: List[SceneBase],
     db: AsyncSession = Depends(get_db),
 ):
-    sanitized_items = await preserve_existing_upload_fields(db, items, SCENE_CRUD_SPEC, ("image", "audio"))
-    return await upsert_items(db, sanitized_items, SCENE_CRUD_SPEC)
+    return await upsert_items(db, items, SCENE_CRUD_SPEC, cleanup_fields=("image_url",))
 
 
-@router.post("/upsert-form", response_model=UpsertResponseBase)
-async def api_upsert_scene_form(
-    request: FastAPIRequest,
+@router.post("/generate", response_model=SceneBase)
+async def api_generate_scene(
+    request: GenerateSceneRequestBase,
     db: AsyncSession = Depends(get_db),
 ):
-    return await upsert_form_item(request, db, SCENE_CRUD_SPEC, {"image": "image", "audio": "file"})
+    scene = await generate_scene(db, request)
+    return SceneBase(
+        id=scene.id,
+        prompt=scene.prompt,
+        image_url=scene.image_url,
+        scripts=scene.scripts,
+        status_change=scene.status_change,
+    )
 
 
-@router.post("/{scene_id}/gen-image")
-async def api_generate_scene_image(
-    scene_id: int,
-    generation_options: dict[str, object] | None = Body(default=None),
+@router.post("/next", response_model=SceneBase)
+async def api_get_next_scene(
+    request: NextSceneRequestBase,
     db: AsyncSession = Depends(get_db),
-) -> dict[str, int | str]:
-    scene = await db.get(Scene, scene_id)
-    if scene is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="scene not found")
-
-    return await generate_prompt_image_for_entity(db, scene, "scene", generation_options)
+):
+    next_scene = await get_next_scene(
+        db,
+        scene_id=request.scene_id,
+        status_id=request.status_id,
+        scene_option_id=request.scene_option_id,
+    )
+    return SceneBase(
+        id=next_scene.id,
+        prompt=next_scene.prompt,
+        image_url=next_scene.image_url,
+        scripts=next_scene.scripts,
+        status_change=next_scene.status_change,
+    )
 
 
 @router.delete("/", status_code=200)
@@ -59,5 +78,5 @@ async def api_delete_scene_list(
     ids: List[int] = Body(...),
     db: AsyncSession = Depends(get_db),
 ):
-    await delete_items(db, SCENE_CRUD_SPEC, ids, ("image", "audio"))
+    await delete_items(db, SCENE_CRUD_SPEC, ids, cleanup_fields=("image_url",))
     return None

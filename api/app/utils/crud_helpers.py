@@ -11,10 +11,10 @@ from sqlalchemy import Text, and_, cast, delete as sa_delete, func, inspect, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from db import Scene, Target
+from db import Scene, SelectionModel
 from models import GetListResponseBase, UpsertResponseBase
 from utils.datetime_utils import db_datetime_to_utc, parse_api_datetime_to_utc
-from utils.local_storage import delete_object, public_file_url
+from utils.local_storage import delete_object, object_key_from_public_url, public_file_url
 
 
 ModelT = TypeVar("ModelT")
@@ -31,11 +31,7 @@ class CrudSpec(Generic[ModelT, SchemaT]):
     public_url_fields: tuple[str, ...] = field(default_factory=tuple)
 
 
-FILE_REFERENCE_COLUMNS = (
-    Scene.image,
-    Scene.audio,
-    Target.image,
-)
+FILE_REFERENCE_COLUMNS = (Scene.image_url, SelectionModel.file_url)
 
 
 def computed(*path: str, attr: str = "id") -> tuple[tuple[str, ...], str]:
@@ -150,12 +146,22 @@ def _build_load_options(
 
 async def cleanup_orphaned_object_keys(
     db: AsyncSession,
-    object_keys: Sequence[str | None],
+    object_values: Sequence[str | None],
 ) -> None:
-    for object_key in {key for key in object_keys if key}:
+    reference_values_by_key: dict[str, set[str]] = {}
+    for value in {item for item in object_values if item}:
+        object_key = object_key_from_public_url(value)
+        if object_key is None:
+            continue
+
+        reference_values_by_key.setdefault(object_key, set()).update(
+            {value, object_key, public_file_url(object_key)}
+        )
+
+    for object_key, reference_values in reference_values_by_key.items():
         is_referenced = False
         for column in FILE_REFERENCE_COLUMNS:
-            stmt = select(func.count()).select_from(column.class_).where(column == object_key)
+            stmt = select(func.count()).select_from(column.class_).where(column.in_(reference_values))
             if (await db.execute(stmt)).scalar_one():
                 is_referenced = True
                 break
@@ -431,6 +437,7 @@ async def upsert_items(
     db: AsyncSession,
     items: List[SchemaT],
     spec: CrudSpec[ModelT, SchemaT],
+    cleanup_fields: Sequence[str] = (),
 ) -> List[UpsertResponseBase]:
     async def _fetch_entities_by_ids(
         model: type[Any],
@@ -490,6 +497,7 @@ async def upsert_items(
             entities_by_model[model] = await _fetch_entities_by_ids(model, ids)
 
     pending_results: List[tuple[ModelT, Optional[Dict[str, List[int]]]]] = []
+    orphan_candidates: list[str | None] = []
     for prepared_item in prepared_items:
         entity_id = prepared_item["entity_id"]
         entity = existing_entities_by_id.get(entity_id) if entity_id is not None else None
@@ -497,8 +505,14 @@ async def upsert_items(
             entity = spec.model()
             db.add(entity)
 
+        old_cleanup_values = {
+            field_name: getattr(entity, field_name, None)
+            for field_name in cleanup_fields
+        }
         for field_name, value in prepared_item["payload"].items():
             setattr(entity, field_name, value)
+            if field_name in cleanup_fields and old_cleanup_values.get(field_name) != value:
+                orphan_candidates.append(old_cleanup_values.get(field_name))
 
         fk_not_found: Dict[str, List[int]] = {}
         relation_ids_by_field = prepared_item["relation_ids_by_field"]
@@ -526,6 +540,7 @@ async def upsert_items(
 
     await db.flush()
     await db.commit()
+    await cleanup_orphaned_object_keys(db, orphan_candidates)
 
     return [
         UpsertResponseBase(id=entity.id, fk_not_found=fk_not_found)
@@ -550,7 +565,7 @@ async def delete_items(
         )
         rows = (await db.execute(stmt)).all()
         for row in rows:
-            orphan_candidates.extend(getattr(row, field_name) for field_name in cleanup_fields)
+            orphan_candidates.extend(row._mapping[field_name] for field_name in cleanup_fields)
 
     await db.execute(sa_delete(spec.model).where(spec.model.id.in_(normalized_ids)))
     await db.commit()
