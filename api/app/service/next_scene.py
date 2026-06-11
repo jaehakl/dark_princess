@@ -87,7 +87,11 @@ async def get_next_scene(
 
     scene_embedding = validate_embedding(scene.embedding, "scene.embedding")
     option_embedding = validate_embedding(scene_option.embedding, "scene_option.embedding")
-    context_embedding = validate_embedding(current_status.context_embedding, "status.context_embedding")
+    context_embedding = (
+        validate_embedding(current_status.context_embedding, "status.context_embedding")
+        if current_status.context_embedding is not None
+        else [0.0] * len(scene_embedding)
+    )
     normalized_status = normalize_status_columns(current_status)
     target_embedding = make_target_scene_embedding(
         scene_embedding,
