@@ -38,11 +38,12 @@ export const useSceneStore = create<SceneStore>((set, get) => ({
   handleSceneSaved: (scene, editedSceneId) =>
     set((state) => ({
       savedScene: scene,
+      editingScene: scene,
       currentScene:
         editedSceneId && scene.id === state.currentScene?.id
           ? scene
           : state.currentScene,
-      isSceneEditorOpen: false,
+      isSceneEditorOpen: true,
     })),
   handleSceneDeleted: (sceneId) =>
     set((state) => ({

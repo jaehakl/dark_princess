@@ -25,6 +25,7 @@ const DEFAULT_MODEL_PARAMETERS = JSON.stringify(
     activation: 'relu',
     dropout: 0,
     seed: null,
+    temperature: 2.0,
   },
   null,
   2,

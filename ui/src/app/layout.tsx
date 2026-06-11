@@ -1,7 +1,7 @@
 import { Link, Outlet, useMatches } from 'react-router-dom';
 import { useSceneStore } from '../api/store';
-import { SceneEditorModal } from './SceneEditorModal';
-import { SceneExplorerModal } from './SceneExplorerModal';
+import { SceneEditorModal } from '../components/SceneEditorModal';
+import { SceneExplorerModal } from '../components/SceneExplorerModal';
 
 type RouteHandle = {
   breadcrumb?: string;

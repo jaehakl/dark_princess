@@ -73,6 +73,11 @@ async def predict_target_scene_embedding(
         )
 
 
+async def update_selection_model(update_model: Callable[[], Any]) -> Any:
+    async with _selection_lock:
+        return await asyncio.to_thread(update_model)
+
+
 def reset_model_runtime_for_tests() -> None:
     global _embedding_model_name, _embedding_model
     global _image_ckpt_path, _image_pipe

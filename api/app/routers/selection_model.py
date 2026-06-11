@@ -6,13 +6,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import SelectionModel, Status, get_db
 from models import (
+    AdjustSelectionModelRequestBase,
     GenerateSelectionModelRequestBase,
     GetListRequestBase,
     GetListResponseBase,
+    NextSceneRequestBase,
+    SceneBase,
     SelectionModelBase,
     UpsertResponseBase,
 )
-from service.selection_model import generate_selection_model
+from service.selection_model import adjust_selection_model, generate_selection_model, get_next_scene
 from utils.crud_helpers import CrudSpec, delete_items, get_list_response, upsert_items
 
 router = APIRouter(prefix="/selection_model", tags=["selection_model"])
@@ -47,6 +50,39 @@ async def api_generate_selection_model(
         id=selection_model.id,
         name=selection_model.name,
         file_url=selection_model.file_url,
+    )
+
+
+@router.post("/adjust", response_model=SelectionModelBase)
+async def api_adjust_selection_model(
+    request: AdjustSelectionModelRequestBase,
+    db: AsyncSession = Depends(get_db),
+):
+    selection_model = await adjust_selection_model(db, request)
+    return SelectionModelBase(
+        id=selection_model.id,
+        name=selection_model.name,
+        file_url=selection_model.file_url,
+    )
+
+
+@router.post("/next", response_model=SceneBase)
+async def api_get_next_scene(
+    request: NextSceneRequestBase,
+    db: AsyncSession = Depends(get_db),
+):
+    next_scene = await get_next_scene(
+        db,
+        scene_id=request.scene_id,
+        status_id=request.status_id,
+        scene_option_id=request.scene_option_id,
+    )
+    return SceneBase(
+        id=next_scene.id,
+        prompt=next_scene.prompt,
+        image_url=next_scene.image_url,
+        scripts=next_scene.scripts,
+        status_change=next_scene.status_change,
     )
 
 

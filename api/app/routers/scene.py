@@ -8,11 +8,12 @@ from models import (
     GenerateSceneRequestBase,
     GetListRequestBase,
     GetListResponseBase,
-    NextSceneRequestBase,
     SceneBase,
+    StatusBase,
+    UpdateSceneContextRequestBase,
     UpsertResponseBase,
 )
-from service.scene import generate_scene, get_next_scene
+from service.scene import generate_scene, update_scene_context
 from utils.crud_helpers import CrudSpec, delete_items, get_list_response, upsert_items
 
 router = APIRouter(prefix="/scene", tags=["scene"])
@@ -52,23 +53,25 @@ async def api_generate_scene(
     )
 
 
-@router.post("/next", response_model=SceneBase)
-async def api_get_next_scene(
-    request: NextSceneRequestBase,
+@router.post("/update-context", response_model=StatusBase)
+async def api_update_scene_context(
+    request: UpdateSceneContextRequestBase,
     db: AsyncSession = Depends(get_db),
 ):
-    next_scene = await get_next_scene(
-        db,
-        scene_id=request.scene_id,
-        status_id=request.status_id,
-        scene_option_id=request.scene_option_id,
-    )
-    return SceneBase(
-        id=next_scene.id,
-        prompt=next_scene.prompt,
-        image_url=next_scene.image_url,
-        scripts=next_scene.scripts,
-        status_change=next_scene.status_change,
+    updated_status = await update_scene_context(db, request)
+    return StatusBase(
+        id=updated_status.id,
+        selection_model_id=updated_status.selection_model_id,
+        name=updated_status.name,
+        turn=updated_status.turn,
+        cash=updated_status.cash,
+        strength=updated_status.strength,
+        agility=updated_status.agility,
+        intelligence=updated_status.intelligence,
+        sense=updated_status.sense,
+        attractiveness=updated_status.attractiveness,
+        toughness=updated_status.toughness,
+        stress=updated_status.stress,
     )
 
 

@@ -40,6 +40,7 @@ export type GenerateSceneRequest = {
   prompt: string;
   scripts: Record<string, unknown> | unknown[];
   status_change: Record<string, unknown>;
+  generate_image?: boolean;
 };
 
 export type GenerateSceneOptionRequest = {
@@ -66,6 +67,16 @@ export type NextSceneRequest = {
   scene_id: number;
   status_id: number;
   scene_option_id: number;
+};
+
+export type AdjustSelectionModelRequest = NextSceneRequest & {
+  target_scene_id: number;
+  learn_rate: number;
+};
+
+export type UpdateSceneContextRequest = {
+  status_id: number;
+  scene_id: number;
 };
 
 export type GenerateSelectionModelRequest = {

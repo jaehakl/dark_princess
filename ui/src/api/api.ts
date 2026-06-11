@@ -2,6 +2,7 @@
 
 import { API_URL, request } from './http';
 import type {
+  AdjustSelectionModelRequest,
   GenerateSceneOptionRequest,
   GenerateSceneRequest,
   GenerateSelectionModelRequest,
@@ -12,6 +13,7 @@ import type {
   SceneRecord,
   SelectionModelRecord,
   StatusRecord,
+  UpdateSceneContextRequest,
   UpsertResponse,
 } from './type';
 
@@ -32,7 +34,8 @@ export const dbTables = {
     upsertRow: (items: unknown) => request<UpsertResponse[]>('post', '/scene/upsert', items),
     generateScene: (item: GenerateSceneRequest) =>
       request<SceneRecord>('post', '/scene/generate', item),
-    nextScene: (item: NextSceneRequest) => request<SceneRecord>('post', '/scene/next', item),
+    updateContext: (item: UpdateSceneContextRequest) =>
+      request<StatusRecord>('post', '/scene/update-context', item),
     deleteRows: (ids: number[]) => request<null>('delete', '/scene/', ids).then(() => undefined),
   },
 
@@ -63,6 +66,9 @@ export const dbTables = {
     upsertRow: (items: SelectionModelRecord[]) => request<UpsertResponse[]>('post', '/selection_model/upsert', items),
     generateModel: (item: GenerateSelectionModelRequest) =>
       request<SelectionModelRecord>('post', '/selection_model/generate', item),
+    adjustModel: (item: AdjustSelectionModelRequest) =>
+      request<SelectionModelRecord>('post', '/selection_model/adjust', item),
+    nextScene: (item: NextSceneRequest) => request<SceneRecord>('post', '/selection_model/next', item),
     deleteRows: (ids: number[]) => request<null>('delete', '/selection_model/', ids).then(() => undefined),
   },
 

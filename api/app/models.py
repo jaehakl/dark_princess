@@ -33,11 +33,17 @@ class NextSceneRequestBase(BaseModel):
     scene_option_id: int
 
 
+class UpdateSceneContextRequestBase(BaseModel):
+    status_id: int
+    scene_id: int
+
+
 class GenerateSceneRequestBase(BaseModel):
     scene_id: Optional[int] = None
     prompt: str
     scripts: Dict[str, Any] | List[Any] = Field(default_factory=list)
     status_change: Dict[str, Any] = Field(default_factory=dict)
+    generate_image: bool = True
 
 
 class GenerateSceneOptionRequestBase(BaseModel):
@@ -50,6 +56,11 @@ class GenerateSelectionModelRequestBase(BaseModel):
     model_id: Optional[int] = None
     name: str
     parameters: Dict[str, Any] = Field(default_factory=dict)
+
+
+class AdjustSelectionModelRequestBase(NextSceneRequestBase):
+    target_scene_id: int
+    learn_rate: float
 
 
 class SceneBase(BaseModel):
