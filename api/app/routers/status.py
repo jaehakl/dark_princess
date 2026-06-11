@@ -5,8 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import SelectionModel, Status, get_db
 from models import GetListRequestBase, GetListResponseBase, StatusBase, UpsertResponseBase
-from routers.game_utils import field_ids, require_existing_ids
 from utils.crud_helpers import CrudSpec, delete_items, get_list_response, upsert_items
+from utils.router_helpers import field_ids, require_existing_ids
 
 router = APIRouter(prefix="/status", tags=["status"])
 

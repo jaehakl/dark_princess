@@ -18,12 +18,6 @@ export type UpsertResponse = {
   fk_not_found?: Record<string, number[]> | null;
 };
 
-export type StableDiffusionModelPathSettings = {
-  value: string;
-  directory: string;
-  files: string[];
-};
-
 export type ImageGenerationSettings = {
   positive_prompt: string;
   negative_prompt: string;

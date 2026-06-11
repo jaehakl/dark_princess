@@ -1,1 +1,0 @@
-export { DbTypeImageFileEdit } from './DbTypeImageFileEdit';

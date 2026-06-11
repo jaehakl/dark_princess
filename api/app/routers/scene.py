@@ -12,8 +12,7 @@ from models import (
     SceneBase,
     UpsertResponseBase,
 )
-from service.next_scene import get_next_scene
-from service.scene_generation import generate_scene
+from service.scene import generate_scene, get_next_scene
 from utils.crud_helpers import CrudSpec, delete_items, get_list_response, upsert_items
 
 router = APIRouter(prefix="/scene", tags=["scene"])

@@ -11,17 +11,11 @@ import type {
   SceneOptionRecord,
   SceneRecord,
   SelectionModelRecord,
-  StableDiffusionModelPathSettings,
   StatusRecord,
   UpsertResponse,
 } from './type';
 
 export { API_URL };
-
-export const settings = {
-  getStableDiffusionModelPath: () => request<StableDiffusionModelPathSettings>('get', '/settings/stable-diffusion-model-path'),
-  updateStableDiffusionModelPath: (value: string) => request<{ value: string }>('post', '/settings/stable-diffusion-model-path', { value }),
-};
 
 export const dbTables = {
   Scene: {

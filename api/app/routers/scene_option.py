@@ -11,9 +11,9 @@ from models import (
     SceneOptionBase,
     UpsertResponseBase,
 )
-from routers.game_utils import field_ids, require_existing_ids
 from service.scene_option import generate_scene_option
 from utils.crud_helpers import CrudSpec, delete_items, get_list_response, upsert_items
+from utils.router_helpers import field_ids, require_existing_ids
 
 router = APIRouter(prefix="/scene_option", tags=["scene_option"])
 

@@ -1,18 +1,13 @@
 from __future__ import annotations
 
-import asyncio
-from typing import Any
-
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import Scene, SceneOption
 from models import GenerateSceneOptionRequestBase
-from service.vector_utils import VECTOR_DIMENSION
 from settings import settings
-
-
-_embedding_models: dict[str, Any] = {}
+from utils.model_runtime import encode_scene_text
+from utils.vector import VECTOR_DIMENSION
 
 
 async def generate_scene_option(
@@ -64,26 +59,10 @@ async def make_scene_option_embedding(option_text: str) -> list[float]:
             detail="scene embedding model name is required",
         )
 
-    embedding = await asyncio.to_thread(_encode_scene_option_embedding, model_name, f"passage: {option_text}")
+    embedding = await encode_scene_text(model_name, f"passage: {option_text}")
     if len(embedding) != VECTOR_DIMENSION:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"scene option embedding model must return {VECTOR_DIMENSION} dimensions",
         )
     return embedding
-
-
-def _encode_scene_option_embedding(model_name: str, text: str) -> list[float]:
-    model = _get_embedding_model(model_name)
-    raw_embedding = model.encode(text)
-    if hasattr(raw_embedding, "tolist"):
-        raw_embedding = raw_embedding.tolist()
-    return [float(value) for value in raw_embedding]
-
-
-def _get_embedding_model(model_name: str) -> Any:
-    if model_name not in _embedding_models:
-        from sentence_transformers import SentenceTransformer
-
-        _embedding_models[model_name] = SentenceTransformer(model_name)
-    return _embedding_models[model_name]

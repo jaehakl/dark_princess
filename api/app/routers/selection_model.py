@@ -12,7 +12,7 @@ from models import (
     SelectionModelBase,
     UpsertResponseBase,
 )
-from service.selection_model_generation import generate_selection_model
+from service.selection_model import generate_selection_model
 from utils.crud_helpers import CrudSpec, delete_items, get_list_response, upsert_items
 
 router = APIRouter(prefix="/selection_model", tags=["selection_model"])
