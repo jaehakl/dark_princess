@@ -13,18 +13,24 @@ from db import Scene, Status
 from models import GenerateSceneRequestBase, RecommendPromptItemBase, UpdateSceneContextRequestBase
 from settings import API_ROOT, settings
 from service.selection_model import cosine_distance
+from utils.llm import (
+    generate_scene_script as generate_script_from_llm,
+    generate_stable_diffusion_prompt as generate_prompt_from_llm,
+)
 from utils.local_storage import build_object_key, delete_object, object_key_from_public_url, public_file_url, upload_fileobj
-from utils.llm import generate_stable_diffusion_prompt as generate_prompt_from_llm
 from utils.model_runtime import encode_scene_text, generate_images_batch
 from utils.vector import VECTOR_DIMENSION, validate_embedding
 
-GEN_IMAGE_POSITIVE_BASE = "score_9, score_8_up, score_7_up, score_6_up,"
-GEN_IMAGE_NEGATIVE_PROMPT = "score_5, score_4, score_3,lowres, worst quality, low quality, blurry, jpeg artifacts,bad anatomy, bad hands, extra fingers, missing fingers,text, logo, watermark, signature, username,cropped, out of frame"
-#GEN_IMAGE_NEGATIVE_PROMPT = "blurry, low quality, bad anatomy, disfigured, deformed, bad hands, missing fingers, extra fingers, worst quality, jpeg artifacts, signature, watermark, text, bad eyes, grotesque, sketchy, logo, rough, incomplete, disgusting, distorted, deformed face, poorly drawn, bad quality"
-GEN_IMAGE_STEPS = 4 # 30
-GEN_IMAGE_CFG = 1.0 # 10.0
-GEN_IMAGE_HEIGHT = 512 #1216
-GEN_IMAGE_WIDTH = 512 #832
+#GEN_IMAGE_POSITIVE_BASE = "score_9, score_8_up, score_7_up, score_6_up,"
+#GEN_IMAGE_NEGATIVE_PROMPT = "score_5, score_4, score_3,lowres, worst quality, low quality, blurry, jpeg artifacts,bad anatomy, bad hands, extra fingers, missing fingers,text, logo, watermark, signature, username,cropped, out of frame"
+
+GEN_IMAGE_POSITIVE_BASE = "masterpiece, best quality"
+GEN_IMAGE_NEGATIVE_PROMPT = "blurry, low quality, bad anatomy, disfigured, deformed, bad hands, missing fingers, extra fingers, worst quality, jpeg artifacts, signature, watermark, text, bad eyes, grotesque, sketchy, logo, rough, incomplete, disgusting, distorted, deformed face, poorly drawn, bad quality"
+
+GEN_IMAGE_STEPS = 30
+GEN_IMAGE_CFG = 8
+GEN_IMAGE_HEIGHT = 1216
+GEN_IMAGE_WIDTH = 832
 GEN_IMAGE_MAX_CHUNK_SIZE = 1
 GEN_IMAGE_OUTPUT_FORMAT = "JPEG"
 GEN_IMAGE_OUTPUT_EXTENSION = ".jpg"
@@ -160,6 +166,20 @@ async def generate_stable_diffusion_prompt(
 ) -> str:
     return await generate_prompt_from_llm(
         text,
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+
+
+async def generate_scene_script(
+    history: str,
+    direction: str,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
+) -> str:
+    return await generate_script_from_llm(
+        history,
+        direction,
         max_tokens=max_tokens,
         temperature=temperature,
     )

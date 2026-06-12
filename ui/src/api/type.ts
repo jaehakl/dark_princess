@@ -47,6 +47,17 @@ export type GenerateScenePromptResponse = {
   prompt: string;
 };
 
+export type GenerateSceneScriptRequest = {
+  history: string;
+  direction: string;
+  max_tokens?: number | null;
+  temperature?: number | null;
+};
+
+export type GenerateSceneScriptResponse = {
+  script: string;
+};
+
 export type GenerateSceneOptionRequest = {
   option_id?: number | null;
   scene_id: number;

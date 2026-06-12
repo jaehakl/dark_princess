@@ -56,6 +56,17 @@ class GenerateScenePromptResponseBase(BaseModel):
     prompt: str
 
 
+class GenerateSceneScriptRequestBase(BaseModel):
+    history: str
+    direction: str
+    max_tokens: Optional[int] = None
+    temperature: Optional[float] = None
+
+
+class GenerateSceneScriptResponseBase(BaseModel):
+    script: str
+
+
 class GenerateSceneOptionRequestBase(BaseModel):
     option_id: Optional[int] = None
     scene_id: int

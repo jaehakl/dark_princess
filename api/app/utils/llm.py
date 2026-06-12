@@ -23,8 +23,15 @@ PROMPT_LLM_MAX_TEMPERATURE = 2.0
 STABLE_DIFFUSION_PROMPT_SYSTEM_MESSAGE = (
     "You convert scene descriptions into Stable Diffusion positive prompts. "
     "Return only valid JSON with one string field named prompt. "
-    "The prompt must be English comma-separated visual tags or short phrases. "
+    "The prompt must be English comma-separated visual tags."
     "Do not include markdown, explanations, negative prompt terms, score tags, or rating tags."
+)
+SCENE_SCRIPT_SYSTEM_MESSAGE = (
+    "You are a Korean visual novel/game scenario writer. "
+    "Continue the story in natural Korean text suitable for a scene script textarea. "
+    "Return only valid JSON with one string field named script. "
+    "Write only the next scenario body. "
+    "Do not include markdown, explanations, choices, image prompts, titles, or metadata."
 )
 
 _prompt_llm_lock = asyncio.Lock()
@@ -59,44 +66,24 @@ async def generate_stable_diffusion_prompt(
             detail=f"text must be {PROMPT_LLM_MAX_SOURCE_TEXT_LENGTH} characters or fewer",
         )
 
-    raw_output = (
-        await generate_prompt_with_llm(
-            [
-                {"role": "system", "content": STABLE_DIFFUSION_PROMPT_SYSTEM_MESSAGE},
-                {
-                    "role": "user",
-                    "content": f"Scene description:\n{scene_text}\n\nReturn JSON now.",
-                },
-            ],
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
-    ).strip()
-    if not raw_output:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="prompt LLM returned empty output",
-        )
+    raw_output = await generate_prompt_with_llm(
+        [
+            {"role": "system", "content": STABLE_DIFFUSION_PROMPT_SYSTEM_MESSAGE},
+            {
+                "role": "user",
+                "content": f"Scene description:\n{scene_text}\n\nReturn JSON now.",
+            },
+        ],
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+    payload = _parse_llm_json_object(
+        raw_output,
+        empty_detail="prompt LLM returned empty output",
+        invalid_detail="prompt LLM returned invalid JSON",
+    )
 
-    try:
-        payload = json.loads(raw_output)
-    except json.JSONDecodeError as exc:
-        json_start = raw_output.find("{")
-        json_end = raw_output.rfind("}")
-        if json_start < 0 or json_end <= json_start:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="prompt LLM returned invalid JSON",
-            ) from exc
-        try:
-            payload = json.loads(raw_output[json_start:json_end + 1])
-        except json.JSONDecodeError as nested_exc:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="prompt LLM returned invalid JSON",
-            ) from nested_exc
-
-    prompt = payload.get("prompt") if isinstance(payload, dict) else None
+    prompt = payload.get("prompt")
     if not isinstance(prompt, str) or not prompt.strip():
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -107,6 +94,66 @@ async def generate_stable_diffusion_prompt(
         if prompt.lower().startswith(prefix):
             prompt = prompt[len(prefix):].strip()
     return prompt
+
+
+async def generate_scene_script(
+    history: str,
+    direction: str,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
+) -> str:
+    history_text = history.strip()
+    direction_text = direction.strip()
+    if not history_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="history is required")
+    if not direction_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="direction is required")
+
+    raw_output = await generate_prompt_with_llm(
+        [
+            {"role": "system", "content": SCENE_SCRIPT_SYSTEM_MESSAGE},
+            {
+                "role": "user",
+                "content": (
+                    "Story so far:\n"
+                    f"{history_text}\n\n"
+                    "Direction for the next scene:\n"
+                    f"{direction_text}\n\n"
+                    "Return JSON now."
+                ),
+            },
+        ],
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+    payload = _parse_llm_json_object(
+        raw_output,
+        empty_detail="script LLM returned empty output",
+        invalid_detail="script LLM returned invalid JSON",
+    )
+
+    script = payload.get("script")
+    if not isinstance(script, str) or not script.strip():
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="script LLM returned empty script",
+        )
+
+    script = script.replace("\r\n", "\n").replace("\r", "\n").strip()
+    if script.startswith("```"):
+        lines = script.splitlines()
+        if lines:
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        script = "\n".join(lines).strip()
+    script = script.strip("\"'`").strip()
+    if not script:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="script LLM returned empty script",
+        )
+    return script
 
 
 async def generate_prompt_with_llm(
@@ -190,6 +237,38 @@ def reset_llm_runtime_for_tests() -> None:
 
     _prompt_llm_model_key = None
     _prompt_llm = None
+
+
+def _parse_llm_json_object(
+    raw_output: str,
+    empty_detail: str,
+    invalid_detail: str,
+) -> dict[str, Any]:
+    raw_output = raw_output.strip()
+    if not raw_output:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=empty_detail)
+
+    try:
+        payload = json.loads(raw_output)
+    except json.JSONDecodeError as exc:
+        json_start = raw_output.find("{")
+        json_end = raw_output.rfind("}")
+        if json_start < 0 or json_end <= json_start:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=invalid_detail,
+            ) from exc
+        try:
+            payload = json.loads(raw_output[json_start:json_end + 1])
+        except json.JSONDecodeError as nested_exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=invalid_detail,
+            ) from nested_exc
+
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=invalid_detail)
+    return payload
 
 
 def _generate_prompt_with_llm_locked(

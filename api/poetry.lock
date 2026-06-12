@@ -604,7 +604,13 @@ optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "llama_cpp_python-0.3.28.tar.gz", hash = "sha256:958227b394f413425d6039952096daa0b8b98328c6b99d652862aec775f1672d"},
+    {file = "llama_cpp_python-0.3.28-py3-none-linux_riscv64.whl", hash = "sha256:64f75ad83430fc8e8d0fbee7ad4b07960d7dc58180b1edb1192785f2a108a985"},
+    {file = "llama_cpp_python-0.3.28-py3-none-macosx_11_0_arm64.whl", hash = "sha256:ae3ed7a7d1c7f9949d912fee27d7186611f560a69f26906bdf4d78776d2e47fd"},
+    {file = "llama_cpp_python-0.3.28-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:bcd6c5c9c8c4c1d4b23ba7cf96c922c2753d8189aae330eed71859cf943cd84e"},
+    {file = "llama_cpp_python-0.3.28-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:f35fa93ebd4ec99bb03251e97fae73719b712f8ab865042caf0edfc95808784d"},
+    {file = "llama_cpp_python-0.3.28-py3-none-musllinux_1_2_aarch64.whl", hash = "sha256:9521f00aaf8252eb1411952803a2afd1e1e6089d9b08c3766b722f2968ca6b5e"},
+    {file = "llama_cpp_python-0.3.28-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:5c6dc2b4fcab8fffbe9fc868148d12146d7a0367ddece372047ed8b36eb48c51"},
+    {file = "llama_cpp_python-0.3.28-py3-none-win_amd64.whl", hash = "sha256:22baaf0b2bf19278c66d77e35770c3442f60a3e7b1efc44770eb2496aedb73e0"},
 ]
 
 [package.dependencies]
@@ -618,6 +624,11 @@ all = ["llama_cpp_python[dev,server,test]"]
 dev = ["httpx (>=0.24.1)", "mkdocs (>=1.4.3)", "mkdocs-material (>=9.1.18)", "mkdocstrings[python] (>=0.22.0)", "pytest (>=7.4.0)", "ruff (>=0.15.7)", "twine (>=4.0.2)"]
 server = ["PyYAML (>=5.1)", "fastapi (>=0.100.0)", "pydantic-settings (>=2.0.1)", "sse-starlette (>=1.6.1)", "starlette-context (>=0.3.6,<0.4)", "uvicorn (>=0.22.0)"]
 test = ["fastapi (>=0.100.0)", "httpx (>=0.24.1)", "huggingface-hub (>=0.23.0)", "pydantic-settings (>=2.0.1)", "pytest (>=7.4.0)", "scipy (>=1.10)", "sse-starlette (>=1.6.1)", "starlette-context (>=0.3.6,<0.4)"]
+
+[package.source]
+type = "legacy"
+url = "https://abetlen.github.io/llama-cpp-python/whl/cpu"
+reference = "llama-cpp-python-cpu"
 
 [[package]]
 name = "markupsafe"
@@ -2345,4 +2356,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.15"
-content-hash = "1552c7a4f259cc9ba758bdf517b6c276a3faa58f11bf598ee44114192eb50a46"
+content-hash = "92fd8753271edf640a9df192a014264f818978c452f26f9b48e29b9745ef7a3c"

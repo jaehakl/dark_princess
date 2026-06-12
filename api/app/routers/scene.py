@@ -8,6 +8,8 @@ from models import (
     GenerateScenePromptRequestBase,
     GenerateScenePromptResponseBase,
     GenerateSceneRequestBase,
+    GenerateSceneScriptRequestBase,
+    GenerateSceneScriptResponseBase,
     GetListRequestBase,
     GetListResponseBase,
     RecommendPromptItemBase,
@@ -16,7 +18,13 @@ from models import (
     UpdateSceneContextRequestBase,
     UpsertResponseBase,
 )
-from service.scene import generate_scene, generate_stable_diffusion_prompt, recommend_prompt, update_scene_context
+from service.scene import (
+    generate_scene,
+    generate_scene_script,
+    generate_stable_diffusion_prompt,
+    recommend_prompt,
+    update_scene_context,
+)
 from utils.crud_helpers import CrudSpec, delete_items, get_list_response, upsert_items
 
 router = APIRouter(prefix="/scene", tags=["scene"])
@@ -71,6 +79,20 @@ async def api_generate_prompt(
     return GenerateScenePromptResponseBase(
         prompt=await generate_stable_diffusion_prompt(
             request.text,
+            max_tokens=request.max_tokens,
+            temperature=request.temperature,
+        ),
+    )
+
+
+@router.post("/generate-script", response_model=GenerateSceneScriptResponseBase)
+async def api_generate_script(
+    request: GenerateSceneScriptRequestBase,
+):
+    return GenerateSceneScriptResponseBase(
+        script=await generate_scene_script(
+            request.history,
+            request.direction,
             max_tokens=request.max_tokens,
             temperature=request.temperature,
         ),
