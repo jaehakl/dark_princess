@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+import builtins
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,6 +17,7 @@ from initserver import scene_script_to_text
 from models import AdjustSelectionModelRequestBase, GenerateSceneRequestBase, UpdateSceneContextRequestBase
 from service import scene as scene_service
 from service import selection_model
+from utils import llm
 from utils.vector import VECTOR_DIMENSION
 
 
@@ -282,6 +284,59 @@ class SelectionModelAdjustTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(db.committed)
         self.assertEqual(current_status.context_embedding, make_embedding(1.45))
 
+    async def test_recommend_prompt_rejects_empty_text(self) -> None:
+        with self.assertRaises(HTTPException) as raised:
+            await scene_service.recommend_prompt(FakeDb({}), "  ")
+
+        self.assertEqual(raised.exception.status_code, 400)
+
+    async def test_recommend_prompt_scores_words_by_scene_distance_and_frequency(self) -> None:
+        query_embedding = [0.0] * VECTOR_DIMENSION
+        query_embedding[0] = 1.0
+        near_embedding = [0.0] * VECTOR_DIMENSION
+        near_embedding[0] = 1.0
+        far_embedding = [0.0] * VECTOR_DIMENSION
+        far_embedding[1] = 1.0
+        scenes = [
+            Scene(id=1, prompt="apple, banana", embedding=near_embedding),
+            Scene(id=2, prompt="banana, carrot", embedding=far_embedding),
+            Scene(id=3, prompt="ghost", embedding=None),
+        ]
+        db = FakeDb({}, execute_items=scenes)
+
+        with patch.object(scene_service, "encode_scene_text", return_value=query_embedding):
+            result = await scene_service.recommend_prompt(db, " heroine ")
+
+        self.assertEqual([item.word for item in result], ["apple", "banana", "carrot"])
+        scores = {item.word: item.score for item in result}
+        self.assertGreater(scores["apple"], scores["banana"])
+        self.assertGreater(scores["banana"], scores["carrot"])
+
+    async def test_generate_stable_diffusion_prompt_rejects_empty_text(self) -> None:
+        with self.assertRaises(HTTPException) as raised:
+            await llm.generate_stable_diffusion_prompt("  ")
+
+        self.assertEqual(raised.exception.status_code, 400)
+
+    async def test_generate_stable_diffusion_prompt_returns_prompt_from_json(self) -> None:
+        with patch.object(
+            llm,
+            "generate_prompt_with_llm",
+            return_value='{"prompt": "dark princess, moonlit castle, cinematic lighting"}',
+        ):
+            result = await llm.generate_stable_diffusion_prompt("달빛 아래 성에 선 공주")
+
+        self.assertEqual(result, "dark princess, moonlit castle, cinematic lighting")
+
+    async def test_generate_stable_diffusion_prompt_rejects_bad_llm_output(self) -> None:
+        for raw_output in ("", "not json", '{"prompt": ""}', '{"prompt": 123}', '["prompt"]'):
+            with self.subTest(raw_output=raw_output):
+                with patch.object(llm, "generate_prompt_with_llm", return_value=raw_output):
+                    with self.assertRaises(HTTPException) as raised:
+                        await llm.generate_stable_diffusion_prompt("장면")
+
+                self.assertEqual(raised.exception.status_code, 502)
+
     async def test_generate_scene_without_image_keeps_existing_image_url(self) -> None:
         scene = Scene(
             id=1,
@@ -333,6 +388,39 @@ class SelectionModelAdjustTests(unittest.IsolatedAsyncioTestCase):
         raw_script = '["첫 줄", {"text": "둘째 줄\\n셋째 줄"}, {"extra": "넷째 줄"}]'
 
         self.assertEqual(scene_script_to_text(raw_script), "첫 줄\n둘째 줄\n셋째 줄\n넷째 줄")
+
+    def test_reset_llm_runtime_for_tests_clears_prompt_llm_cache(self) -> None:
+        llm._prompt_llm_model_key = ("path", "repo", "file", 1, 0, 0)
+        llm._prompt_llm = object()
+
+        llm.reset_llm_runtime_for_tests()
+
+        self.assertIsNone(llm._prompt_llm_model_key)
+        self.assertIsNone(llm._prompt_llm)
+
+    def test_get_prompt_llm_reports_missing_llama_cpp_dependency(self) -> None:
+        config = llm.build_prompt_llm_config()
+
+        with patch.dict("sys.modules", {"llama_cpp": None}):
+            with self.assertRaises(HTTPException) as raised:
+                llm._get_prompt_llm_locked(config)
+
+        self.assertEqual(raised.exception.status_code, 503)
+
+    def test_get_prompt_llm_reports_broken_llama_cpp_native_library(self) -> None:
+        config = llm.build_prompt_llm_config()
+        original_import = builtins.__import__
+
+        def fail_llama_cpp_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "llama_cpp":
+                raise RuntimeError("failed to load llama.dll")
+            return original_import(name, globals, locals, fromlist, level)
+
+        with patch.object(builtins, "__import__", fail_llama_cpp_import):
+            with self.assertRaises(HTTPException) as raised:
+                llm._get_prompt_llm_locked(config)
+
+        self.assertEqual(raised.exception.status_code, 503)
 
 
 def run_train_model_artifact_with_fake_torch(learn_rate: float) -> dict[str, object]:

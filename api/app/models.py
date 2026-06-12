@@ -46,6 +46,16 @@ class GenerateSceneRequestBase(BaseModel):
     generate_image: bool = True
 
 
+class GenerateScenePromptRequestBase(BaseModel):
+    text: str
+    max_tokens: Optional[int] = None
+    temperature: Optional[float] = None
+
+
+class GenerateScenePromptResponseBase(BaseModel):
+    prompt: str
+
+
 class GenerateSceneOptionRequestBase(BaseModel):
     option_id: Optional[int] = None
     scene_id: int
@@ -56,6 +66,11 @@ class GenerateSelectionModelRequestBase(BaseModel):
     model_id: Optional[int] = None
     name: str
     parameters: Dict[str, Any] = Field(default_factory=dict)
+
+
+class RecommendPromptItemBase(BaseModel):
+    word: str
+    score: float
 
 
 class AdjustSelectionModelRequestBase(NextSceneRequestBase):

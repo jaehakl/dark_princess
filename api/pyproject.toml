@@ -20,6 +20,7 @@ torch = { version = "2.7.0+cu128", source = "pytorch-gpu" }
 torchvision = { version = "0.22.0+cu128", source = "pytorch-gpu" }
 diffusers = "^0.35.1"
 sentence-transformers = "^5.1.0"
+llama-cpp-python = "^0.3.28"
 
 [build-system]
 requires = ["poetry-core"]

@@ -10,24 +10,28 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import Scene, Status
-from models import GenerateSceneRequestBase, UpdateSceneContextRequestBase
+from models import GenerateSceneRequestBase, RecommendPromptItemBase, UpdateSceneContextRequestBase
 from settings import API_ROOT, settings
+from service.selection_model import cosine_distance
 from utils.local_storage import build_object_key, delete_object, object_key_from_public_url, public_file_url, upload_fileobj
+from utils.llm import generate_stable_diffusion_prompt as generate_prompt_from_llm
 from utils.model_runtime import encode_scene_text, generate_images_batch
 from utils.vector import VECTOR_DIMENSION, validate_embedding
 
-
-GEN_IMAGE_NEGATIVE_PROMPT = "blurry, low quality, bad anatomy, disfigured, deformed, bad hands, missing fingers, extra fingers, worst quality, jpeg artifacts, signature, watermark, text, bad eyes, grotesque, sketchy, logo, rough, incomplete, disgusting, distorted, deformed face, poorly drawn, bad quality"
-GEN_IMAGE_STEPS = 30
-GEN_IMAGE_CFG = 10.0
-GEN_IMAGE_HEIGHT = 1216
-GEN_IMAGE_WIDTH = 832
+GEN_IMAGE_POSITIVE_BASE = "score_9, score_8_up, score_7_up, score_6_up,"
+GEN_IMAGE_NEGATIVE_PROMPT = "score_5, score_4, score_3,lowres, worst quality, low quality, blurry, jpeg artifacts,bad anatomy, bad hands, extra fingers, missing fingers,text, logo, watermark, signature, username,cropped, out of frame"
+#GEN_IMAGE_NEGATIVE_PROMPT = "blurry, low quality, bad anatomy, disfigured, deformed, bad hands, missing fingers, extra fingers, worst quality, jpeg artifacts, signature, watermark, text, bad eyes, grotesque, sketchy, logo, rough, incomplete, disgusting, distorted, deformed face, poorly drawn, bad quality"
+GEN_IMAGE_STEPS = 4 # 30
+GEN_IMAGE_CFG = 1.0 # 10.0
+GEN_IMAGE_HEIGHT = 512 #1216
+GEN_IMAGE_WIDTH = 512 #832
 GEN_IMAGE_MAX_CHUNK_SIZE = 1
 GEN_IMAGE_OUTPUT_FORMAT = "JPEG"
 GEN_IMAGE_OUTPUT_EXTENSION = ".jpg"
 GEN_IMAGE_OUTPUT_QUALITY = 85
 GEN_IMAGE_SEED_MIN = 0
 GEN_IMAGE_SEED_MAX = 1_000_000
+RECOMMEND_PROMPT_DISTANCE_EPSILON = 1e-6
 
 
 async def generate_scene(
@@ -100,6 +104,67 @@ async def make_scene_embedding(prompt: str, script: str) -> list[float]:
     return embedding
 
 
+async def recommend_prompt(db: AsyncSession, text: str) -> list[RecommendPromptItemBase]:
+    prompt_text = text.strip()
+    if not prompt_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text is required")
+
+    model_name = settings.SCENE_EMBEDDING_MODEL_NAME.strip()
+    if not model_name:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="scene embedding model name is required",
+        )
+
+    text_embedding = await encode_scene_text(model_name, f"query: {prompt_text}")
+    if len(text_embedding) != VECTOR_DIMENSION:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"scene embedding model must return {VECTOR_DIMENSION} dimensions",
+        )
+
+    scenes = (await db.execute(select(Scene))).scalars().all()
+    score_sums: dict[str, float] = {}
+    frequencies: dict[str, int] = {}
+    for scene in scenes:
+        try:
+            scene_embedding = validate_embedding(scene.embedding, "scene.embedding")
+        except HTTPException:
+            continue
+
+        distance = cosine_distance(text_embedding, scene_embedding)
+        if distance is None:
+            continue
+
+        scene_weight = 1 / (distance + RECOMMEND_PROMPT_DISTANCE_EPSILON)
+        for raw_word in scene.prompt.split(","):
+            word = raw_word.strip()
+            if not word:
+                continue
+            score_sums[word] = score_sums.get(word, 0.0) + scene_weight
+            frequencies[word] = frequencies.get(word, 0) + 1
+
+    return [
+        RecommendPromptItemBase(word=word, score=score_sums[word] / frequencies[word])
+        for word in sorted(
+            score_sums,
+            key=lambda item: (-(score_sums[item] / frequencies[item]), item),
+        )
+    ]
+
+
+async def generate_stable_diffusion_prompt(
+    text: str,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
+) -> str:
+    return await generate_prompt_from_llm(
+        text,
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+
+
 def normalize_scene_script(script: str) -> str:
     return script.replace("\r\n", "\n").replace("\r", "\n")
 
@@ -130,7 +195,7 @@ async def generate_scene_image(prompt: str) -> tuple[str, str]:
     seed = random.randint(GEN_IMAGE_SEED_MIN, GEN_IMAGE_SEED_MAX)
     images, _seeds = await generate_images_batch(
         str(model_path),
-        [prompt],
+        [GEN_IMAGE_POSITIVE_BASE+prompt],
         [GEN_IMAGE_NEGATIVE_PROMPT],
         [seed],
         GEN_IMAGE_STEPS,

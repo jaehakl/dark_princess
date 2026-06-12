@@ -43,6 +43,10 @@ export type GenerateSceneRequest = {
   generate_image?: boolean;
 };
 
+export type GenerateScenePromptResponse = {
+  prompt: string;
+};
+
 export type GenerateSceneOptionRequest = {
   option_id?: number | null;
   scene_id: number;

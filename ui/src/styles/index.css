@@ -765,6 +765,10 @@ select.edit-control option {
   text-align: left;
 }
 
+.vn-dialogue-box-clickable {
+  cursor: pointer;
+}
+
 .vn-dialogue-lines {
   display: grid;
   width: 100%;

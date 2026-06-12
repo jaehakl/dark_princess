@@ -4,6 +4,7 @@ import { API_URL, request } from './http';
 import type {
   AdjustSelectionModelRequest,
   GenerateSceneOptionRequest,
+  GenerateScenePromptResponse,
   GenerateSceneRequest,
   GenerateSelectionModelRequest,
   GetListRequest,
@@ -34,6 +35,8 @@ export const dbTables = {
     upsertRow: (items: unknown) => request<UpsertResponse[]>('post', '/scene/upsert', items),
     generateScene: (item: GenerateSceneRequest) =>
       request<SceneRecord>('post', '/scene/generate', item),
+    generatePrompt: (text: string) =>
+      request<GenerateScenePromptResponse>('post', '/scene/generate-prompt', { text }),
     updateContext: (item: UpdateSceneContextRequest) =>
       request<StatusRecord>('post', '/scene/update-context', item),
     deleteRows: (ids: number[]) => request<null>('delete', '/scene/', ids).then(() => undefined),

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { dbTables } from '../api/api';
-import type { SceneRecord } from '../api/type';
+import type { SceneOptionRecord, SceneRecord } from '../api/type';
 
 const STATUS_CHANGE_FIELDS = [
   { key: 'cash', label: '현금' },
@@ -15,13 +15,13 @@ const STATUS_CHANGE_FIELDS = [
 
 type StatusChangeKey = (typeof STATUS_CHANGE_FIELDS)[number]['key'];
 type StatusChangeValues = Record<StatusChangeKey, string>;
-type SaveMode = 'text' | 'image' | 'create';
+type SaveMode = 'create' | 'text' | 'image';
 
-type SceneEditorModalProps = {
-  scene: SceneRecord | null;
+type SceneOptionSceneEditorModalProps = {
+  sourceScene: SceneRecord;
   onClose: () => void;
-  onSaved: (scene: SceneRecord, editedSceneId: number | null) => void;
-  onDeleted: (sceneId: number) => void;
+  onCreated: (option: SceneOptionRecord, scene: SceneRecord) => Promise<void> | void;
+  onSceneUpdated: (scene: SceneRecord) => Promise<void> | void;
 };
 
 function getErrorMessage(error: unknown) {
@@ -41,46 +41,49 @@ function statusChangeToValues(statusChange: SceneRecord['status_change'] | undef
   }, {} as StatusChangeValues);
 }
 
-export function SceneEditorModal({
-  scene,
+function buildStatusChange(values: StatusChangeValues): Record<string, number> | string {
+  const statusChange: Record<string, number> = { turn: 1 };
+  for (const field of STATUS_CHANGE_FIELDS) {
+    const rawValue = values[field.key].trim();
+    const parsedValue = rawValue === '' ? 0 : Number(rawValue);
+    if (!Number.isInteger(parsedValue) || !Number.isFinite(parsedValue)) {
+      return `${field.label} 변화량은 정수로 입력해 주세요.`;
+    }
+    statusChange[field.key] = parsedValue;
+  }
+  return statusChange;
+}
+
+export function SceneOptionSceneEditorModal({
+  sourceScene,
   onClose,
-  onSaved,
-  onDeleted,
-}: SceneEditorModalProps) {
-  const [savingMode, setSavingMode] = useState<SaveMode | null>(null);
-  const [prompt, setPrompt] = useState(scene?.prompt ?? '');
-  const [script, setScript] = useState(scene?.script ?? '');
+  onCreated,
+  onSceneUpdated,
+}: SceneOptionSceneEditorModalProps) {
+  const [createdOption, setCreatedOption] = useState<SceneOptionRecord | null>(null);
+  const [createdScene, setCreatedScene] = useState<SceneRecord | null>(null);
+  const [optionText, setOptionText] = useState('');
+  const [prompt, setPrompt] = useState('');
+  const [script, setScript] = useState('');
   const [statusChangeValues, setStatusChangeValues] = useState<StatusChangeValues>(() =>
-    statusChangeToValues(scene?.status_change),
+    statusChangeToValues(undefined),
   );
-  const [imageUrl, setImageUrl] = useState(scene?.image_url ?? null);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [savingMode, setSavingMode] = useState<SaveMode | null>(null);
   const [isRecommendingPrompt, setIsRecommendingPrompt] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const editedSceneId = scene?.id ?? null;
-  const canSaveWithoutCreate = Boolean(scene?.id);
-  const isInputDisabled = Boolean(savingMode) || isDeleting || isRecommendingPrompt;
-  const canDelete = Boolean(editedSceneId) && !isInputDisabled;
-  const canSave = prompt.trim().length > 0 && !isInputDisabled;
+  const editedSceneId = createdScene?.id ?? null;
+  const isCreated = Boolean(createdOption?.id && editedSceneId);
+  const isInputDisabled = Boolean(savingMode) || isRecommendingPrompt;
+  const canCreate = optionText.trim().length > 0 && prompt.trim().length > 0 && !isCreated && !isInputDisabled;
+  const canSaveScene = prompt.trim().length > 0 && isCreated && !isInputDisabled;
   const canRecommendPrompt = script.trim().length > 0 && !isInputDisabled;
-  const isGeneratingImage = savingMode === 'image' || savingMode === 'create';
-
+  const isGeneratingImage = savingMode === 'create' || savingMode === 'image';
   const modalTitle = useMemo(
-    () => (editedSceneId ? `Scene #${editedSceneId} 편집` : '새 Scene 생성'),
-    [editedSceneId],
+    () => (editedSceneId ? `Option #${createdOption?.id} -> Scene #${editedSceneId}` : '새 Option + Scene 생성'),
+    [createdOption?.id, editedSceneId],
   );
-
-  useEffect(() => {
-    setPrompt(scene?.prompt ?? '');
-    setScript(scene?.script ?? '');
-    setStatusChangeValues(statusChangeToValues(scene?.status_change));
-    setImageUrl(scene?.image_url ?? null);
-    setError(null);
-    setSavingMode(null);
-    setIsDeleting(false);
-    setIsRecommendingPrompt(false);
-  }, [scene]);
 
   async function recommendPromptFromScript() {
     const text = script.trim();
@@ -108,32 +111,37 @@ export function SceneEditorModal({
   }
 
   async function saveScene(mode: SaveMode) {
+    const sourceSceneId = sourceScene.id ?? null;
     const trimmedPrompt = prompt.trim();
+    const trimmedOptionText = optionText.trim();
     if (!trimmedPrompt) {
       setError('prompt를 입력해 주세요.');
       return;
     }
-    if (mode !== 'create' && !scene?.id) {
+    if (mode === 'create' && !trimmedOptionText) {
+      setError('option_text를 입력해 주세요.');
+      return;
+    }
+    if (mode === 'create' && !sourceSceneId) {
+      setError('Source Scene ID를 확인할 수 없습니다.');
+      return;
+    }
+    if (mode !== 'create' && !createdScene?.id) {
       setError('수정할 scene_id가 없습니다.');
       return;
     }
 
-    const statusChange: Record<string, number> = { turn: 1 };
-    for (const field of STATUS_CHANGE_FIELDS) {
-      const rawValue = statusChangeValues[field.key].trim();
-      const parsedValue = rawValue === '' ? 0 : Number(rawValue);
-      if (!Number.isInteger(parsedValue) || !Number.isFinite(parsedValue)) {
-        setError(`${field.label} 변화량은 정수로 입력해 주세요.`);
-        return;
-      }
-      statusChange[field.key] = parsedValue;
+    const statusChange = buildStatusChange(statusChangeValues);
+    if (typeof statusChange === 'string') {
+      setError(statusChange);
+      return;
     }
 
     setSavingMode(mode);
     setError(null);
     try {
       const savedScene = await dbTables.Scene.generateScene({
-        scene_id: mode === 'create' ? null : scene?.id ?? null,
+        scene_id: mode === 'create' ? null : createdScene?.id ?? null,
         prompt: trimmedPrompt,
         script,
         status_change: statusChange,
@@ -143,7 +151,22 @@ export function SceneEditorModal({
       setScript(savedScene.script);
       setStatusChangeValues(statusChangeToValues(savedScene.status_change));
       setImageUrl(savedScene.image_url ?? null);
-      onSaved(savedScene, mode === 'create' ? null : scene?.id ?? null);
+      setCreatedScene(savedScene);
+
+      if (mode === 'create') {
+        if (!sourceSceneId) {
+          throw new Error('Source Scene ID를 확인할 수 없습니다.');
+        }
+        const savedOption = await dbTables.SceneOption.generateOption({
+          option_id: null,
+          scene_id: sourceSceneId,
+          option_text: trimmedOptionText,
+        });
+        setCreatedOption(savedOption);
+        await onCreated(savedOption, savedScene);
+      } else {
+        await onSceneUpdated(savedScene);
+      }
     } catch (saveError) {
       setError(getErrorMessage(saveError));
     } finally {
@@ -151,43 +174,19 @@ export function SceneEditorModal({
     }
   }
 
-  async function deleteScene() {
-    if (!editedSceneId) {
-      return;
-    }
-
-    const shouldDelete = window.confirm(
-      `Scene #${editedSceneId}을 삭제할까요? 연결된 옵션도 함께 삭제됩니다.`,
-    );
-    if (!shouldDelete) {
-      return;
-    }
-
-    setIsDeleting(true);
-    setError(null);
-    try {
-      await dbTables.Scene.deleteRows([editedSceneId]);
-      onDeleted(editedSceneId);
-    } catch (deleteError) {
-      setError(getErrorMessage(deleteError));
-    } finally {
-      setIsDeleting(false);
-    }
-  }
-
   return (
     <div className="vn-modal-backdrop" role="presentation">
       <section
-        className="vn-panel vn-scene-editor-modal"
+        className="vn-panel vn-scene-editor-modal vn-scene-option-scene-modal"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="scene-editor-title"
+        aria-labelledby="scene-option-scene-editor-title"
       >
         <div className="vn-panel-header">
           <div className="min-w-0">
-            <p className="vn-subtitle">Scene generation</p>
+            <p className="vn-subtitle">Option + Scene generation</p>
             <h2
-              id="scene-editor-title"
+              id="scene-option-scene-editor-title"
               className="truncate text-lg font-semibold text-[#fff7ef]"
             >
               {modalTitle}
@@ -205,16 +204,31 @@ export function SceneEditorModal({
 
         <div className="vn-section-body vn-scene-editor-body">
           <div className="vn-scene-editor-meta">
+            <span className="text-xs font-semibold text-[var(--app-muted)]">
+              Source Scene #{sourceScene.id ?? '-'}
+            </span>
             <span className="ml-auto text-xs text-[var(--app-muted)]">
               {editedSceneId ? `scene_id ${editedSceneId}` : 'scene_id null'}
             </span>
           </div>
 
+          <label className="block space-y-1">
+            <span className="edit-label edit-label--required">
+              <span className="edit-label__text">option_text</span>
+            </span>
+            <textarea
+              value={optionText}
+              onChange={(event) => setOptionText(event.target.value)}
+              className="edit-control min-h-20 w-full resize-y px-3 py-2 text-sm"
+              disabled={isInputDisabled || isCreated}
+            />
+          </label>
+
           <div className="vn-scene-editor-grid">
             <div className="vn-scene-editor-fields">
               <div className="block space-y-1">
                 <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                  <label htmlFor="scene-editor-prompt" className="edit-label edit-label--required">
+                  <label htmlFor="scene-option-scene-prompt" className="edit-label edit-label--required">
                     <span className="edit-label__text">prompt</span>
                   </label>
                   <button
@@ -228,7 +242,7 @@ export function SceneEditorModal({
                   </button>
                 </div>
                 <textarea
-                  id="scene-editor-prompt"
+                  id="scene-option-scene-prompt"
                   value={prompt}
                   onChange={(event) => setPrompt(event.target.value)}
                   className="edit-control min-h-20 w-full resize-y px-3 py-2 text-sm"
@@ -299,19 +313,7 @@ export function SceneEditorModal({
           ) : null}
 
           <div className="vn-modal-footer">
-            <div>
-              {editedSceneId ? (
-                <button
-                  type="button"
-                  className="vn-danger-button inline-flex items-center gap-2 px-4 py-2 text-sm"
-                  onClick={() => void deleteScene()}
-                  disabled={!canDelete}
-                >
-                  {isDeleting ? <span className="vn-spinner" aria-hidden="true" /> : null}
-                  {isDeleting ? '삭제 중' : 'Scene 삭제'}
-                </button>
-              ) : null}
-            </div>
+            <div />
             <div className="vn-modal-footer-actions">
               <button
                 type="button"
@@ -319,13 +321,13 @@ export function SceneEditorModal({
                 onClick={onClose}
                 disabled={isInputDisabled}
               >
-                취소
+                닫기
               </button>
               <button
                 type="button"
                 className="vn-button inline-flex items-center gap-2 px-4 py-2 text-sm"
                 onClick={() => void saveScene('text')}
-                disabled={!canSave || !canSaveWithoutCreate}
+                disabled={!canSaveScene}
               >
                 {savingMode === 'text' ? <span className="vn-spinner" aria-hidden="true" /> : null}
                 {savingMode === 'text' ? '텍스트 저장 중' : '텍스트 저장'}
@@ -334,7 +336,7 @@ export function SceneEditorModal({
                 type="button"
                 className="vn-button inline-flex items-center gap-2 px-4 py-2 text-sm"
                 onClick={() => void saveScene('image')}
-                disabled={!canSave || !canSaveWithoutCreate}
+                disabled={!canSaveScene}
               >
                 {savingMode === 'image' ? <span className="vn-spinner" aria-hidden="true" /> : null}
                 {savingMode === 'image' ? '이미지 업데이트 중' : '이미지 업데이트'}
@@ -343,7 +345,7 @@ export function SceneEditorModal({
                 type="button"
                 className="vn-button vn-button-primary inline-flex items-center gap-2 px-4 py-2 text-sm"
                 onClick={() => void saveScene('create')}
-                disabled={!canSave}
+                disabled={!canCreate}
               >
                 {savingMode === 'create' ? <span className="vn-spinner" aria-hidden="true" /> : null}
                 {savingMode === 'create' ? 'Scene 생성 중' : '새 Scene 생성'}

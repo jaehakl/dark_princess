@@ -170,6 +170,18 @@ def _get_image_pipe_locked(ckpt_path: str, torch: Any) -> Any:
         _clear_cuda_cache(torch)
 
     if _image_pipe is None:
+        from diffusers import StableDiffusionPipeline, LCMScheduler
+
+        pipe = StableDiffusionPipeline.from_single_file(
+            ckpt_path,
+            torch_dtype=torch.float16,
+            use_safetensors=True,
+            safety_checker=None,
+        )
+        pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
+        pipe.to("cuda")
+
+        '''
         from diffusers import StableDiffusionXLPipeline
 
         print(f"Loading Stable Diffusion checkpoint: {ckpt_path}", flush=True)
@@ -179,6 +191,8 @@ def _get_image_pipe_locked(ckpt_path: str, torch: Any) -> Any:
             use_safetensors=True,
         )
         pipe.to("cuda")
+        '''
+
         pipe.enable_attention_slicing()
         pipe.enable_vae_slicing()
         _image_pipe = pipe

@@ -5,15 +5,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import Scene, get_db
 from models import (
+    GenerateScenePromptRequestBase,
+    GenerateScenePromptResponseBase,
     GenerateSceneRequestBase,
     GetListRequestBase,
     GetListResponseBase,
+    RecommendPromptItemBase,
     SceneBase,
     StatusBase,
     UpdateSceneContextRequestBase,
     UpsertResponseBase,
 )
-from service.scene import generate_scene, update_scene_context
+from service.scene import generate_scene, generate_stable_diffusion_prompt, recommend_prompt, update_scene_context
 from utils.crud_helpers import CrudSpec, delete_items, get_list_response, upsert_items
 
 router = APIRouter(prefix="/scene", tags=["scene"])
@@ -50,6 +53,27 @@ async def api_generate_scene(
         image_url=scene.image_url,
         script=scene.script,
         status_change=scene.status_change,
+    )
+
+
+@router.post("/recommend-prompt", response_model=List[RecommendPromptItemBase])
+async def api_recommend_prompt(
+    text: str = Body(..., embed=True),
+    db: AsyncSession = Depends(get_db),
+):
+    return await recommend_prompt(db, text)
+
+
+@router.post("/generate-prompt", response_model=GenerateScenePromptResponseBase)
+async def api_generate_prompt(
+    request: GenerateScenePromptRequestBase,
+):
+    return GenerateScenePromptResponseBase(
+        prompt=await generate_stable_diffusion_prompt(
+            request.text,
+            max_tokens=request.max_tokens,
+            temperature=request.temperature,
+        ),
     )
 
 
