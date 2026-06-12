@@ -582,12 +582,6 @@ select.edit-control option {
   accent-color: var(--app-rose);
 }
 
-.vn-script-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.65rem;
-}
-
 .vn-spinner {
   width: 1rem;
   height: 1rem;
@@ -765,25 +759,21 @@ select.edit-control option {
     inset 0 1px 0 rgba(255, 255, 255, 0.14),
     0 18px 45px rgba(5, 0, 10, 0.34);
   color: #fff7ef;
-  font-size: clamp(1.05rem, 1.8vw, 1.35rem);
+  font-size: 1.05rem;
   font-weight: 700;
   line-height: 1.65;
   text-align: left;
 }
 
-.vn-dialogue-box:disabled {
-  cursor: default;
+.vn-dialogue-lines {
+  display: grid;
+  width: 100%;
+  gap: 0.75rem;
 }
 
-.vn-dialogue-cue {
-  position: absolute;
-  right: 1rem;
-  bottom: 0.75rem;
-  color: var(--app-accent);
-  font-size: 0.72rem;
-  font-weight: 900;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+.vn-dialogue-line {
+  margin: 0;
+  white-space: pre-wrap;
 }
 
 .vn-option-list {
@@ -883,10 +873,6 @@ select.edit-control option {
     grid-template-columns: 1fr;
   }
 
-  .vn-script-row {
-    flex-direction: column;
-  }
-
   .vn-option-row {
     grid-template-columns: 1fr;
   }
@@ -894,10 +880,6 @@ select.edit-control option {
   .vn-option-add-row {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .vn-script-row .vn-danger-button {
-    width: 100%;
   }
 
   .vn-status-grid {

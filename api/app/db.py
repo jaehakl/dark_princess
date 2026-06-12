@@ -67,7 +67,7 @@ class Scene(Base):
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
     image_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     embedding: Mapped[Optional[List[float]]] = mapped_column(JSON, nullable=True)
-    scripts: Mapped[dict | list] = mapped_column(JSON, nullable=False, default=list)
+    script: Mapped[str] = mapped_column(Text, nullable=False, default="")
     status_change: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
     scene_options: Mapped[List["SceneOption"]] = relationship(

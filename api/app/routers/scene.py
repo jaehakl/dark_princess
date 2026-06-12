@@ -48,7 +48,7 @@ async def api_generate_scene(
         id=scene.id,
         prompt=scene.prompt,
         image_url=scene.image_url,
-        scripts=scene.scripts,
+        script=scene.script,
         status_change=scene.status_change,
     )
 

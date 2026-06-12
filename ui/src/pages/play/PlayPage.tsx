@@ -55,42 +55,11 @@ function getErrorMessage(error: unknown) {
   return '요청에 실패했습니다.';
 }
 
-function stringifyScriptLine(value: unknown): string | null {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  if (typeof value === 'string') {
-    return value.trim() || null;
-  }
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
-  }
-  if (typeof value === 'object') {
-    const objectValue = value as Record<string, unknown>;
-    const speaker = objectValue.speaker ?? objectValue.name ?? objectValue.character;
-    const text = objectValue.text ?? objectValue.line ?? objectValue.content;
-    const textLine = stringifyScriptLine(text);
-    if (textLine && typeof speaker === 'string' && speaker.trim()) {
-      return `${speaker.trim()}: ${textLine}`;
-    }
-    if (textLine) {
-      return textLine;
-    }
-    return JSON.stringify(value);
-  }
-  return null;
-}
-
-function toScriptLines(scripts: SceneRecord['scripts']): string[] {
-  const rawLines = Array.isArray(scripts)
-    ? scripts
-    : Object.keys(scripts ?? {})
-        .sort()
-        .map((key) => scripts[key]);
-
-  return rawLines
-    .map((line) => stringifyScriptLine(line))
-    .filter((line): line is string => Boolean(line));
+function toScriptLines(script: string): string[] {
+  return script
+    .split(/\r\n|\r|\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
 function applyStatusChange(
@@ -131,7 +100,6 @@ export function PlayPage() {
   const [status, setStatus] = useState<StatusRecord | null>(null);
   const [scene, setScene] = useState<SceneRecord | null>(null);
   const [options, setOptions] = useState<SceneOptionRecord[]>([]);
-  const [scriptIndex, setScriptIndex] = useState(0);
   const [deltas, setDeltas] = useState<StatusDeltas>({});
   const [pendingTransition, setPendingTransition] = useState<PendingTransition | null>(null);
   const [editingOption, setEditingOption] = useState<SceneOptionRecord | null>(null);
@@ -146,11 +114,9 @@ export function PlayPage() {
   const [error, setError] = useState<string | null>(null);
 
   const scriptLines = useMemo(
-    () => (scene ? toScriptLines(scene.scripts) : []),
+    () => (scene ? toScriptLines(scene.script) : []),
     [scene],
   );
-  const isShowingOptions = scriptLines.length === 0 || scriptIndex >= scriptLines.length;
-  const currentLine = isShowingOptions ? null : scriptLines[scriptIndex];
   const canRerollScene =
     Boolean(pendingTransition && scene?.id === pendingTransition.targetSceneId && status?.id);
 
@@ -163,7 +129,6 @@ export function PlayPage() {
       return;
     }
     setScene(savedScene);
-    setScriptIndex(0);
     setPendingTransition(null);
   }, [savedScene, scene?.id]);
 
@@ -172,7 +137,6 @@ export function PlayPage() {
       return;
     }
     setScene(selectedScene);
-    setScriptIndex(0);
     setDeltas({});
     setPendingTransition(null);
     setError(null);
@@ -207,7 +171,6 @@ export function PlayPage() {
 
         const fallbackScene = sceneResponse.items[0] ?? null;
         setScene(fallbackScene);
-        setScriptIndex(0);
         setDeltas({});
         setPendingTransition(null);
         if (!fallbackScene) {
@@ -275,7 +238,6 @@ export function PlayPage() {
 
         setStatus(loadedStatus);
         setScene(loadedScene);
-        setScriptIndex(0);
         setDeltas({});
         setPendingTransition(null);
       } catch (loadError) {
@@ -336,13 +298,6 @@ export function PlayPage() {
       isActive = false;
     };
   }, [scene?.id, optionReloadKey]);
-
-  function advanceScript() {
-    if (isAdvancing || isShowingOptions) {
-      return;
-    }
-    setScriptIndex((current) => Math.min(current + 1, scriptLines.length));
-  }
 
   function openOptionEditor(option: SceneOptionRecord | null) {
     if (!scene?.id) {
@@ -447,7 +402,6 @@ export function PlayPage() {
       setDeltas(nextDeltas);
       setScene(nextScene);
       setCurrentScene(nextScene);
-      setScriptIndex(0);
       setPendingTransition({
         sourceSceneId: scene.id,
         sceneOptionId: option.id,
@@ -501,7 +455,6 @@ export function PlayPage() {
       setDeltas(nextDeltas);
       setScene(nextScene);
       setCurrentScene(nextScene);
-      setScriptIndex(0);
       setPendingTransition({
         ...pendingTransition,
         targetSceneId: nextScene.id,
@@ -549,7 +502,6 @@ export function PlayPage() {
       setDeltas(nextDeltas);
       setScene(replacementScene);
       setCurrentScene(replacementScene);
-      setScriptIndex(0);
       setPendingTransition({
         ...pendingTransition,
         targetSceneId: replacementScene.id,
@@ -686,27 +638,28 @@ export function PlayPage() {
         </aside>
 
         <section className="vn-panel vn-control-panel">
-          {isLoading || error || currentLine ? (
-            <button
-              type="button"
+          {isLoading || error || scriptLines.length > 0 ? (
+            <div
               className="vn-dialogue-box"
-              onClick={advanceScript}
-              disabled={isLoading || isAdvancing || isShowingOptions}
+              role={error ? 'alert' : undefined}
             >
               {isLoading ? (
                 <span>운명의 장면을 펼치는 중...</span>
               ) : error ? (
                 <span className="text-[#ff9ab8]">{error}</span>
-              ) : currentLine ? (
-                <span>{currentLine}</span>
+              ) : scriptLines.length > 0 ? (
+                <div className="vn-dialogue-lines">
+                  {scriptLines.map((line, index) => (
+                    <p key={`${index}-${line}`} className="vn-dialogue-line">
+                      {line}
+                    </p>
+                  ))}
+                </div>
               ) : null}
-              {!isShowingOptions && !error ? (
-                <span className="vn-dialogue-cue">계속</span>
-              ) : null}
-            </button>
+            </div>
           ) : null}
 
-          {isShowingOptions && !isLoading ? (
+          {!isLoading && !error ? (
             <div className="vn-option-list">
               {isLoadingOptions ? (
                 <p className="text-sm text-[var(--app-muted)]">선택지를 불러오는 중</p>

@@ -26,7 +26,7 @@ export const dbTables = {
       id: { label: 'ID', type: 'id' },
       prompt: { label: '프롬프트', type: 'text', required: true },
       image_url: { label: '이미지 URL', type: 'text' },
-      scripts: { label: '스크립트', type: 'dict-list' },
+      script: { label: '스크립트', type: 'text' },
       status_change: { label: '상태 변화', type: 'dict-list' },
     },
     listRows: (listRequest: GetListRequest) =>

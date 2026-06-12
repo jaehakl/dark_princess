@@ -27,36 +27,8 @@ function getErrorMessage(error: unknown) {
   return '요청에 실패했습니다.';
 }
 
-function stringifySceneValue(value: unknown): string {
-  if (value === null || value === undefined) {
-    return '';
-  }
-  if (typeof value === 'string') {
-    return value;
-  }
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => stringifySceneValue(item)).filter(Boolean).join(' ');
-  }
-  if (typeof value === 'object') {
-    const objectValue = value as Record<string, unknown>;
-    const knownText = objectValue.text ?? objectValue.line ?? objectValue.content;
-    if (typeof knownText === 'string') {
-      return knownText;
-    }
-    return Object.keys(objectValue)
-      .sort()
-      .map((key) => stringifySceneValue(objectValue[key]))
-      .filter(Boolean)
-      .join(' ');
-  }
-  return '';
-}
-
 function getScriptSummary(scene: SceneRecord) {
-  const summary = stringifySceneValue(scene.scripts).replace(/\s+/g, ' ').trim();
+  const summary = scene.script.replace(/\s+/g, ' ').trim();
   return summary || 'script 없음';
 }
 

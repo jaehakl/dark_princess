@@ -63,7 +63,11 @@ Output : SelectionModelBase
 - 파일로 저장(각종 필요한 메타정보들도 다 포함시킬 것) 후 file_url 밀 name 을 넣어 SelectionModel 레코드 생성
 - SelectionModelBase 반환
 
+4. SceneOption 생성 API
+Input : scene_id, option_text
+Output : SceneOptionBase
 
+- option_text 로 embedding 생성한 후 레코드 생성
 
 Input : 
 - Context : Scene history Embedding (embedding 을 x0.9 하면서 누적 평균) 
@@ -97,6 +101,29 @@ Output :
 - Status 표시
 - status_change 로 인해 수치가 바뀌면 그 때 마다 명확히 인식 가능하게 시각화해줌
 
+
+[Scene 생성/편집 모달]
+- scene_id : 현재 scene 이 디폴트로 선택되어 있으며, 새로 생성(scene_id 를 null 로) 도 toggle 가능
+- prompt 편집
+- scripts 배열 추가/편집/삭제
+- 버튼을 눌러 Scene 생성 API 로 보냄. (재시도하면 그림 재생성이 됨.)
+- 생성 중 적절히 스피너 표시 및 완료 후 업데이트
+
+[Scene 탐색 모달]
+- 전체 Scene list 를 일단 받아와서 표시
+- 페이지네이션 적용, 이미지도 썸네일처럼 표시, script 는 축약하여 표시, prompt 는 미표시
+- 검색창에서 검색하면 검색어로 script 및 prompt 에서 실시간으로 프론트엔드에서 탐색하여 필터링
+
+
+[SceneOption 생성 API]
+Input : scene_id, option_text
+Output : SceneOptionBase
+
+- option_text 로 embedding 생성한 후 레코드 생성
+
+[SceneOption 생성/편집 모달]
+- 현재 scene 의 옵션 목록에서, 각 option 에서 편집 버튼을 눌러 띄울수도 있고, 옵션 목록 하단에 새 옵션 추가 버튼을 눌러 띄울수도 있음(버튼은 작게 만들 것)
+- 텍스트 편집 후 저장(SceneOption 생성 API 사용)
 
 [Actions]
 - New Option for current Scene

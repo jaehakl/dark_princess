@@ -41,7 +41,7 @@ class UpdateSceneContextRequestBase(BaseModel):
 class GenerateSceneRequestBase(BaseModel):
     scene_id: Optional[int] = None
     prompt: str
-    scripts: Dict[str, Any] | List[Any] = Field(default_factory=list)
+    script: str = ""
     status_change: Dict[str, Any] = Field(default_factory=dict)
     generate_image: bool = True
 
@@ -67,7 +67,7 @@ class SceneBase(BaseModel):
     id: Optional[int] = None
     prompt: str
     image_url: Optional[str] = None
-    scripts: Dict[str, Any] | List[Any] = Field(default_factory=list)
+    script: str = ""
     status_change: Dict[str, Any] = Field(default_factory=dict)
 
 

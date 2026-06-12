@@ -38,7 +38,7 @@ export type GenImageResponse = {
 export type GenerateSceneRequest = {
   scene_id?: number | null;
   prompt: string;
-  scripts: Record<string, unknown> | unknown[];
+  script: string;
   status_change: Record<string, unknown>;
   generate_image?: boolean;
 };
@@ -53,7 +53,7 @@ export type SceneRecord = {
   id?: number | null;
   prompt: string;
   image_url?: string | null;
-  scripts: Record<string, unknown> | unknown[];
+  script: string;
   status_change: Record<string, unknown>;
 };
 

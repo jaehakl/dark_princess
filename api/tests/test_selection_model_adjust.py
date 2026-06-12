@@ -12,6 +12,7 @@ APP_ROOT = Path(__file__).resolve().parents[1] / "app"
 sys.path.insert(0, str(APP_ROOT))
 
 from db import Scene, SceneOption, SelectionModel, Status
+from initserver import scene_script_to_text
 from models import AdjustSelectionModelRequestBase, GenerateSceneRequestBase, UpdateSceneContextRequestBase
 from service import scene as scene_service
 from service import selection_model
@@ -286,7 +287,7 @@ class SelectionModelAdjustTests(unittest.IsolatedAsyncioTestCase):
             id=1,
             prompt="old",
             image_url="old-image.jpg",
-            scripts=["old"],
+            script="old",
             status_change={"turn": 1},
             embedding=make_embedding(0.1),
         )
@@ -294,7 +295,7 @@ class SelectionModelAdjustTests(unittest.IsolatedAsyncioTestCase):
         request = GenerateSceneRequestBase(
             scene_id=1,
             prompt="new",
-            scripts=["new"],
+            script="new",
             status_change={"turn": 1, "cash": -2},
             generate_image=False,
         )
@@ -309,7 +310,7 @@ class SelectionModelAdjustTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(result, scene)
         self.assertTrue(db.committed)
         self.assertEqual(scene.prompt, "new")
-        self.assertEqual(scene.scripts, ["new"])
+        self.assertEqual(scene.script, "new")
         self.assertEqual(scene.status_change, {"turn": 1, "cash": -2})
         self.assertEqual(scene.embedding, make_embedding(0.8))
         self.assertEqual(scene.image_url, "old-image.jpg")
@@ -318,7 +319,7 @@ class SelectionModelAdjustTests(unittest.IsolatedAsyncioTestCase):
         request = GenerateSceneRequestBase(
             scene_id=None,
             prompt="new",
-            scripts=["new"],
+            script="new",
             status_change={"turn": 1},
             generate_image=False,
         )
@@ -327,6 +328,11 @@ class SelectionModelAdjustTests(unittest.IsolatedAsyncioTestCase):
             await scene_service.generate_scene(FakeDb({}), request)
 
         self.assertEqual(raised.exception.status_code, 400)
+
+    def test_scene_script_to_text_converts_json_array_to_newline_text(self) -> None:
+        raw_script = '["첫 줄", {"text": "둘째 줄\\n셋째 줄"}, {"extra": "넷째 줄"}]'
+
+        self.assertEqual(scene_script_to_text(raw_script), "첫 줄\n둘째 줄\n셋째 줄\n넷째 줄")
 
 
 def run_train_model_artifact_with_fake_torch(learn_rate: float) -> dict[str, object]:

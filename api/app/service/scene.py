@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import random
 from io import BytesIO
 from pathlib import Path
-from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
@@ -55,7 +53,8 @@ async def generate_scene(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="scene not found")
         old_image_url = scene.image_url
 
-    embedding = await make_scene_embedding(prompt, request.scripts)
+    script = normalize_scene_script(request.script)
+    embedding = await make_scene_embedding(prompt, script)
     if request.generate_image:
         image_url, image_key = await generate_scene_image(prompt)
 
@@ -65,7 +64,7 @@ async def generate_scene(
             db.add(scene)
 
         scene.prompt = prompt
-        scene.scripts = request.scripts
+        scene.script = script
         scene.status_change = request.status_change
         scene.embedding = embedding
         if image_url is not None:
@@ -83,8 +82,8 @@ async def generate_scene(
     return scene
 
 
-async def make_scene_embedding(prompt: str, scripts: dict[str, Any] | list[Any]) -> list[float]:
-    embedding_input = build_scene_embedding_input(prompt, scripts)
+async def make_scene_embedding(prompt: str, script: str) -> list[float]:
+    embedding_input = build_scene_embedding_input(prompt, script)
     model_name = settings.SCENE_EMBEDDING_MODEL_NAME.strip()
     if not model_name:
         raise HTTPException(
@@ -101,9 +100,12 @@ async def make_scene_embedding(prompt: str, scripts: dict[str, Any] | list[Any])
     return embedding
 
 
-def build_scene_embedding_input(prompt: str, scripts: dict[str, Any] | list[Any]) -> str:
-    scripts_json = json.dumps(scripts, ensure_ascii=False, sort_keys=True)
-    return f"passage: {prompt}\n{scripts_json}"
+def normalize_scene_script(script: str) -> str:
+    return script.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def build_scene_embedding_input(prompt: str, script: str) -> str:
+    return f"passage: {prompt}\n{script}"
 
 
 async def generate_scene_image(prompt: str) -> tuple[str, str]:

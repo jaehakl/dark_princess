@@ -81,7 +81,7 @@ async def api_get_next_scene(
         id=next_scene.id,
         prompt=next_scene.prompt,
         image_url=next_scene.image_url,
-        scripts=next_scene.scripts,
+        script=next_scene.script,
         status_change=next_scene.status_change,
     )
 

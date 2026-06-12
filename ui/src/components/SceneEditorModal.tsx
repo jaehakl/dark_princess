@@ -31,42 +31,6 @@ function getErrorMessage(error: unknown) {
   return '요청에 실패했습니다.';
 }
 
-function stringifyScriptLine(value: unknown): string {
-  if (value === null || value === undefined) {
-    return '';
-  }
-  if (typeof value === 'string') {
-    return value;
-  }
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
-  }
-  if (typeof value === 'object') {
-    const objectValue = value as Record<string, unknown>;
-    const text = objectValue.text ?? objectValue.line ?? objectValue.content;
-    if (typeof text === 'string') {
-      return text;
-    }
-    return JSON.stringify(value);
-  }
-  return '';
-}
-
-function scriptsToLines(scripts: SceneRecord['scripts'] | undefined): string[] {
-  if (!scripts) {
-    return [''];
-  }
-
-  const values = Array.isArray(scripts)
-    ? scripts
-    : Object.keys(scripts)
-        .sort()
-        .map((key) => scripts[key]);
-
-  const lines = values.map((value) => stringifyScriptLine(value));
-  return lines.length > 0 ? lines : [''];
-}
-
 function statusChangeToValues(statusChange: SceneRecord['status_change'] | undefined): StatusChangeValues {
   return STATUS_CHANGE_FIELDS.reduce((values, field) => {
     const rawValue = statusChange?.[field.key];
@@ -85,7 +49,7 @@ export function SceneEditorModal({
 }: SceneEditorModalProps) {
   const [savingMode, setSavingMode] = useState<SaveMode | null>(null);
   const [prompt, setPrompt] = useState(scene?.prompt ?? '');
-  const [scriptLines, setScriptLines] = useState<string[]>(() => scriptsToLines(scene?.scripts));
+  const [script, setScript] = useState(scene?.script ?? '');
   const [statusChangeValues, setStatusChangeValues] = useState<StatusChangeValues>(() =>
     statusChangeToValues(scene?.status_change),
   );
@@ -106,30 +70,13 @@ export function SceneEditorModal({
 
   useEffect(() => {
     setPrompt(scene?.prompt ?? '');
-    setScriptLines(scriptsToLines(scene?.scripts));
+    setScript(scene?.script ?? '');
     setStatusChangeValues(statusChangeToValues(scene?.status_change));
     setImageUrl(scene?.image_url ?? null);
     setError(null);
     setSavingMode(null);
     setIsDeleting(false);
   }, [scene]);
-
-  function updateScriptLine(index: number, value: string) {
-    setScriptLines((current) =>
-      current.map((line, lineIndex) => (lineIndex === index ? value : line)),
-    );
-  }
-
-  function addScriptLine() {
-    setScriptLines((current) => [...current, '']);
-  }
-
-  function deleteScriptLine(index: number) {
-    setScriptLines((current) => {
-      const nextLines = current.filter((_, lineIndex) => lineIndex !== index);
-      return nextLines.length > 0 ? nextLines : [''];
-    });
-  }
 
   async function saveScene(mode: SaveMode) {
     const trimmedPrompt = prompt.trim();
@@ -159,12 +106,12 @@ export function SceneEditorModal({
       const savedScene = await dbTables.Scene.generateScene({
         scene_id: mode === 'create' ? null : scene?.id ?? null,
         prompt: trimmedPrompt,
-        scripts: scriptLines,
+        script,
         status_change: statusChange,
         generate_image: mode !== 'text',
       });
       setPrompt(savedScene.prompt);
-      setScriptLines(scriptsToLines(savedScene.scripts));
+      setScript(savedScene.script);
       setStatusChangeValues(statusChangeToValues(savedScene.status_change));
       setImageUrl(savedScene.image_url ?? null);
       onSaved(savedScene, mode === 'create' ? null : scene?.id ?? null);
@@ -248,42 +195,17 @@ export function SceneEditorModal({
                 />
               </label>
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="edit-label">
-                    <span className="edit-label__text">scripts</span>
-                  </span>
-                  <button
-                    type="button"
-                    className="vn-button px-3 py-2 text-xs"
-                    onClick={addScriptLine}
-                    disabled={Boolean(savingMode) || isDeleting}
-                  >
-                    추가
-                  </button>
-                </div>
-
-                <div className="space-y-2">
-                  {scriptLines.map((line, index) => (
-                    <div key={`${index}-${scriptLines.length}`} className="vn-script-row">
-                      <textarea
-                        value={line}
-                        onChange={(event) => updateScriptLine(index, event.target.value)}
-                        className="edit-control min-h-14 flex-1 resize-y px-3 py-2 text-sm"
-                        disabled={Boolean(savingMode) || isDeleting}
-                      />
-                      <button
-                        type="button"
-                        className="vn-danger-button h-9 px-3 text-xs"
-                        onClick={() => deleteScriptLine(index)}
-                        disabled={Boolean(savingMode) || isDeleting}
-                      >
-                        삭제
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <label className="block space-y-1">
+                <span className="edit-label">
+                  <span className="edit-label__text">script</span>
+                </span>
+                <textarea
+                  value={script}
+                  onChange={(event) => setScript(event.target.value)}
+                  className="edit-control min-h-40 w-full resize-y px-3 py-2 text-sm"
+                  disabled={Boolean(savingMode) || isDeleting}
+                />
+              </label>
 
               <div className="space-y-2">
                 <span className="edit-label">
