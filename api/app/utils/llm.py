@@ -1,37 +1,68 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import gc
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException, status
 
-from settings import API_ROOT, settings
+LLM_MODEL_PATH = ""
+LLM_REPO_ID = "LGAI-EXAONE/EXAONE-4.0-1.2B-GGUF"
+LLM_MODEL_FILENAME = "EXAONE-4.0-1.2B-Q4_K_M.gguf"
+LLM_CONTEXT_SIZE = 8192
+LLM_N_GPU_LAYERS = 0
+LLM_N_THREADS = 0
+LLM_MAX_TOKENS = 180
+LLM_TEMPERATURE = 0.2
+LLM_TOP_P = 0.9
+LLM_MAX_SOURCE_TEXT_LENGTH = 4000
+LLM_MIN_MAX_TOKENS = 16
+LLM_MAX_MAX_TOKENS = 1024
+LLM_MIN_TEMPERATURE = 0.0
+LLM_MAX_TEMPERATURE = 2.0
 
-PROMPT_LLM_REPO_ID = "LGAI-EXAONE/EXAONE-4.0-1.2B-GGUF"
-PROMPT_LLM_MODEL_FILENAME = "EXAONE-4.0-1.2B-Q4_K_M.gguf"
-PROMPT_LLM_TOP_P = 0.9
-PROMPT_LLM_MAX_SOURCE_TEXT_LENGTH = 4000
-PROMPT_LLM_MIN_MAX_TOKENS = 16
-PROMPT_LLM_MAX_MAX_TOKENS = 1024
-PROMPT_LLM_MIN_TEMPERATURE = 0.0
-PROMPT_LLM_MAX_TEMPERATURE = 2.0
-
-STABLE_DIFFUSION_PROMPT_SYSTEM_MESSAGE = (
-    "You convert scene descriptions into Stable Diffusion positive prompts. "
-    "Return only valid JSON with one string field named prompt. "
-    "The prompt must be English comma-separated visual tags."
-    "Do not include markdown, explanations, negative prompt terms, score tags, or rating tags."
-)
 SCENE_SCRIPT_SYSTEM_MESSAGE = (
     "You are a Korean visual novel/game scenario writer. "
     "Continue the story in natural Korean text suitable for a scene script textarea. "
     "Return only valid JSON with one string field named script. "
     "Write only the next scenario body. "
     "Do not include markdown, explanations, choices, image prompts, titles, or metadata."
+)
+KOREAN_TO_ENGLISH_TRANSLATION_SYSTEM_MESSAGE = (
+    "You translate Korean user text into natural English. "
+    "Return only valid JSON with one string field named translation. "
+    "The translation must be English only. "
+    "Do not include markdown, explanations, source text, field labels, or metadata."
+)
+VISUAL_KEYWORD_SYSTEM_MESSAGE = (
+    "이미지 생성에 유용한 핵심 시각 키워드를 추출한다. "
+    "시각적으로 그럴듯한 인물, 장소, 행동, 상황, 소품, 분위기 등을 조금 상상해 보완한다. "
+    "반드시 JSON 객체만 반환하고, 각 값은 문자열 배열로 작성한다. "
+    "마크다운, 설명, 문장, 메타데이터는 넣지 않는다."
+)
+VISUAL_KEYWORD_TRANSLATION_SYSTEM_MESSAGE = (
+    "You translate visual keyword JSON values into natural English image prompt tags. "
+    "Return only one valid JSON object. "
+    "Preserve a JSON object shape, but field names do not matter. "
+    "Translate only keyword values, not explanations. "
+    "Every value must be an array of strings. "
+    "Each English keyword must be one to five words. "
+    "Do not repeat duplicate words or duplicate keywords. "
+    "Do not include Korean, markdown, code fences, labels, metadata, or full sentences."
+)
+
+HANGUL_RE = re.compile("[\uac00-\ud7a3]")
+TRANSLATION_WRAPPER_POLLUTION_RE = re.compile(
+    r"(```|^json\b|^translation\s*:|[{}\[\]]|\"translation\"\s*:)",
+    re.IGNORECASE,
+)
+VISUAL_KEYWORD_WRAPPER_POLLUTION_RE = re.compile(
+    r"(```|^json\b|[{}\[\]]|[:：]|\"?[A-Za-z0-9_-]+\"?\s*:)",
+    re.IGNORECASE,
 )
 
 _prompt_llm_lock = asyncio.Lock()
@@ -50,50 +81,6 @@ class PromptLlmConfig:
     max_tokens: int
     temperature: float
     top_p: float
-
-
-async def generate_stable_diffusion_prompt(
-    text: str,
-    max_tokens: int | None = None,
-    temperature: float | None = None,
-) -> str:
-    scene_text = text.strip()
-    if not scene_text:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text is required")
-    if len(scene_text) > PROMPT_LLM_MAX_SOURCE_TEXT_LENGTH:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"text must be {PROMPT_LLM_MAX_SOURCE_TEXT_LENGTH} characters or fewer",
-        )
-
-    raw_output = await generate_prompt_with_llm(
-        [
-            {"role": "system", "content": STABLE_DIFFUSION_PROMPT_SYSTEM_MESSAGE},
-            {
-                "role": "user",
-                "content": f"Scene description:\n{scene_text}\n\nReturn JSON now.",
-            },
-        ],
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
-    payload = _parse_llm_json_object(
-        raw_output,
-        empty_detail="prompt LLM returned empty output",
-        invalid_detail="prompt LLM returned invalid JSON",
-    )
-
-    prompt = payload.get("prompt")
-    if not isinstance(prompt, str) or not prompt.strip():
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="prompt LLM returned empty prompt",
-        )
-    prompt = " ".join(prompt.strip().strip("\"'`").splitlines())
-    for prefix in ("prompt:", "positive prompt:", "stable diffusion prompt:"):
-        if prompt.lower().startswith(prefix):
-            prompt = prompt[len(prefix):].strip()
-    return prompt
 
 
 async def generate_scene_script(
@@ -156,6 +143,215 @@ async def generate_scene_script(
     return script
 
 
+async def translate_korean_to_english(
+    text: str,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
+    max_attempts: int = 3,
+) -> str:
+    korean_text = text.strip()
+    if not korean_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text is required")
+    if len(korean_text) > LLM_MAX_SOURCE_TEXT_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"text must be {LLM_MAX_SOURCE_TEXT_LENGTH} characters or fewer",
+        )
+
+    attempts = max(1, max_attempts)
+    last_failure = "translation LLM returned invalid translation"
+    for _ in range(attempts):
+        raw_output = await generate_prompt_with_llm(
+            [
+                {"role": "system", "content": KOREAN_TO_ENGLISH_TRANSLATION_SYSTEM_MESSAGE},
+                {
+                    "role": "user",
+                    "content": f"Korean text:\n{korean_text}\n\nReturn JSON now.",
+                },
+            ],
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        try:
+            payload = _parse_llm_json_object(
+                raw_output,
+                empty_detail="translation LLM returned empty output",
+                invalid_detail="translation LLM returned invalid JSON",
+            )
+        except HTTPException as exc:
+            if exc.status_code != status.HTTP_502_BAD_GATEWAY:
+                raise
+            last_failure = str(exc.detail)
+            continue
+
+        translation = payload.get("translation")
+        if not isinstance(translation, str) or not translation.strip():
+            last_failure = "translation LLM returned empty translation"
+            continue
+
+        translation = translation.replace("\r\n", "\n").replace("\r", "\n").strip()
+        if translation.startswith("```"):
+            lines = translation.splitlines()
+            if lines:
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            translation = "\n".join(lines).strip()
+        translation = " ".join(translation.strip().strip("\"'`").splitlines()).strip()
+        if not translation:
+            last_failure = "translation LLM returned empty translation"
+            continue
+        if HANGUL_RE.search(translation):
+            last_failure = "translation LLM returned Korean text"
+            continue
+        if TRANSLATION_WRAPPER_POLLUTION_RE.search(translation):
+            last_failure = "translation LLM returned wrapper text"
+            continue
+        return translation
+
+    raise HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail=f"translation failed after {attempts} attempts: {last_failure}",
+    )
+
+
+async def extract_visual_keywords(
+    text: str,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
+    max_attempts: int = 3,
+) -> dict[str, list[str]]:
+    scene_text = text.strip()
+    if not scene_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text is required")
+    if len(scene_text) > LLM_MAX_SOURCE_TEXT_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"text must be {LLM_MAX_SOURCE_TEXT_LENGTH} characters or fewer",
+        )
+
+    attempts = max(1, max_attempts)
+    last_failure = "visual keyword LLM returned invalid keywords"
+    for attempt in range(1, attempts + 1):
+        raw_output = await generate_prompt_with_llm(
+            [
+                {"role": "system", "content": VISUAL_KEYWORD_SYSTEM_MESSAGE},
+                {
+                    "role": "user",
+                    "content": (
+                        "다음 한국어 장면 묘사에서 이미지 생성에 useful한 핵심 단어들을 뽑아줘.\n"
+                        "출력은 JSON 객체 하나만 사용하고, 값은 배열로 작성해.\n"
+                        "키 이름은 자유롭지만 예시는 아래 형태를 참고해.\n\n"
+                        f"장면 묘사:\n{scene_text}\n\n"
+                        "JSON 예시:\n"
+                        '{ "인물": [], "장소": [], "행동": [], "상황": [], "소품": [], "분위기": [] }'
+                    ),
+                },
+            ],
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        print(
+            f"[extract_visual_keywords] attempt={attempt}/{attempts} raw_output={raw_output!r}",
+            flush=True,
+        )
+        try:
+            payload = _parse_llm_json_object(
+                raw_output,
+                empty_detail="visual keyword LLM returned empty output",
+                invalid_detail="visual keyword LLM returned invalid JSON",
+            )
+        except HTTPException as exc:
+            if exc.status_code != status.HTTP_502_BAD_GATEWAY:
+                raise
+            last_failure = str(exc.detail)
+            print(
+                f"[extract_visual_keywords] attempt={attempt}/{attempts} invalid_json detail={last_failure!r}",
+                flush=True,
+            )
+            continue
+
+        result, last_failure = _normalize_visual_keyword_payload(
+            payload,
+            allow_hangul=True,
+            failure_prefix="visual keyword LLM",
+        )
+        if result is not None:
+            return result
+        print(
+            f"[extract_visual_keywords] attempt={attempt}/{attempts} validation_failed detail={last_failure!r}",
+            flush=True,
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail=f"visual keyword extraction failed after {attempts} attempts: {last_failure}",
+    )
+
+
+async def translate_visual_keywords_to_english(
+    keywords: dict[str, list[str]],
+    max_tokens: int | None = None,
+    temperature: float | None = None,
+    max_attempts: int = 3,
+) -> dict[str, list[str]]:
+    keyword_json = json.dumps(keywords, ensure_ascii=False)
+    attempts = max(1, max_attempts)
+    last_failure = "visual keyword translation LLM returned invalid keywords"
+    for attempt in range(1, attempts + 1):
+        raw_output = await generate_prompt_with_llm(
+            [
+                {"role": "system", "content": VISUAL_KEYWORD_TRANSLATION_SYSTEM_MESSAGE},
+                {
+                    "role": "user",
+                    "content": (
+                        "Translate the values in this visual keyword JSON into English image prompt tags.\n"
+                        "Return JSON only. Keep values as arrays. Field names can be preserved or changed.\n\n"
+                        f"Keyword JSON:\n{keyword_json}"
+                    ),
+                },
+            ],
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        print(
+            f"[translate_visual_keywords_to_english] attempt={attempt}/{attempts} raw_output={raw_output!r}",
+            flush=True,
+        )
+        try:
+            payload = _parse_llm_json_object(
+                raw_output,
+                empty_detail="visual keyword translation LLM returned empty output",
+                invalid_detail="visual keyword translation LLM returned invalid JSON",
+            )
+        except HTTPException as exc:
+            if exc.status_code != status.HTTP_502_BAD_GATEWAY:
+                raise
+            last_failure = str(exc.detail)
+            print(
+                f"[translate_visual_keywords_to_english] attempt={attempt}/{attempts} invalid_json detail={last_failure!r}",
+                flush=True,
+            )
+            continue
+
+        result, last_failure = _normalize_visual_keyword_payload(
+            payload,
+            allow_hangul=False,
+            failure_prefix="visual keyword translation LLM",
+        )
+        if result is not None:
+            return result
+        print(
+            f"[translate_visual_keywords_to_english] attempt={attempt}/{attempts} validation_failed detail={last_failure!r}",
+            flush=True,
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail=f"visual keyword translation failed after {attempts} attempts: {last_failure}",
+    )
+
+
 async def generate_prompt_with_llm(
     messages: list[dict[str, str]],
     max_tokens: int | None = None,
@@ -170,39 +366,29 @@ def build_prompt_llm_config(
     max_tokens: int | None = None,
     temperature: float | None = None,
 ) -> PromptLlmConfig:
-    resolved_max_tokens = (
-        settings.stable_diffusion_prompt_llm_max_tokens
-        if max_tokens is None
-        else max_tokens
-    )
-    if not PROMPT_LLM_MIN_MAX_TOKENS <= resolved_max_tokens <= PROMPT_LLM_MAX_MAX_TOKENS:
+    resolved_max_tokens = LLM_MAX_TOKENS if max_tokens is None else max_tokens
+    if not LLM_MIN_MAX_TOKENS <= resolved_max_tokens <= LLM_MAX_MAX_TOKENS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 "max_tokens must be between "
-                f"{PROMPT_LLM_MIN_MAX_TOKENS} and {PROMPT_LLM_MAX_MAX_TOKENS}"
+                f"{LLM_MIN_MAX_TOKENS} and {LLM_MAX_MAX_TOKENS}"
             ),
         )
 
-    resolved_temperature = (
-        settings.stable_diffusion_prompt_llm_temperature
-        if temperature is None
-        else temperature
-    )
-    if not PROMPT_LLM_MIN_TEMPERATURE <= resolved_temperature <= PROMPT_LLM_MAX_TEMPERATURE:
+    resolved_temperature = LLM_TEMPERATURE if temperature is None else temperature
+    if not LLM_MIN_TEMPERATURE <= resolved_temperature <= LLM_MAX_TEMPERATURE:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 "temperature must be between "
-                f"{PROMPT_LLM_MIN_TEMPERATURE} and {PROMPT_LLM_MAX_TEMPERATURE}"
+                f"{LLM_MIN_TEMPERATURE} and {LLM_MAX_TEMPERATURE}"
             ),
         )
 
-    model_path_value = settings.stable_diffusion_prompt_llm_model_path.strip()
+    model_path_value = LLM_MODEL_PATH.strip()
     if model_path_value:
         model_path = Path(model_path_value).expanduser()
-        if not model_path.is_absolute():
-            model_path = API_ROOT / model_path
         try:
             model_path_value = str(model_path.resolve(strict=True))
         except OSError as exc:
@@ -211,8 +397,8 @@ def build_prompt_llm_config(
                 detail=f"prompt LLM model file not found: {model_path}",
             ) from exc
 
-    repo_id = PROMPT_LLM_REPO_ID.strip()
-    model_filename = PROMPT_LLM_MODEL_FILENAME.strip()
+    repo_id = LLM_REPO_ID.strip()
+    model_filename = LLM_MODEL_FILENAME.strip()
     if not model_path_value and (not repo_id or not model_filename):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -223,12 +409,12 @@ def build_prompt_llm_config(
         model_path=model_path_value,
         repo_id=repo_id,
         model_filename=model_filename,
-        context_size=settings.stable_diffusion_prompt_llm_n_ctx,
-        n_gpu_layers=settings.stable_diffusion_prompt_llm_n_gpu_layers,
-        n_threads=settings.stable_diffusion_prompt_llm_n_threads,
+        context_size=LLM_CONTEXT_SIZE,
+        n_gpu_layers=LLM_N_GPU_LAYERS,
+        n_threads=LLM_N_THREADS,
         max_tokens=resolved_max_tokens,
         temperature=resolved_temperature,
-        top_p=PROMPT_LLM_TOP_P,
+        top_p=LLM_TOP_P,
     )
 
 
@@ -269,6 +455,57 @@ def _parse_llm_json_object(
     if not isinstance(payload, dict):
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=invalid_detail)
     return payload
+
+
+def _normalize_visual_keyword_payload(
+    payload: dict[str, Any],
+    *,
+    allow_hangul: bool,
+    failure_prefix: str,
+) -> tuple[dict[str, list[str]] | None, str]:
+    result: dict[str, list[str]] = {}
+    seen_keyword_keys: set[str] = set()
+    for raw_field, keywords in payload.items():
+        field = str(raw_field)
+        if isinstance(keywords, str):
+            keywords = [keywords] if keywords.strip() else []
+        if not isinstance(keywords, list):
+            return None, f"{failure_prefix} returned invalid {field}"
+
+        cleaned_keywords: list[str] = []
+        for keyword in keywords:
+            if not isinstance(keyword, str):
+                return None, f"{failure_prefix} returned non-string {field} keyword"
+
+            cleaned = " ".join(keyword.strip().strip("\"'`").split()).strip()
+            if not cleaned:
+                return None, f"{failure_prefix} returned empty {field} keyword"
+            deduped_words: list[str] = []
+            seen_word_keys: set[str] = set()
+            for word in cleaned.split():
+                word_key = word.casefold()
+                if word_key in seen_word_keys:
+                    continue
+                seen_word_keys.add(word_key)
+                deduped_words.append(word)
+            cleaned = " ".join(deduped_words).strip()
+            if not allow_hangul and HANGUL_RE.search(cleaned):
+                return None, f"{failure_prefix} returned Korean {field} keyword"
+            if VISUAL_KEYWORD_WRAPPER_POLLUTION_RE.search(cleaned):
+                return None, f"{failure_prefix} returned wrapper text in {field}"
+            if len(cleaned.split()) > 5:
+                return None, f"{failure_prefix} returned phrase in {field}"
+            keyword_key = cleaned.casefold()
+            if keyword_key in seen_keyword_keys:
+                continue
+            seen_keyword_keys.add(keyword_key)
+            cleaned_keywords.append(cleaned)
+
+        result.setdefault(field, []).extend(cleaned_keywords)
+
+    if not any(result.values()):
+        return None, f"{failure_prefix} returned no keywords"
+    return result, ""
 
 
 def _generate_prompt_with_llm_locked(

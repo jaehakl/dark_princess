@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { dbTables } from '../api/api';
-import type { SceneRecord } from '../api/type';
+import type { RecommendPromptItem, SceneRecord } from '../api/type';
 
 const STATUS_CHANGE_FIELDS = [
   { key: 'cash', label: '현금' },
@@ -16,6 +16,7 @@ const STATUS_CHANGE_FIELDS = [
 type StatusChangeKey = (typeof STATUS_CHANGE_FIELDS)[number]['key'];
 type StatusChangeValues = Record<StatusChangeKey, string>;
 type SaveMode = 'text' | 'image' | 'create';
+type PromptGenerationMode = 'direct' | 'struct';
 
 type SceneEditorModalProps = {
   scene: SceneRecord | null;
@@ -56,14 +57,18 @@ export function SceneEditorModal({
   const [imageUrl, setImageUrl] = useState(scene?.image_url ?? null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRecommendingPrompt, setIsRecommendingPrompt] = useState(false);
+  const [generatingPromptMode, setGeneratingPromptMode] = useState<PromptGenerationMode | null>(null);
+  const [promptRecommendations, setPromptRecommendations] = useState<RecommendPromptItem[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const editedSceneId = scene?.id ?? null;
   const canSaveWithoutCreate = Boolean(scene?.id);
-  const isInputDisabled = Boolean(savingMode) || isDeleting || isRecommendingPrompt;
+  const isInputDisabled =
+    Boolean(savingMode) || isDeleting || isRecommendingPrompt || Boolean(generatingPromptMode);
   const canDelete = Boolean(editedSceneId) && !isInputDisabled;
   const canSave = prompt.trim().length > 0 && !isInputDisabled;
   const canRecommendPrompt = script.trim().length > 0 && !isInputDisabled;
+  const canGeneratePrompt = script.trim().length > 0 && !isInputDisabled;
   const isGeneratingImage = savingMode === 'image' || savingMode === 'create';
 
   const modalTitle = useMemo(
@@ -80,6 +85,8 @@ export function SceneEditorModal({
     setSavingMode(null);
     setIsDeleting(false);
     setIsRecommendingPrompt(false);
+    setGeneratingPromptMode(null);
+    setPromptRecommendations([]);
   }, [scene]);
 
   async function recommendPromptFromScript() {
@@ -92,18 +99,44 @@ export function SceneEditorModal({
     setIsRecommendingPrompt(true);
     setError(null);
     try {
-      const recommendation = await dbTables.Scene.generatePrompt(text);
-      const recommendedPrompt = recommendation.prompt.trim();
-      if (!recommendedPrompt) {
+      const recommendations = await dbTables.Scene.recommendPrompt(text);
+      if (!recommendations.length) {
         setError('추천할 prompt가 없습니다.');
         return;
       }
 
-      setPrompt(recommendedPrompt);
+      setPromptRecommendations(recommendations);
     } catch (recommendError) {
       setError(getErrorMessage(recommendError));
     } finally {
       setIsRecommendingPrompt(false);
+    }
+  }
+
+  async function generatePromptFromScript(mode: PromptGenerationMode) {
+    const text = script.trim();
+    if (!text) {
+      setError('script를 입력해 주세요.');
+      return;
+    }
+
+    setGeneratingPromptMode(mode);
+    setError(null);
+    try {
+      const generation = mode === 'struct'
+        ? await dbTables.Scene.generatePromptByStruct(text)
+        : await dbTables.Scene.generatePrompt(text);
+      const generatedPrompt = generation.prompt.trim();
+      if (!generatedPrompt) {
+        setError('생성된 prompt가 없습니다.');
+        return;
+      }
+
+      setPrompt(generatedPrompt);
+    } catch (generateError) {
+      setError(getErrorMessage(generateError));
+    } finally {
+      setGeneratingPromptMode(null);
     }
   }
 
@@ -217,15 +250,35 @@ export function SceneEditorModal({
                   <label htmlFor="scene-editor-prompt" className="edit-label edit-label--required">
                     <span className="edit-label__text">prompt</span>
                   </label>
-                  <button
-                    type="button"
-                    className="vn-button inline-flex items-center gap-2 px-3 py-1.5 text-xs"
-                    onClick={() => void recommendPromptFromScript()}
-                    disabled={!canRecommendPrompt}
-                  >
-                    {isRecommendingPrompt ? <span className="vn-spinner" aria-hidden="true" /> : null}
-                    {isRecommendingPrompt ? '추천 중' : 'script로 prompt 추천'}
-                  </button>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <button
+                      type="button"
+                      className="vn-button inline-flex items-center gap-2 px-3 py-1.5 text-xs"
+                      onClick={() => void recommendPromptFromScript()}
+                      disabled={!canRecommendPrompt}
+                    >
+                      {isRecommendingPrompt ? <span className="vn-spinner" aria-hidden="true" /> : null}
+                      {isRecommendingPrompt ? '추천 중' : 'prompt 추천'}
+                    </button>
+                    <button
+                      type="button"
+                      className="vn-button inline-flex items-center gap-2 px-3 py-1.5 text-xs"
+                      onClick={() => void generatePromptFromScript('direct')}
+                      disabled={!canGeneratePrompt}
+                    >
+                      {generatingPromptMode === 'direct' ? <span className="vn-spinner" aria-hidden="true" /> : null}
+                      {generatingPromptMode === 'direct' ? '생성 중' : 'prompt 생성'}
+                    </button>
+                    <button
+                      type="button"
+                      className="vn-button inline-flex items-center gap-2 px-3 py-1.5 text-xs"
+                      onClick={() => void generatePromptFromScript('struct')}
+                      disabled={!canGeneratePrompt}
+                    >
+                      {generatingPromptMode === 'struct' ? <span className="vn-spinner" aria-hidden="true" /> : null}
+                      {generatingPromptMode === 'struct' ? '구조 생성 중' : '구조 prompt 생성'}
+                    </button>
+                  </div>
                 </div>
                 <textarea
                   id="scene-editor-prompt"
@@ -234,6 +287,31 @@ export function SceneEditorModal({
                   className="edit-control min-h-20 w-full resize-y px-3 py-2 text-sm"
                   disabled={isInputDisabled}
                 />
+                {promptRecommendations.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {promptRecommendations.slice(0, 16).map((item) => (
+                      <button
+                        key={item.word}
+                        type="button"
+                        className="vn-button px-2.5 py-1 text-xs"
+                        onClick={() =>
+                          setPrompt((currentPrompt) => {
+                            const currentWords = currentPrompt
+                              .split(',')
+                              .map((value) => value.trim())
+                              .filter(Boolean);
+                            return currentWords.includes(item.word)
+                              ? currentPrompt
+                              : [...currentWords, item.word].join(', ');
+                          })}
+                        disabled={isInputDisabled}
+                        title={`score ${item.score.toFixed(3)}`}
+                      >
+                        {item.word}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </div>
 
               <label className="block space-y-1">

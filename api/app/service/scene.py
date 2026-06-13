@@ -14,21 +14,25 @@ from models import GenerateSceneRequestBase, RecommendPromptItemBase, UpdateScen
 from settings import API_ROOT, settings
 from service.selection_model import cosine_distance
 from utils.llm import (
+    extract_visual_keywords,
     generate_scene_script as generate_script_from_llm,
-    generate_stable_diffusion_prompt as generate_prompt_from_llm,
+    translate_visual_keywords_to_english,
 )
 from utils.local_storage import build_object_key, delete_object, object_key_from_public_url, public_file_url, upload_fileobj
 from utils.model_runtime import encode_scene_text, generate_images_batch
 from utils.vector import VECTOR_DIMENSION, validate_embedding
 
-#GEN_IMAGE_POSITIVE_BASE = "score_9, score_8_up, score_7_up, score_6_up,"
-#GEN_IMAGE_NEGATIVE_PROMPT = "score_5, score_4, score_3,lowres, worst quality, low quality, blurry, jpeg artifacts,bad anatomy, bad hands, extra fingers, missing fingers,text, logo, watermark, signature, username,cropped, out of frame"
+GEN_IMAGE_POSITIVE_BASE = "score_7_up, source_anime, cinematic composition,"
+GEN_IMAGE_NEGATIVE_PROMPT = "score_5, score_4, score_3, solo, portrait, character focus, lowres, blurry, low quality, bad anatomy, disfigured, deformed, bad hands, missing fingers, extra fingers, worst quality, jpeg artifacts, signature, watermark, text, bad eyes, grotesque, sketchy, logo, rough, incomplete, disgusting, distorted, deformed face, poorly drawn, bad quality"
 
-GEN_IMAGE_POSITIVE_BASE = "masterpiece, best quality"
-GEN_IMAGE_NEGATIVE_PROMPT = "blurry, low quality, bad anatomy, disfigured, deformed, bad hands, missing fingers, extra fingers, worst quality, jpeg artifacts, signature, watermark, text, bad eyes, grotesque, sketchy, logo, rough, incomplete, disgusting, distorted, deformed face, poorly drawn, bad quality"
+#GEN_IMAGE_POSITIVE_BASE = "masterpiece, best quality"
+#GEN_IMAGE_NEGATIVE_PROMPT = "blurry, low quality, bad anatomy, disfigured, deformed, bad hands, missing fingers, extra fingers, worst quality, jpeg artifacts, signature, watermark, text, bad eyes, grotesque, sketchy, logo, rough, incomplete, disgusting, distorted, deformed face, poorly drawn, bad quality"
 
 GEN_IMAGE_STEPS = 30
-GEN_IMAGE_CFG = 8
+GEN_IMAGE_CFG = 7
+GEN_IMAGE_SAMPLER = "dpmpp_2m" #"euler_a"
+GEN_IMAGE_SCHEDULER = "karras"
+GEN_IMAGE_CLIP_SKIP: int | None = None
 GEN_IMAGE_HEIGHT = 1216
 GEN_IMAGE_WIDTH = 832
 GEN_IMAGE_MAX_CHUNK_SIZE = 1
@@ -159,16 +163,55 @@ async def recommend_prompt(db: AsyncSession, text: str) -> list[RecommendPromptI
     ]
 
 
-async def generate_stable_diffusion_prompt(
+async def generate_prompt_by_struct(
     text: str,
     max_tokens: int | None = None,
     temperature: float | None = None,
 ) -> str:
-    return await generate_prompt_from_llm(
-        text,
-        max_tokens=max_tokens,
-        temperature=temperature,
+    print("[generate_prompt_by_struct] start", flush=True)
+    print(
+        f"[generate_prompt_by_struct] options max_tokens={max_tokens!r} temperature={temperature!r}",
+        flush=True,
     )
+    print(f"[generate_prompt_by_struct] source_text={text!r}", flush=True)
+    try:
+        korean_keywords = await extract_visual_keywords(
+            text,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+    except HTTPException as exc:
+        print(
+            f"[generate_prompt_by_struct] extract_keywords failed status={exc.status_code} detail={exc.detail!r}",
+            flush=True,
+        )
+        raise
+    print(f"[generate_prompt_by_struct] korean_keywords={korean_keywords!r}", flush=True)
+
+    try:
+        english_keywords = await translate_visual_keywords_to_english(
+            korean_keywords,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+    except HTTPException as exc:
+        print(
+            f"[generate_prompt_by_struct] translate_keywords failed status={exc.status_code} detail={exc.detail!r}",
+            flush=True,
+        )
+        raise
+    print(f"[generate_prompt_by_struct] english_keywords={english_keywords!r}", flush=True)
+
+    prompt_keywords = [
+        keyword.strip()
+        for keyword_list in english_keywords.values()
+        for keyword in keyword_list
+        if isinstance(keyword, str) and keyword.strip()
+    ]
+    prompt = ", ".join(prompt_keywords)
+    print(f"[generate_prompt_by_struct] prompt_keywords={prompt_keywords!r}", flush=True)
+    print(f"[generate_prompt_by_struct] prompt={prompt!r}", flush=True)
+    return prompt
 
 
 async def generate_scene_script(
@@ -225,6 +268,9 @@ async def generate_scene_image(prompt: str) -> tuple[str, str]:
         GEN_IMAGE_MAX_CHUNK_SIZE,
         GEN_IMAGE_SEED_MIN,
         GEN_IMAGE_SEED_MAX,
+        GEN_IMAGE_SAMPLER,
+        GEN_IMAGE_SCHEDULER,
+        GEN_IMAGE_CLIP_SKIP,
     )
     image = images[0] if images else None
     if image is None:

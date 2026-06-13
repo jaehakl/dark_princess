@@ -42,12 +42,15 @@ STATUS_NORMALIZATION = {
     "stress": {"min": 0.0, "max": 100.0},
 }
 MODEL_INPUT_DIMENSION = VECTOR_DIMENSION * 3 + len(STATUS_NUMERIC_FIELDS)
+# CPU-friendly defaults for single-sample online updates.
 MODEL_PARAMETERS = {
-    "hidden_dims": [2048, 1024],
-    "activation": "relu",
-    "dropout": 0.0,
-    "seed": None,
-    "temperature": 2.0,
+    "hidden_dims": [1024, 512],  # recommended: 1-3 layers, each 256-2048 units
+    "activation": "relu",  # recommended: relu or gelu for this DNN
+    "dropout": 0.0,  # recommended: 0.0-0.2; keep 0.0 for stable one-sample updates
+    "seed": None,  # recommended: None for varied models, int for reproducible initialization
+    "temperature": 0.5,  # recommended: 0.5-3.0; lower is more deterministic
+    "l1_regularization": 1e-7,  # recommended: 0.0-1e-5; too high can erase sparse signals
+    "l2_regularization": 1e-5,  # recommended: 0.0-1e-3; stabilizes repeated feedback updates
 }
 SUPPORTED_ACTIVATIONS = {"relu", "gelu", "tanh", "silu"}
 
@@ -111,29 +114,20 @@ async def adjust_selection_model(
             detail="selection model is required",
         )
 
-    scene = await db.get(Scene, request.scene_id)
-    if scene is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="scene not found")
-
-    scene_option = await db.get(SceneOption, request.scene_option_id)
-    if scene_option is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="scene_option not found")
-    if scene_option.scene_id != request.scene_id:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="scene_option does not belong to scene",
-        )
-
     target_scene = await db.get(Scene, request.target_scene_id)
     if target_scene is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="target scene not found")
 
-    scene_embedding = validate_embedding(scene.embedding, "scene.embedding")
-    option_embedding = validate_embedding(scene_option.embedding, "scene_option.embedding")
+    scene_embedding = await load_optional_scene_embedding(db, request.scene_id)
+    option_embedding = await load_optional_scene_option_embedding(
+        db,
+        request.scene_option_id,
+        request.scene_id,
+    )
     context_embedding = (
         validate_embedding(current_status.context_embedding, "status.context_embedding")
         if current_status.context_embedding is not None
-        else [0.0] * len(scene_embedding)
+        else zero_embedding()
     )
     target_embedding = validate_embedding(target_scene.embedding, "target_scene.embedding")
     normalized_status = normalize_status_columns(current_status)
@@ -170,23 +164,10 @@ async def adjust_selection_model(
 
 async def get_next_scene(
     db: AsyncSession,
-    scene_id: int,
+    scene_id: int | None,
     status_id: int,
-    scene_option_id: int,
+    scene_option_id: int | None,
 ) -> Scene:
-    scene = await db.get(Scene, scene_id)
-    if scene is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="scene not found")
-
-    scene_option = await db.get(SceneOption, scene_option_id)
-    if scene_option is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="scene_option not found")
-    if scene_option.scene_id != scene_id:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="scene_option does not belong to scene",
-        )
-
     current_status = await db.get(Status, status_id)
     if current_status is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="status not found")
@@ -203,12 +184,12 @@ async def get_next_scene(
             detail="selection model is required",
         )
 
-    scene_embedding = validate_embedding(scene.embedding, "scene.embedding")
-    option_embedding = validate_embedding(scene_option.embedding, "scene_option.embedding")
+    scene_embedding = await load_optional_scene_embedding(db, scene_id)
+    option_embedding = await load_optional_scene_option_embedding(db, scene_option_id, scene_id)
     context_embedding = (
         validate_embedding(current_status.context_embedding, "status.context_embedding")
         if current_status.context_embedding is not None
-        else [0.0] * len(scene_embedding)
+        else zero_embedding()
     )
     normalized_status = normalize_status_columns(current_status)
     target_embedding = await make_target_scene_embedding(
@@ -219,7 +200,9 @@ async def get_next_scene(
         selection_model.file_url,
     )
 
-    candidate_stmt = select(Scene).where(Scene.id != scene_id)
+    candidate_stmt = select(Scene)
+    if scene_id is not None:
+        candidate_stmt = candidate_stmt.where(Scene.id != scene_id)
     candidates = (await db.execute(candidate_stmt)).scalars().all()
     weighted_candidates = []
     for candidate in candidates:
@@ -238,6 +221,39 @@ async def get_next_scene(
 
     temperature = get_model_temperature(selection_model.file_url)
     return sample_scene_by_temperature(weighted_candidates, temperature)
+
+
+def zero_embedding() -> list[float]:
+    return [0.0] * VECTOR_DIMENSION
+
+
+async def load_optional_scene_embedding(db: AsyncSession, scene_id: int | None) -> list[float]:
+    if scene_id is None:
+        return zero_embedding()
+
+    scene = await db.get(Scene, scene_id)
+    if scene is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="scene not found")
+    return validate_embedding(scene.embedding, "scene.embedding")
+
+
+async def load_optional_scene_option_embedding(
+    db: AsyncSession,
+    scene_option_id: int | None,
+    scene_id: int | None,
+) -> list[float]:
+    if scene_option_id is None:
+        return zero_embedding()
+
+    scene_option = await db.get(SceneOption, scene_option_id)
+    if scene_option is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="scene_option not found")
+    if scene_id is not None and scene_option.scene_id != scene_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="scene_option does not belong to scene",
+        )
+    return validate_embedding(scene_option.embedding, "scene_option.embedding")
 
 
 async def make_target_scene_embedding(
@@ -320,12 +336,32 @@ def normalize_model_parameters(parameters: dict[str, Any]) -> dict[str, Any]:
     if temperature <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="temperature must be greater than 0")
 
+    try:
+        l1_regularization = float(values["l1_regularization"])
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="l1_regularization must be numeric") from exc
+    if not math.isfinite(l1_regularization):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="l1_regularization must be finite")
+    if l1_regularization < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="l1_regularization must be greater than or equal to 0")
+
+    try:
+        l2_regularization = float(values["l2_regularization"])
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="l2_regularization must be numeric") from exc
+    if not math.isfinite(l2_regularization):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="l2_regularization must be finite")
+    if l2_regularization < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="l2_regularization must be greater than or equal to 0")
+
     return {
         "hidden_dims": normalized_hidden_dims,
         "activation": activation,
         "dropout": dropout,
         "seed": seed,
         "temperature": temperature,
+        "l1_regularization": l1_regularization,
+        "l2_regularization": l2_regularization,
     }
 
 
@@ -348,7 +384,7 @@ def create_model_artifact(parameters: dict[str, Any]) -> dict[str, Any]:
     if seed is not None:
         torch.manual_seed(seed)
 
-    model = build_model(parameters)
+    model = build_model(parameters).to("cpu")
     return {
         "format_version": MODEL_FORMAT_VERSION,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -404,25 +440,34 @@ def train_model_artifact(
     learn_rate: float,
 ) -> dict[str, Any]:
     artifact = load_model_artifact(model_file_url)
-    model = build_model(artifact["parameters"])
+    parameters = normalize_model_parameters(artifact["parameters"])
+    model = build_model(parameters).to("cpu")
     model.load_state_dict(artifact["state_dict"])
     model.train()
 
     torch, nn = load_torch()
-    optimizer = torch.optim.SGD(model.parameters(), lr=abs(learn_rate))
-    input_tensor = torch.tensor([input_values], dtype=torch.float32)
-    target_tensor = torch.tensor([target_embedding], dtype=torch.float32)
+    optimizer = torch.optim.SGD(
+        model.parameters(),
+        lr=abs(learn_rate),
+        weight_decay=parameters["l2_regularization"],
+    )
+    input_tensor = torch.tensor([input_values], dtype=torch.float32, device="cpu")
+    target_tensor = torch.tensor([target_embedding], dtype=torch.float32, device="cpu")
 
     optimizer.zero_grad()
     output = model(input_tensor)
     similarity = nn.functional.cosine_similarity(output, target_tensor, dim=1)
     loss = -similarity.mean() if learn_rate > 0 else similarity.mean()
+    if parameters["l1_regularization"] > 0:
+        l1_penalty = sum(parameter.abs().sum() for parameter in model.parameters())
+        loss = loss + parameters["l1_regularization"] * l1_penalty
     loss.backward()
     optimizer.step()
     model.eval()
 
     updated_artifact = dict(artifact)
     updated_artifact["created_at"] = datetime.now(timezone.utc).isoformat()
+    updated_artifact["parameters"] = parameters
     updated_artifact["state_dict"] = model.state_dict()
     return updated_artifact
 

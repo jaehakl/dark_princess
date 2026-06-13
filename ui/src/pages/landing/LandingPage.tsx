@@ -21,11 +21,13 @@ const LIST_REQUEST: GetListRequest = {
 
 const DEFAULT_MODEL_PARAMETERS = JSON.stringify(
   {
-    hidden_dims: [2048, 1024],
+    hidden_dims: [1024, 512],
     activation: 'relu',
     dropout: 0,
     seed: null,
-    temperature: 2.0,
+    temperature: 1.5,
+    l1_regularization: 1e-7,
+    l2_regularization: 1e-5,
   },
   null,
   2,

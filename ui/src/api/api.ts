@@ -12,6 +12,7 @@ import type {
   GetListRequest,
   GetListResponse,
   NextSceneRequest,
+  RecommendPromptItem,
   SceneOptionRecord,
   SceneRecord,
   SelectionModelRecord,
@@ -37,8 +38,12 @@ export const dbTables = {
     upsertRow: (items: unknown) => request<UpsertResponse[]>('post', '/scene/upsert', items),
     generateScene: (item: GenerateSceneRequest) =>
       request<SceneRecord>('post', '/scene/generate', item),
+    recommendPrompt: (text: string) =>
+      request<RecommendPromptItem[]>('post', '/scene/recommend-prompt', { text }),
     generatePrompt: (text: string) =>
       request<GenerateScenePromptResponse>('post', '/scene/generate-prompt', { text }),
+    generatePromptByStruct: (text: string) =>
+      request<GenerateScenePromptResponse>('post', '/scene/generate-prompt-by-struct', { text }),
     generateScript: (item: GenerateSceneScriptRequest) =>
       request<GenerateSceneScriptResponse>('post', '/scene/generate-script', item),
     updateContext: (item: UpdateSceneContextRequest) =>

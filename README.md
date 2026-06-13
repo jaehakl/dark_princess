@@ -115,13 +115,11 @@ Output :
 - 검색창에서 검색하면 검색어로 script 및 prompt 에서 실시간으로 프론트엔드에서 탐색하여 필터링
 
 
-[SceneOption 생성 API]
-Input : scene_id, option_text
-Output : SceneOptionBase
-
-- option_text 로 embedding 생성한 후 레코드 생성
 
 [SceneOption 생성/편집 모달]
+
+SceneOption, 
+
 - 현재 scene 의 옵션 목록에서, 각 option 에서 편집 버튼을 눌러 띄울수도 있고, 옵션 목록 하단에 새 옵션 추가 버튼을 눌러 띄울수도 있음(버튼은 작게 만들 것)
 - 텍스트 편집 후 저장(SceneOption 생성 API 사용)
 

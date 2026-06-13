@@ -11,7 +11,6 @@ import { useSceneStore } from '../../api/store';
 import { SceneEditorModal } from '../../components/SceneEditorModal';
 import { SceneExplorerModal } from '../../components/SceneExplorerModal';
 import { SceneOptionEditorModal } from '../../components/SceneOptionEditorModal';
-import { SceneOptionSceneEditorModal } from '../../components/SceneOptionSceneEditorModal';
 
 const STATUS_FIELDS = [
   { key: 'turn', label: '턴' },
@@ -29,7 +28,7 @@ type StatusNumberKey = (typeof STATUS_FIELDS)[number]['key'];
 type StatusDeltas = Partial<Record<StatusNumberKey, number>>;
 type PendingTransition = {
   sourceSceneId: number;
-  sceneOptionId: number;
+  sceneOptionId: number | null;
   targetSceneId: number;
   statusBeforeTarget: StatusRecord;
 };
@@ -109,7 +108,6 @@ export function PlayPage() {
   const [deltas, setDeltas] = useState<StatusDeltas>({});
   const [pendingTransition, setPendingTransition] = useState<PendingTransition | null>(null);
   const [editingOption, setEditingOption] = useState<SceneOptionRecord | null>(null);
-  const [newOptionSourceScene, setNewOptionSourceScene] = useState<SceneRecord | null>(null);
   const [isOptionEditorOpen, setIsOptionEditorOpen] = useState(false);
   const [isSceneExplorerOpen, setIsSceneExplorerOpen] = useState(false);
   const [isSceneEditorOpen, setIsSceneEditorOpen] = useState(false);
@@ -232,36 +230,48 @@ export function PlayPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const [statusResponse, sceneResponse] = await Promise.all([
-          dbTables.Status.listRows(
-            createListRequest({
-              limit: 1,
-              selected_ids: [parsedStatusId],
-            }),
-          ),
-          dbTables.Scene.listRows(
-            createListRequest({
-              limit: 1,
-              sort: ['id', 'asc'],
-            }),
-          ),
-        ]);
+        const statusResponse = await dbTables.Status.listRows(
+          createListRequest({
+            limit: 1,
+            selected_ids: [parsedStatusId],
+          }),
+        );
         if (!isActive) {
           return;
         }
 
         const loadedStatus = statusResponse.items[0] ?? null;
-        const loadedScene = sceneResponse.items[0] ?? null;
         if (!loadedStatus) {
           throw new Error('Status를 찾을 수 없습니다.');
         }
-        if (!loadedScene) {
-          throw new Error('시작할 Scene이 없습니다.');
+        if (!loadedStatus.id) {
+          throw new Error('Status ID를 확인할 수 없습니다.');
         }
 
-        setStatus(loadedStatus);
-        setScene(loadedScene);
-        setDeltas({});
+        const initialScene = await dbTables.SelectionModel.nextScene({
+          scene_id: null,
+          status_id: loadedStatus.id,
+          scene_option_id: null,
+        });
+        if (!isActive) {
+          return;
+        }
+        if (!initialScene.id) {
+          throw new Error('시작할 Scene ID를 확인할 수 없습니다.');
+        }
+
+        const { nextStatus, deltas: nextDeltas } = applyStatusChange(
+          loadedStatus,
+          initialScene.status_change,
+        );
+        await dbTables.Status.upsertRow([nextStatus]);
+        if (!isActive) {
+          return;
+        }
+
+        setStatus(nextStatus);
+        setDeltas(nextDeltas);
+        setScene(initialScene);
         setPendingTransition(null);
       } catch (loadError) {
         if (isActive) {
@@ -327,10 +337,6 @@ export function PlayPage() {
       setError('Scene을 먼저 불러와 주세요.');
       return;
     }
-    if (!option) {
-      setNewOptionSourceScene(scene);
-      return;
-    }
     setEditingOption(option);
     setIsOptionEditorOpen(true);
   }
@@ -348,10 +354,6 @@ export function PlayPage() {
   function handleOptionDeleted() {
     closeOptionEditor();
     setOptionReloadKey((current) => current + 1);
-  }
-
-  function closeNewOptionSceneEditor() {
-    setNewOptionSourceScene(null);
   }
 
   function openManualSceneExplorer() {
@@ -405,25 +407,25 @@ export function PlayPage() {
     });
   }
 
-  async function chooseOption(option: SceneOptionRecord) {
-    if (!scene?.id || !status?.id || !option.id) {
+  async function advanceToNextScene(sourceSceneId: number, sceneOptionId: number | null) {
+    if (!status?.id) {
       return;
     }
 
     setIsAdvancing(true);
     setError(null);
     try {
-      await reinforcePendingTransitionIfCurrent(scene.id, status.id);
+      await reinforcePendingTransitionIfCurrent(sourceSceneId, status.id);
       await dbTables.Scene.updateContext({
         status_id: status.id,
-        scene_id: scene.id,
+        scene_id: sourceSceneId,
       });
       setPendingTransition(null);
 
       const nextScene = await dbTables.SelectionModel.nextScene({
-        scene_id: scene.id,
+        scene_id: sourceSceneId,
         status_id: status.id,
-        scene_option_id: option.id,
+        scene_option_id: sceneOptionId,
       });
       if (!nextScene.id) {
         throw new Error('다음 Scene ID를 확인할 수 없습니다.');
@@ -440,8 +442,8 @@ export function PlayPage() {
       setScene(nextScene);
       setCurrentScene(nextScene);
       setPendingTransition({
-        sourceSceneId: scene.id,
-        sceneOptionId: option.id,
+        sourceSceneId,
+        sceneOptionId,
         targetSceneId: nextScene.id,
         statusBeforeTarget: { ...status },
       });
@@ -452,72 +454,20 @@ export function PlayPage() {
     }
   }
 
-  async function handleOptionSceneCreated(
-    option: SceneOptionRecord,
-    nextScene: SceneRecord,
-  ) {
-    const sourceScene = newOptionSourceScene;
-    if (!sourceScene?.id || !status?.id || !option.id || !nextScene.id) {
-      throw new Error('새 Option 진행 정보를 확인할 수 없습니다.');
+  async function chooseOption(option: SceneOptionRecord) {
+    if (!scene?.id || !option.id) {
+      return;
     }
 
-    setIsAdvancing(true);
-    setError(null);
-    try {
-      const statusBeforeTarget = { ...status };
-      await reinforcePendingTransitionIfCurrent(sourceScene.id, status.id);
-      await dbTables.Scene.updateContext({
-        status_id: status.id,
-        scene_id: sourceScene.id,
-      });
-
-      const { nextStatus, deltas: nextDeltas } = applyStatusChange(
-        statusBeforeTarget,
-        nextScene.status_change,
-      );
-
-      await dbTables.Status.upsertRow([nextStatus]);
-      setStatus(nextStatus);
-      setDeltas(nextDeltas);
-      setScene(nextScene);
-      setCurrentScene(nextScene);
-      setPendingTransition({
-        sourceSceneId: sourceScene.id,
-        sceneOptionId: option.id,
-        targetSceneId: nextScene.id,
-        statusBeforeTarget,
-      });
-      setOptionReloadKey((current) => current + 1);
-    } catch (createError) {
-      setError(getErrorMessage(createError));
-      throw createError;
-    } finally {
-      setIsAdvancing(false);
-    }
+    await advanceToNextScene(scene.id, option.id);
   }
 
-  async function handleOptionSceneUpdated(updatedScene: SceneRecord) {
-    if (!updatedScene.id) {
-      throw new Error('Scene ID를 확인할 수 없습니다.');
+  async function advanceWithoutOption() {
+    if (!scene?.id) {
+      return;
     }
 
-    if (pendingTransition && pendingTransition.targetSceneId === updatedScene.id) {
-      if (!status?.id) {
-        throw new Error('Status를 확인할 수 없습니다.');
-      }
-      const { nextStatus, deltas: nextDeltas } = applyStatusChange(
-        pendingTransition.statusBeforeTarget,
-        updatedScene.status_change,
-      );
-      await dbTables.Status.upsertRow([nextStatus]);
-      setStatus(nextStatus);
-      setDeltas(nextDeltas);
-    }
-
-    if (scene?.id === updatedScene.id) {
-      setScene(updatedScene);
-      setCurrentScene(updatedScene);
-    }
+    await advanceToNextScene(scene.id, null);
   }
 
   async function rerollScene() {
@@ -822,7 +772,14 @@ export function PlayPage() {
                 </>
               ) : (
                 <div className="vn-option-add-row">
-                  <p className="text-sm text-[var(--app-muted)]">선택지가 없습니다.</p>
+                  <button
+                    type="button"
+                    className="vn-button vn-option-button px-5 py-3"
+                    onClick={() => void advanceWithoutOption()}
+                    disabled={isAdvancing || !scene?.id}
+                  >
+                    {isAdvancing ? '다음 장면을 찾는 중' : '다음 장면'}
+                  </button>
                   <button
                     type="button"
                     className="vn-button px-3 py-2 text-xs"
@@ -845,16 +802,6 @@ export function PlayPage() {
           onClose={closeOptionEditor}
           onSaved={handleOptionSaved}
           onDeleted={handleOptionDeleted}
-        />
-      ) : null}
-
-      {newOptionSourceScene ? (
-        <SceneOptionSceneEditorModal
-          sourceScene={newOptionSourceScene}
-          onClose={closeNewOptionSceneEditor}
-          onCreated={(option, createdScene) =>
-            handleOptionSceneCreated(option, createdScene)}
-          onSceneUpdated={(updatedScene) => handleOptionSceneUpdated(updatedScene)}
         />
       ) : null}
 

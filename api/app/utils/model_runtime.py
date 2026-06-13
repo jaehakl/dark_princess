@@ -36,6 +36,9 @@ async def generate_images_batch(
     max_chunk_size: int,
     seed_min: int,
     seed_max: int,
+    sampler: str,
+    scheduler: str,
+    clip_skip: int | None,
 ) -> tuple[list[Any], list[int]]:
     async with _image_lock:
         return await asyncio.to_thread(
@@ -51,6 +54,9 @@ async def generate_images_batch(
             max_chunk_size,
             seed_min,
             seed_max,
+            sampler,
+            scheduler,
+            clip_skip,
         )
 
 
@@ -105,7 +111,9 @@ def _get_embedding_model_locked(model_name: str) -> Any:
     if _embedding_model is None or _embedding_model_name != model_name:
         from sentence_transformers import SentenceTransformer
 
-        _embedding_model = SentenceTransformer(model_name)
+        _embedding_model = SentenceTransformer(model_name, device="cpu")
+        if hasattr(_embedding_model, "to"):
+            _embedding_model = _embedding_model.to("cpu")
         _embedding_model_name = model_name
     return _embedding_model
 
@@ -122,9 +130,41 @@ def _generate_images_batch_locked(
     max_chunk_size: int,
     seed_min: int,
     seed_max: int,
+    sampler: str,
+    scheduler: str,
+    clip_skip: int | None,
 ) -> tuple[list[Any], list[int]]:
     torch = _load_image_torch()
     pipe = _get_image_pipe_locked(ckpt_path, torch)
+    sampler_key = sampler.strip().lower()
+    scheduler_key = scheduler.strip().lower()
+    if sampler_key:
+        if sampler_key == "euler":
+            from diffusers import EulerDiscreteScheduler
+
+            pipe.scheduler = EulerDiscreteScheduler.from_config(
+                pipe.scheduler.config,
+                use_karras_sigmas=scheduler_key == "karras",
+            )
+        elif sampler_key == "euler_a":
+            from diffusers import EulerAncestralDiscreteScheduler
+
+            pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
+        elif sampler_key == "dpmpp_2m":
+            from diffusers import DPMSolverMultistepScheduler
+
+            pipe.scheduler = DPMSolverMultistepScheduler.from_config(
+                pipe.scheduler.config,
+                algorithm_type="dpmsolver++",
+                solver_order=2,
+                use_karras_sigmas=scheduler_key == "karras",
+            )
+        elif sampler_key == "unipc":
+            from diffusers import UniPCMultistepScheduler
+
+            pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+        else:
+            raise ValueError(f"unsupported image sampler: {sampler}")
 
     images: list[Any] = []
     seeds: list[int] = []
@@ -144,17 +184,18 @@ def _generate_images_batch_locked(
             for seed_int in seed_chunk
         ]
         _clear_cuda_cache(torch)
-        images.extend(
-            pipe(
-                prompt=positive_prompt_chunk,
-                negative_prompt=negative_prompt_chunk,
-                num_inference_steps=step,
-                guidance_scale=cfg,
-                height=height,
-                width=width,
-                generator=generators_chunk,
-            ).images
-        )
+        call_kwargs = {
+            "prompt": positive_prompt_chunk,
+            "negative_prompt": negative_prompt_chunk,
+            "num_inference_steps": step,
+            "guidance_scale": cfg,
+            "height": height,
+            "width": width,
+            "generator": generators_chunk,
+        }
+        if clip_skip is not None:
+            call_kwargs["clip_skip"] = clip_skip
+        images.extend(pipe(**call_kwargs).images)
         seeds.extend(seed_chunk)
         i += chunk_size
 
@@ -197,7 +238,7 @@ def _predict_target_scene_embedding_locked(
     model = _get_selection_model_locked(model_file_url, load_model_artifact, build_model)
     torch, _nn = load_torch()
     with torch.no_grad():
-        return model(torch.tensor([input_values], dtype=torch.float32)).squeeze(0).tolist()
+        return model(torch.tensor([input_values], dtype=torch.float32, device="cpu")).squeeze(0).tolist()
 
 
 def _get_selection_model_locked(
@@ -210,6 +251,7 @@ def _get_selection_model_locked(
     if _selection_model is None or _selection_model_file_url != model_file_url:
         artifact = load_model_artifact(model_file_url)
         model = build_model(artifact["parameters"])
+        model = model.to("cpu")
         model.load_state_dict(artifact["state_dict"])
         model.eval()
         _selection_model = model

@@ -47,6 +47,11 @@ export type GenerateScenePromptResponse = {
   prompt: string;
 };
 
+export type RecommendPromptItem = {
+  word: string;
+  score: number;
+};
+
 export type GenerateSceneScriptRequest = {
   history: string;
   direction: string;
@@ -79,9 +84,9 @@ export type SceneOptionRecord = {
 };
 
 export type NextSceneRequest = {
-  scene_id: number;
+  scene_id: number | null;
   status_id: number;
-  scene_option_id: number;
+  scene_option_id: number | null;
 };
 
 export type AdjustSelectionModelRequest = NextSceneRequest & {

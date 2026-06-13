@@ -19,9 +19,9 @@ from models import (
     UpsertResponseBase,
 )
 from service.scene import (
+    generate_prompt_by_struct,
     generate_scene,
     generate_scene_script,
-    generate_stable_diffusion_prompt,
     recommend_prompt,
     update_scene_context,
 )
@@ -76,8 +76,15 @@ async def api_recommend_prompt(
 async def api_generate_prompt(
     request: GenerateScenePromptRequestBase,
 ):
+    return await api_generate_prompt_by_struct(request)
+
+
+@router.post("/generate-prompt-by-struct", response_model=GenerateScenePromptResponseBase)
+async def api_generate_prompt_by_struct(
+    request: GenerateScenePromptRequestBase,
+):
     return GenerateScenePromptResponseBase(
-        prompt=await generate_stable_diffusion_prompt(
+        prompt=await generate_prompt_by_struct(
             request.text,
             max_tokens=request.max_tokens,
             temperature=request.temperature,

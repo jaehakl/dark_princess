@@ -10,6 +10,25 @@ from db import Base, engine
 from settings import settings
 
 
+def scene_script_to_text(raw_script: str) -> str:
+    try:
+        script_items = json.loads(raw_script)
+    except json.JSONDecodeError:
+        return raw_script
+    if not isinstance(script_items, list):
+        return raw_script
+
+    lines: list[str] = []
+    for item in script_items:
+        if isinstance(item, str):
+            lines.extend(item.splitlines())
+        elif isinstance(item, dict):
+            for value in item.values():
+                if isinstance(value, str):
+                    lines.extend(value.splitlines())
+    return "\n".join(line for line in lines if line)
+
+
 def server():
     @asynccontextmanager
     async def lifespan(app: FastAPI):
