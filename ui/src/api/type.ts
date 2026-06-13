@@ -19,14 +19,15 @@ export type UpsertResponse = {
 };
 
 export type ImageGenerationSettings = {
-  positive_prompt: string;
+  positive_base: string;
   negative_prompt: string;
   steps: number;
   cfg: number;
+  sampler: string;
+  scheduler: string;
+  clip_skip: number | null;
   height: number;
   width: number;
-  seed_min: number;
-  seed_max: number;
 };
 
 export type GenImageResponse = {
@@ -41,6 +42,7 @@ export type GenerateSceneRequest = {
   script: string;
   status_change: Record<string, unknown>;
   generate_image?: boolean;
+  image_settings?: Partial<ImageGenerationSettings> | null;
 };
 
 export type GenerateScenePromptResponse = {

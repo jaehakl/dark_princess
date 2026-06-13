@@ -251,10 +251,6 @@ async def extract_visual_keywords(
             max_tokens=max_tokens,
             temperature=temperature,
         )
-        print(
-            f"[extract_visual_keywords] attempt={attempt}/{attempts} raw_output={raw_output!r}",
-            flush=True,
-        )
         try:
             payload = _parse_llm_json_object(
                 raw_output,
@@ -265,10 +261,6 @@ async def extract_visual_keywords(
             if exc.status_code != status.HTTP_502_BAD_GATEWAY:
                 raise
             last_failure = str(exc.detail)
-            print(
-                f"[extract_visual_keywords] attempt={attempt}/{attempts} invalid_json detail={last_failure!r}",
-                flush=True,
-            )
             continue
 
         result, last_failure = _normalize_visual_keyword_payload(
@@ -278,10 +270,6 @@ async def extract_visual_keywords(
         )
         if result is not None:
             return result
-        print(
-            f"[extract_visual_keywords] attempt={attempt}/{attempts} validation_failed detail={last_failure!r}",
-            flush=True,
-        )
 
     raise HTTPException(
         status_code=status.HTTP_502_BAD_GATEWAY,
@@ -314,10 +302,6 @@ async def translate_visual_keywords_to_english(
             max_tokens=max_tokens,
             temperature=temperature,
         )
-        print(
-            f"[translate_visual_keywords_to_english] attempt={attempt}/{attempts} raw_output={raw_output!r}",
-            flush=True,
-        )
         try:
             payload = _parse_llm_json_object(
                 raw_output,
@@ -328,10 +312,6 @@ async def translate_visual_keywords_to_english(
             if exc.status_code != status.HTTP_502_BAD_GATEWAY:
                 raise
             last_failure = str(exc.detail)
-            print(
-                f"[translate_visual_keywords_to_english] attempt={attempt}/{attempts} invalid_json detail={last_failure!r}",
-                flush=True,
-            )
             continue
 
         result, last_failure = _normalize_visual_keyword_payload(
@@ -341,10 +321,6 @@ async def translate_visual_keywords_to_english(
         )
         if result is not None:
             return result
-        print(
-            f"[translate_visual_keywords_to_english] attempt={attempt}/{attempts} validation_failed detail={last_failure!r}",
-            flush=True,
-        )
 
     raise HTTPException(
         status_code=status.HTTP_502_BAD_GATEWAY,
@@ -568,7 +544,6 @@ def _get_prompt_llm_locked(config: PromptLlmConfig) -> Any:
             ) from exc
 
         if config.model_path:
-            print(f"Loading prompt LLM GGUF: {config.model_path}", flush=True)
             _prompt_llm = Llama(
                 model_path=config.model_path,
                 n_ctx=config.context_size,
@@ -577,10 +552,6 @@ def _get_prompt_llm_locked(config: PromptLlmConfig) -> Any:
                 verbose=False,
             )
         else:
-            print(
-                f"Loading prompt LLM from Hugging Face: {config.repo_id}/{config.model_filename}",
-                flush=True,
-            )
             _prompt_llm = Llama.from_pretrained(
                 repo_id=config.repo_id,
                 filename=config.model_filename,

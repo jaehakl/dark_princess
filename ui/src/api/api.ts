@@ -11,6 +11,7 @@ import type {
   GenerateSelectionModelRequest,
   GetListRequest,
   GetListResponse,
+  ImageGenerationSettings,
   NextSceneRequest,
   RecommendPromptItem,
   SceneOptionRecord,
@@ -38,6 +39,8 @@ export const dbTables = {
     upsertRow: (items: unknown) => request<UpsertResponse[]>('post', '/scene/upsert', items),
     generateScene: (item: GenerateSceneRequest) =>
       request<SceneRecord>('post', '/scene/generate', item),
+    getImageSettingsDefaults: () =>
+      request<ImageGenerationSettings>('get', '/scene/image-settings/defaults'),
     recommendPrompt: (text: string) =>
       request<RecommendPromptItem[]>('post', '/scene/recommend-prompt', { text }),
     generatePrompt: (text: string) =>

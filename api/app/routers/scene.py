@@ -12,6 +12,7 @@ from models import (
     GenerateSceneScriptResponseBase,
     GetListRequestBase,
     GetListResponseBase,
+    ImageGenerationSettingsBase,
     RecommendPromptItemBase,
     SceneBase,
     StatusBase,
@@ -19,6 +20,7 @@ from models import (
     UpsertResponseBase,
 )
 from service.scene import (
+    get_default_image_generation_settings,
     generate_prompt_by_struct,
     generate_scene,
     generate_scene_script,
@@ -47,6 +49,11 @@ async def api_upsert_scene_list(
     db: AsyncSession = Depends(get_db),
 ):
     return await upsert_items(db, items, SCENE_CRUD_SPEC, cleanup_fields=("image_url",))
+
+
+@router.get("/image-settings/defaults", response_model=ImageGenerationSettingsBase)
+async def api_get_image_settings_defaults():
+    return get_default_image_generation_settings()
 
 
 @router.post("/generate", response_model=SceneBase)

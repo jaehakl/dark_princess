@@ -38,12 +38,25 @@ class UpdateSceneContextRequestBase(BaseModel):
     scene_id: int
 
 
+class ImageGenerationSettingsBase(BaseModel):
+    positive_base: Optional[str] = None
+    negative_prompt: Optional[str] = None
+    steps: Optional[int] = None
+    cfg: Optional[float] = None
+    sampler: Optional[str] = None
+    scheduler: Optional[str] = None
+    clip_skip: Optional[int] = None
+    height: Optional[int] = None
+    width: Optional[int] = None
+
+
 class GenerateSceneRequestBase(BaseModel):
     scene_id: Optional[int] = None
     prompt: str
     script: str = ""
     status_change: Dict[str, Any] = Field(default_factory=dict)
     generate_image: bool = True
+    image_settings: Optional[ImageGenerationSettingsBase] = None
 
 
 class GenerateScenePromptRequestBase(BaseModel):

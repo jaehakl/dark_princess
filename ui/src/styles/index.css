@@ -452,11 +452,52 @@ select.edit-control option {
 .vn-scene-editor-meta {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
   border: 1px solid rgba(255, 208, 222, 0.24);
   border-radius: 8px;
   padding: 0.6rem 0.75rem;
   background: rgba(12, 5, 18, 0.56);
+}
+
+.vn-nested-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(5, 0, 10, 0.62);
+  backdrop-filter: blur(8px);
+}
+
+.vn-image-settings-modal {
+  width: min(48rem, 100%);
+  max-height: min(46rem, calc(100vh - 2rem));
+  overflow-y: auto;
+}
+
+.vn-image-settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.vn-image-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.vn-image-settings-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.vn-image-settings-wide {
+  width: 100%;
 }
 
 .vn-scene-option-modal {
@@ -841,6 +882,10 @@ select.edit-control option {
 }
 
 @media (max-width: 960px) {
+  .vn-image-settings-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .vn-scene-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -891,6 +936,10 @@ select.edit-control option {
   }
 
   .vn-status-change-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vn-image-settings-grid {
     grid-template-columns: 1fr;
   }
 

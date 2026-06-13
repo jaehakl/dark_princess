@@ -159,6 +159,19 @@ class ScenePromptByStructTests(unittest.IsolatedAsyncioTestCase):
         generate.assert_awaited_once_with("공주는 기다렸다.", max_tokens=64, temperature=0.1)
         self.assertEqual(response.prompt, "princess, waits")
 
+    async def test_api_get_image_settings_defaults_returns_scene_defaults(self) -> None:
+        response = await scene_router.api_get_image_settings_defaults()
+
+        self.assertEqual(response.positive_base, scene_service.GEN_IMAGE_POSITIVE_BASE)
+        self.assertEqual(response.negative_prompt, scene_service.GEN_IMAGE_NEGATIVE_PROMPT)
+        self.assertEqual(response.steps, scene_service.GEN_IMAGE_STEPS)
+        self.assertEqual(response.cfg, scene_service.GEN_IMAGE_CFG)
+        self.assertEqual(response.sampler, scene_service.GEN_IMAGE_SAMPLER)
+        self.assertEqual(response.scheduler, scene_service.GEN_IMAGE_SCHEDULER)
+        self.assertEqual(response.clip_skip, scene_service.GEN_IMAGE_CLIP_SKIP)
+        self.assertEqual(response.height, scene_service.GEN_IMAGE_HEIGHT)
+        self.assertEqual(response.width, scene_service.GEN_IMAGE_WIDTH)
+
 
 if __name__ == "__main__":
     unittest.main()

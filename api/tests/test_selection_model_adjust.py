@@ -15,7 +15,12 @@ sys.path.insert(0, str(APP_ROOT))
 
 from db import Scene, SceneOption, SelectionModel, Status
 from initserver import scene_script_to_text
-from models import AdjustSelectionModelRequestBase, GenerateSceneRequestBase, UpdateSceneContextRequestBase
+from models import (
+    AdjustSelectionModelRequestBase,
+    GenerateSceneRequestBase,
+    ImageGenerationSettingsBase,
+    UpdateSceneContextRequestBase,
+)
 from service import scene as scene_service
 from service import selection_model
 from utils import llm
@@ -487,6 +492,98 @@ class SelectionModelAdjustTests(unittest.IsolatedAsyncioTestCase):
             await scene_service.generate_scene(FakeDb({}), request)
 
         self.assertEqual(raised.exception.status_code, 400)
+
+    async def test_generate_scene_passes_image_settings_to_image_generation(self) -> None:
+        scene = Scene(
+            id=1,
+            prompt="old",
+            image_url="old-image.jpg",
+            script="old",
+            status_change={"turn": 1},
+            embedding=make_embedding(0.1),
+        )
+        image_settings = ImageGenerationSettingsBase(steps=12, sampler="euler")
+        db = FakeDb({(Scene, 1): scene})
+        calls: dict[str, object] = {}
+        request = GenerateSceneRequestBase(
+            scene_id=1,
+            prompt="new",
+            script="new",
+            status_change={"turn": 1},
+            generate_image=True,
+            image_settings=image_settings,
+        )
+
+        async def generate_image(prompt: str, image_settings_arg: ImageGenerationSettingsBase | None = None) -> tuple[str, str]:
+            calls["prompt"] = prompt
+            calls["image_settings"] = image_settings_arg
+            return "new-image.jpg", "new-image-key"
+
+        async def cleanup(_db: FakeDb, old_image_url: str | None, new_image_url: str) -> None:
+            calls["cleanup"] = (old_image_url, new_image_url)
+
+        with (
+            patch.object(scene_service, "make_scene_embedding", return_value=make_embedding(0.8)),
+            patch.object(scene_service, "generate_scene_image", side_effect=generate_image),
+            patch.object(scene_service, "cleanup_old_scene_image", side_effect=cleanup),
+        ):
+            result = await scene_service.generate_scene(db, request)
+
+        self.assertIs(result, scene)
+        self.assertEqual(calls["prompt"], "new")
+        self.assertIs(calls["image_settings"], image_settings)
+        self.assertEqual(calls["cleanup"], ("old-image.jpg", "new-image.jpg"))
+        self.assertEqual(scene.image_url, "new-image.jpg")
+
+    def test_image_generation_settings_default_to_scene_constants(self) -> None:
+        settings = scene_service.resolve_image_generation_settings(None)
+
+        self.assertEqual(settings.positive_base, scene_service.GEN_IMAGE_POSITIVE_BASE)
+        self.assertEqual(settings.negative_prompt, scene_service.GEN_IMAGE_NEGATIVE_PROMPT)
+        self.assertEqual(settings.steps, scene_service.GEN_IMAGE_STEPS)
+        self.assertEqual(settings.cfg, scene_service.GEN_IMAGE_CFG)
+        self.assertEqual(settings.sampler, scene_service.GEN_IMAGE_SAMPLER)
+        self.assertEqual(settings.scheduler, scene_service.GEN_IMAGE_SCHEDULER)
+        self.assertEqual(settings.clip_skip, scene_service.GEN_IMAGE_CLIP_SKIP)
+        self.assertEqual(settings.height, scene_service.GEN_IMAGE_HEIGHT)
+        self.assertEqual(settings.width, scene_service.GEN_IMAGE_WIDTH)
+
+    def test_image_generation_settings_override_partial_values(self) -> None:
+        settings = scene_service.resolve_image_generation_settings(
+            ImageGenerationSettingsBase(
+                positive_base=" custom base, ",
+                steps=12,
+                sampler="EULER_A",
+                clip_skip=2,
+                width=512,
+            )
+        )
+
+        self.assertEqual(settings.positive_base, "custom base,")
+        self.assertEqual(settings.negative_prompt, scene_service.GEN_IMAGE_NEGATIVE_PROMPT)
+        self.assertEqual(settings.steps, 12)
+        self.assertEqual(settings.sampler, "euler_a")
+        self.assertEqual(settings.clip_skip, 2)
+        self.assertEqual(settings.height, scene_service.GEN_IMAGE_HEIGHT)
+        self.assertEqual(settings.width, 512)
+
+    def test_image_generation_settings_reject_invalid_values(self) -> None:
+        invalid_settings = [
+            ImageGenerationSettingsBase(steps=0),
+            ImageGenerationSettingsBase(cfg=0),
+            ImageGenerationSettingsBase(height=1217),
+            ImageGenerationSettingsBase(width=-8),
+            ImageGenerationSettingsBase(clip_skip=0),
+            ImageGenerationSettingsBase(sampler="bad"),
+            ImageGenerationSettingsBase(scheduler="bad"),
+        ]
+
+        for image_settings in invalid_settings:
+            with self.subTest(image_settings=image_settings):
+                with self.assertRaises(HTTPException) as raised:
+                    scene_service.resolve_image_generation_settings(image_settings)
+
+                self.assertEqual(raised.exception.status_code, 400)
 
     def test_scene_script_to_text_converts_json_array_to_newline_text(self) -> None:
         raw_script = '["첫 줄", {"text": "둘째 줄\\n셋째 줄"}, {"extra": "넷째 줄"}]'

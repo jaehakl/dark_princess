@@ -10,7 +10,12 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import Scene, Status
-from models import GenerateSceneRequestBase, RecommendPromptItemBase, UpdateSceneContextRequestBase
+from models import (
+    GenerateSceneRequestBase,
+    ImageGenerationSettingsBase,
+    RecommendPromptItemBase,
+    UpdateSceneContextRequestBase,
+)
 from settings import API_ROOT, settings
 from service.selection_model import cosine_distance
 from utils.llm import (
@@ -22,17 +27,17 @@ from utils.local_storage import build_object_key, delete_object, object_key_from
 from utils.model_runtime import encode_scene_text, generate_images_batch
 from utils.vector import VECTOR_DIMENSION, validate_embedding
 
-GEN_IMAGE_POSITIVE_BASE = "score_7_up, source_anime, cinematic composition,"
-GEN_IMAGE_NEGATIVE_PROMPT = "score_5, score_4, score_3, solo, portrait, character focus, lowres, blurry, low quality, bad anatomy, disfigured, deformed, bad hands, missing fingers, extra fingers, worst quality, jpeg artifacts, signature, watermark, text, bad eyes, grotesque, sketchy, logo, rough, incomplete, disgusting, distorted, deformed face, poorly drawn, bad quality"
+#GEN_IMAGE_POSITIVE_BASE = "score_7_up, source_anime, cinematic composition,"
+#GEN_IMAGE_NEGATIVE_PROMPT = "score_5, score_4, score_3, solo, portrait, character focus, lowres, blurry, low quality, bad anatomy, disfigured, deformed, bad hands, missing fingers, extra fingers, worst quality, jpeg artifacts, signature, watermark, text, bad eyes, grotesque, sketchy, logo, rough, incomplete, disgusting, distorted, deformed face, poorly drawn, bad quality"
 
-#GEN_IMAGE_POSITIVE_BASE = "masterpiece, best quality"
-#GEN_IMAGE_NEGATIVE_PROMPT = "blurry, low quality, bad anatomy, disfigured, deformed, bad hands, missing fingers, extra fingers, worst quality, jpeg artifacts, signature, watermark, text, bad eyes, grotesque, sketchy, logo, rough, incomplete, disgusting, distorted, deformed face, poorly drawn, bad quality"
+GEN_IMAGE_POSITIVE_BASE = "masterpiece, best quality"
+GEN_IMAGE_NEGATIVE_PROMPT = "blurry, low quality, bad anatomy, disfigured, deformed, bad hands, missing fingers, extra fingers, worst quality, jpeg artifacts, signature, watermark, text, bad eyes, grotesque, sketchy, logo, rough, incomplete, disgusting, distorted, deformed face, poorly drawn, bad quality"
 
 GEN_IMAGE_STEPS = 30
-GEN_IMAGE_CFG = 7
-GEN_IMAGE_SAMPLER = "dpmpp_2m" #"euler_a"
-GEN_IMAGE_SCHEDULER = "karras"
-GEN_IMAGE_CLIP_SKIP: int | None = None
+GEN_IMAGE_CFG = 5
+GEN_IMAGE_SAMPLER = "euler_a" #"dpmpp_2m"
+GEN_IMAGE_SCHEDULER = "" #"karras"
+GEN_IMAGE_CLIP_SKIP: int | None = None #2
 GEN_IMAGE_HEIGHT = 1216
 GEN_IMAGE_WIDTH = 832
 GEN_IMAGE_MAX_CHUNK_SIZE = 1
@@ -42,6 +47,8 @@ GEN_IMAGE_OUTPUT_QUALITY = 85
 GEN_IMAGE_SEED_MIN = 0
 GEN_IMAGE_SEED_MAX = 1_000_000
 RECOMMEND_PROMPT_DISTANCE_EPSILON = 1e-6
+GEN_IMAGE_ALLOWED_SAMPLERS = {"", "euler", "euler_a", "dpmpp_2m", "unipc"}
+GEN_IMAGE_ALLOWED_SCHEDULERS = {"", "karras"}
 
 
 async def generate_scene(
@@ -70,7 +77,7 @@ async def generate_scene(
     script = normalize_scene_script(request.script)
     embedding = await make_scene_embedding(prompt, script)
     if request.generate_image:
-        image_url, image_key = await generate_scene_image(prompt)
+        image_url, image_key = await generate_scene_image(prompt, request.image_settings)
 
     try:
         if scene is None:
@@ -228,6 +235,86 @@ async def generate_scene_script(
     )
 
 
+def get_default_image_generation_settings() -> ImageGenerationSettingsBase:
+    return ImageGenerationSettingsBase(
+        positive_base=GEN_IMAGE_POSITIVE_BASE,
+        negative_prompt=GEN_IMAGE_NEGATIVE_PROMPT,
+        steps=GEN_IMAGE_STEPS,
+        cfg=GEN_IMAGE_CFG,
+        sampler=GEN_IMAGE_SAMPLER,
+        scheduler=GEN_IMAGE_SCHEDULER,
+        clip_skip=GEN_IMAGE_CLIP_SKIP,
+        height=GEN_IMAGE_HEIGHT,
+        width=GEN_IMAGE_WIDTH,
+    )
+
+
+def resolve_image_generation_settings(
+    image_settings: ImageGenerationSettingsBase | None,
+) -> ImageGenerationSettingsBase:
+    defaults = get_default_image_generation_settings()
+    if image_settings is None:
+        return _validate_image_generation_settings(defaults)
+
+    resolved = ImageGenerationSettingsBase(
+        positive_base=defaults.positive_base if image_settings.positive_base is None else image_settings.positive_base,
+        negative_prompt=defaults.negative_prompt if image_settings.negative_prompt is None else image_settings.negative_prompt,
+        steps=defaults.steps if image_settings.steps is None else image_settings.steps,
+        cfg=defaults.cfg if image_settings.cfg is None else image_settings.cfg,
+        sampler=defaults.sampler if image_settings.sampler is None else image_settings.sampler,
+        scheduler=defaults.scheduler if image_settings.scheduler is None else image_settings.scheduler,
+        clip_skip=defaults.clip_skip if image_settings.clip_skip is None else image_settings.clip_skip,
+        height=defaults.height if image_settings.height is None else image_settings.height,
+        width=defaults.width if image_settings.width is None else image_settings.width,
+    )
+    return _validate_image_generation_settings(resolved)
+
+
+def _validate_image_generation_settings(
+    image_settings: ImageGenerationSettingsBase,
+) -> ImageGenerationSettingsBase:
+    steps = image_settings.steps
+    cfg = image_settings.cfg
+    height = image_settings.height
+    width = image_settings.width
+    clip_skip = image_settings.clip_skip
+    sampler = (image_settings.sampler or "").strip().lower()
+    scheduler = (image_settings.scheduler or "").strip().lower()
+
+    if steps is None or steps < 1:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="image steps must be 1 or greater")
+    if cfg is None or cfg <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="image cfg must be greater than 0")
+    if height is None or height <= 0 or height % 8 != 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="image height must be a positive multiple of 8",
+        )
+    if width is None or width <= 0 or width % 8 != 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="image width must be a positive multiple of 8",
+        )
+    if clip_skip is not None and clip_skip < 1:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="image clip_skip must be null or 1 or greater")
+    if sampler not in GEN_IMAGE_ALLOWED_SAMPLERS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unsupported image sampler")
+    if scheduler not in GEN_IMAGE_ALLOWED_SCHEDULERS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unsupported image scheduler")
+
+    return ImageGenerationSettingsBase(
+        positive_base=(image_settings.positive_base or "").strip(),
+        negative_prompt=(image_settings.negative_prompt or "").strip(),
+        steps=steps,
+        cfg=cfg,
+        sampler=sampler,
+        scheduler=scheduler,
+        clip_skip=clip_skip,
+        height=height,
+        width=width,
+    )
+
+
 def normalize_scene_script(script: str) -> str:
     return script.replace("\r\n", "\n").replace("\r", "\n")
 
@@ -236,7 +323,10 @@ def build_scene_embedding_input(prompt: str, script: str) -> str:
     return f"passage: {prompt}\n{script}"
 
 
-async def generate_scene_image(prompt: str) -> tuple[str, str]:
+async def generate_scene_image(
+    prompt: str,
+    image_settings: ImageGenerationSettingsBase | None = None,
+) -> tuple[str, str]:
     model_path_value = settings.stable_diffusion_model_path.strip()
     if not model_path_value:
         raise HTTPException(
@@ -255,22 +345,27 @@ async def generate_scene_image(prompt: str) -> tuple[str, str]:
             detail=f"stable diffusion model file not found: {model_path}",
         ) from exc
 
+    resolved_settings = resolve_image_generation_settings(image_settings)
+    positive_prompt_parts = [
+        (resolved_settings.positive_base or "").strip().strip(","),
+        prompt.strip().strip(","),
+    ]
     seed = random.randint(GEN_IMAGE_SEED_MIN, GEN_IMAGE_SEED_MAX)
     images, _seeds = await generate_images_batch(
         str(model_path),
-        [GEN_IMAGE_POSITIVE_BASE+prompt],
-        [GEN_IMAGE_NEGATIVE_PROMPT],
+        [", ".join(part for part in positive_prompt_parts if part)],
+        [resolved_settings.negative_prompt or ""],
         [seed],
-        GEN_IMAGE_STEPS,
-        GEN_IMAGE_CFG,
-        GEN_IMAGE_HEIGHT,
-        GEN_IMAGE_WIDTH,
+        resolved_settings.steps or GEN_IMAGE_STEPS,
+        resolved_settings.cfg or GEN_IMAGE_CFG,
+        resolved_settings.height or GEN_IMAGE_HEIGHT,
+        resolved_settings.width or GEN_IMAGE_WIDTH,
         GEN_IMAGE_MAX_CHUNK_SIZE,
         GEN_IMAGE_SEED_MIN,
         GEN_IMAGE_SEED_MAX,
-        GEN_IMAGE_SAMPLER,
-        GEN_IMAGE_SCHEDULER,
-        GEN_IMAGE_CLIP_SKIP,
+        resolved_settings.sampler or "",
+        resolved_settings.scheduler or "",
+        resolved_settings.clip_skip,
     )
     image = images[0] if images else None
     if image is None:

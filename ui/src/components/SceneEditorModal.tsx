@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { dbTables } from '../api/api';
-import type { RecommendPromptItem, SceneRecord } from '../api/type';
+import type { ImageGenerationSettings, RecommendPromptItem, SceneRecord } from '../api/type';
 
 const STATUS_CHANGE_FIELDS = [
   { key: 'cash', label: '현금' },
@@ -13,10 +13,25 @@ const STATUS_CHANGE_FIELDS = [
   { key: 'stress', label: '스트레스' },
 ] as const;
 
+const IMAGE_SETTINGS_SESSION_KEY = 'dark_princess.scene.image_settings';
+const IMAGE_SAMPLER_OPTIONS = ['', 'euler', 'euler_a', 'dpmpp_2m', 'unipc'] as const;
+const IMAGE_SCHEDULER_OPTIONS = ['', 'karras'] as const;
+
 type StatusChangeKey = (typeof STATUS_CHANGE_FIELDS)[number]['key'];
 type StatusChangeValues = Record<StatusChangeKey, string>;
 type SaveMode = 'text' | 'image' | 'create';
 type PromptGenerationMode = 'direct' | 'struct';
+type ImageGenerationSettingsDraft = {
+  positive_base: string;
+  negative_prompt: string;
+  steps: string;
+  cfg: string;
+  sampler: string;
+  scheduler: string;
+  clip_skip: string;
+  height: string;
+  width: string;
+};
 
 type SceneEditorModalProps = {
   scene: SceneRecord | null;
@@ -42,6 +57,52 @@ function statusChangeToValues(statusChange: SceneRecord['status_change'] | undef
   }, {} as StatusChangeValues);
 }
 
+function mergeImageSettings(
+  defaults: ImageGenerationSettings,
+  overrides: Partial<ImageGenerationSettings>,
+): ImageGenerationSettings {
+  return {
+    positive_base: overrides.positive_base ?? defaults.positive_base,
+    negative_prompt: overrides.negative_prompt ?? defaults.negative_prompt,
+    steps: overrides.steps ?? defaults.steps,
+    cfg: overrides.cfg ?? defaults.cfg,
+    sampler: overrides.sampler ?? defaults.sampler,
+    scheduler: overrides.scheduler ?? defaults.scheduler,
+    clip_skip: overrides.clip_skip ?? defaults.clip_skip,
+    height: overrides.height ?? defaults.height,
+    width: overrides.width ?? defaults.width,
+  };
+}
+
+function imageSettingsToDraft(settings: ImageGenerationSettings): ImageGenerationSettingsDraft {
+  return {
+    positive_base: settings.positive_base,
+    negative_prompt: settings.negative_prompt,
+    steps: String(settings.steps),
+    cfg: String(settings.cfg),
+    sampler: settings.sampler,
+    scheduler: settings.scheduler,
+    clip_skip: settings.clip_skip === null ? '' : String(settings.clip_skip),
+    height: String(settings.height),
+    width: String(settings.width),
+  };
+}
+
+function readSessionImageSettings(defaults: ImageGenerationSettings): ImageGenerationSettings {
+  const rawSettings = sessionStorage.getItem(IMAGE_SETTINGS_SESSION_KEY);
+  if (!rawSettings) {
+    return defaults;
+  }
+
+  try {
+    const parsedSettings = JSON.parse(rawSettings) as Partial<ImageGenerationSettings>;
+    return mergeImageSettings(defaults, parsedSettings);
+  } catch {
+    sessionStorage.removeItem(IMAGE_SETTINGS_SESSION_KEY);
+    return defaults;
+  }
+}
+
 export function SceneEditorModal({
   scene,
   onClose,
@@ -59,6 +120,11 @@ export function SceneEditorModal({
   const [isRecommendingPrompt, setIsRecommendingPrompt] = useState(false);
   const [generatingPromptMode, setGeneratingPromptMode] = useState<PromptGenerationMode | null>(null);
   const [promptRecommendations, setPromptRecommendations] = useState<RecommendPromptItem[]>([]);
+  const [imageSettingsDefaults, setImageSettingsDefaults] = useState<ImageGenerationSettings | null>(null);
+  const [imageSettings, setImageSettings] = useState<ImageGenerationSettings | null>(null);
+  const [imageSettingsDraft, setImageSettingsDraft] = useState<ImageGenerationSettingsDraft | null>(null);
+  const [isImageSettingsOpen, setIsImageSettingsOpen] = useState(false);
+  const [imageSettingsError, setImageSettingsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const editedSceneId = scene?.id ?? null;
@@ -88,6 +154,39 @@ export function SceneEditorModal({
     setGeneratingPromptMode(null);
     setPromptRecommendations([]);
   }, [scene]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadImageSettingsDefaults() {
+      try {
+        const defaults = await dbTables.Scene.getImageSettingsDefaults();
+        if (isCancelled) {
+          return;
+        }
+
+        const settingsFromSession = readSessionImageSettings(defaults);
+        setImageSettingsDefaults(defaults);
+        setImageSettings(settingsFromSession);
+        setImageSettingsDraft(imageSettingsToDraft(settingsFromSession));
+      } catch (settingsError) {
+        if (!isCancelled) {
+          setError(getErrorMessage(settingsError));
+        }
+      }
+    }
+
+    void loadImageSettingsDefaults();
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  function updateImageSettingsDraft(field: keyof ImageGenerationSettingsDraft, value: string) {
+    setImageSettingsDraft((currentDraft) => (
+      currentDraft ? { ...currentDraft, [field]: value } : currentDraft
+    ));
+  }
 
   async function recommendPromptFromScript() {
     const text = script.trim();
@@ -140,6 +239,91 @@ export function SceneEditorModal({
     }
   }
 
+  function openImageSettings() {
+    if (!imageSettings) {
+      setError('이미지 설정 기본값을 불러오는 중입니다.');
+      return;
+    }
+
+    setImageSettingsDraft(imageSettingsToDraft(imageSettings));
+    setImageSettingsError(null);
+    setIsImageSettingsOpen(true);
+  }
+
+  function resetImageSettingsToDefaults() {
+    if (!imageSettingsDefaults) {
+      setImageSettingsError('이미지 설정 기본값을 불러오지 못했습니다.');
+      return;
+    }
+
+    setImageSettings(imageSettingsDefaults);
+    setImageSettingsDraft(imageSettingsToDraft(imageSettingsDefaults));
+    sessionStorage.setItem(IMAGE_SETTINGS_SESSION_KEY, JSON.stringify(imageSettingsDefaults));
+    setImageSettingsError(null);
+  }
+
+  function applyImageSettings() {
+    if (!imageSettingsDraft) {
+      return;
+    }
+
+    const steps = Number(imageSettingsDraft.steps);
+    const cfg = Number(imageSettingsDraft.cfg);
+    const height = Number(imageSettingsDraft.height);
+    const width = Number(imageSettingsDraft.width);
+    const clipSkip = imageSettingsDraft.clip_skip.trim() === ''
+      ? null
+      : Number(imageSettingsDraft.clip_skip);
+    const sampler = imageSettingsDraft.sampler.trim().toLowerCase();
+    const scheduler = imageSettingsDraft.scheduler.trim().toLowerCase();
+
+    if (!Number.isInteger(steps) || steps < 1) {
+      setImageSettingsError('steps는 1 이상의 정수로 입력해 주세요.');
+      return;
+    }
+    if (!Number.isFinite(cfg) || cfg <= 0) {
+      setImageSettingsError('cfg는 0보다 큰 숫자로 입력해 주세요.');
+      return;
+    }
+    if (!Number.isInteger(height) || height <= 0 || height % 8 !== 0) {
+      setImageSettingsError('height는 8의 배수인 양의 정수로 입력해 주세요.');
+      return;
+    }
+    if (!Number.isInteger(width) || width <= 0 || width % 8 !== 0) {
+      setImageSettingsError('width는 8의 배수인 양의 정수로 입력해 주세요.');
+      return;
+    }
+    if (clipSkip !== null && (!Number.isInteger(clipSkip) || clipSkip < 1)) {
+      setImageSettingsError('clip skip은 비우거나 1 이상의 정수로 입력해 주세요.');
+      return;
+    }
+    if (!IMAGE_SAMPLER_OPTIONS.includes(sampler as (typeof IMAGE_SAMPLER_OPTIONS)[number])) {
+      setImageSettingsError('지원하지 않는 sampler입니다.');
+      return;
+    }
+    if (!IMAGE_SCHEDULER_OPTIONS.includes(scheduler as (typeof IMAGE_SCHEDULER_OPTIONS)[number])) {
+      setImageSettingsError('지원하지 않는 scheduler입니다.');
+      return;
+    }
+
+    const nextImageSettings = {
+      positive_base: imageSettingsDraft.positive_base.trim(),
+      negative_prompt: imageSettingsDraft.negative_prompt.trim(),
+      steps,
+      cfg,
+      sampler,
+      scheduler,
+      clip_skip: clipSkip,
+      height,
+      width,
+    };
+    setImageSettings(nextImageSettings);
+    setImageSettingsDraft(imageSettingsToDraft(nextImageSettings));
+    sessionStorage.setItem(IMAGE_SETTINGS_SESSION_KEY, JSON.stringify(nextImageSettings));
+    setImageSettingsError(null);
+    setIsImageSettingsOpen(false);
+  }
+
   async function saveScene(mode: SaveMode) {
     const trimmedPrompt = prompt.trim();
     if (!trimmedPrompt) {
@@ -171,6 +355,7 @@ export function SceneEditorModal({
         script,
         status_change: statusChange,
         generate_image: mode !== 'text',
+        ...(mode === 'text' || !imageSettings ? {} : { image_settings: imageSettings }),
       });
       setPrompt(savedScene.prompt);
       setScript(savedScene.script);
@@ -238,6 +423,14 @@ export function SceneEditorModal({
 
         <div className="vn-section-body vn-scene-editor-body">
           <div className="vn-scene-editor-meta">
+            <button
+              type="button"
+              className="vn-button px-3 py-1.5 text-xs"
+              onClick={openImageSettings}
+              disabled={isInputDisabled}
+            >
+              이미지 설정
+            </button>
             <span className="ml-auto text-xs text-[var(--app-muted)]">
               {editedSceneId ? `scene_id ${editedSceneId}` : 'scene_id null'}
             </span>
@@ -430,6 +623,193 @@ export function SceneEditorModal({
           </div>
         </div>
       </section>
+
+      {isImageSettingsOpen && imageSettingsDraft ? (
+        <div className="vn-nested-modal-backdrop" role="presentation">
+          <section
+            className="vn-panel vn-image-settings-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="image-settings-title"
+          >
+            <div className="vn-panel-header">
+              <div className="min-w-0">
+                <p className="vn-subtitle">Image generation</p>
+                <h3
+                  id="image-settings-title"
+                  className="truncate text-base font-semibold text-[#fff7ef]"
+                >
+                  이미지 설정
+                </h3>
+              </div>
+              <button
+                type="button"
+                className="vn-danger-button px-3 py-2 text-xs"
+                onClick={() => setIsImageSettingsOpen(false)}
+              >
+                닫기
+              </button>
+            </div>
+
+            <div className="vn-section-body vn-image-settings-body">
+              <label className="vn-image-settings-field vn-image-settings-wide">
+                <span className="edit-label">
+                  <span className="edit-label__text">positive base</span>
+                </span>
+                <textarea
+                  value={imageSettingsDraft.positive_base}
+                  onChange={(event) => updateImageSettingsDraft('positive_base', event.target.value)}
+                  className="edit-control min-h-20 w-full resize-y px-3 py-2 text-sm"
+                />
+              </label>
+
+              <label className="vn-image-settings-field vn-image-settings-wide">
+                <span className="edit-label">
+                  <span className="edit-label__text">negative prompt</span>
+                </span>
+                <textarea
+                  value={imageSettingsDraft.negative_prompt}
+                  onChange={(event) => updateImageSettingsDraft('negative_prompt', event.target.value)}
+                  className="edit-control min-h-24 w-full resize-y px-3 py-2 text-sm"
+                />
+              </label>
+
+              <div className="vn-image-settings-grid">
+                <label className="vn-image-settings-field">
+                  <span className="edit-label">
+                    <span className="edit-label__text">steps</span>
+                  </span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={imageSettingsDraft.steps}
+                    onChange={(event) => updateImageSettingsDraft('steps', event.target.value)}
+                    className="edit-control h-10 w-full px-3 text-right text-sm"
+                  />
+                </label>
+
+                <label className="vn-image-settings-field">
+                  <span className="edit-label">
+                    <span className="edit-label__text">cfg</span>
+                  </span>
+                  <input
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    value={imageSettingsDraft.cfg}
+                    onChange={(event) => updateImageSettingsDraft('cfg', event.target.value)}
+                    className="edit-control h-10 w-full px-3 text-right text-sm"
+                  />
+                </label>
+
+                <label className="vn-image-settings-field">
+                  <span className="edit-label">
+                    <span className="edit-label__text">sampler</span>
+                  </span>
+                  <select
+                    value={imageSettingsDraft.sampler}
+                    onChange={(event) => updateImageSettingsDraft('sampler', event.target.value)}
+                    className="edit-control h-10 w-full px-3 text-sm"
+                  >
+                    <option value="">default</option>
+                    <option value="euler">euler</option>
+                    <option value="euler_a">euler_a</option>
+                    <option value="dpmpp_2m">dpmpp_2m</option>
+                    <option value="unipc">unipc</option>
+                  </select>
+                </label>
+
+                <label className="vn-image-settings-field">
+                  <span className="edit-label">
+                    <span className="edit-label__text">scheduler</span>
+                  </span>
+                  <select
+                    value={imageSettingsDraft.scheduler}
+                    onChange={(event) => updateImageSettingsDraft('scheduler', event.target.value)}
+                    className="edit-control h-10 w-full px-3 text-sm"
+                  >
+                    <option value="">default</option>
+                    <option value="karras">karras</option>
+                  </select>
+                </label>
+
+                <label className="vn-image-settings-field">
+                  <span className="edit-label">
+                    <span className="edit-label__text">clip skip</span>
+                  </span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={imageSettingsDraft.clip_skip}
+                    onChange={(event) => updateImageSettingsDraft('clip_skip', event.target.value)}
+                    className="edit-control h-10 w-full px-3 text-right text-sm"
+                  />
+                </label>
+
+                <label className="vn-image-settings-field">
+                  <span className="edit-label">
+                    <span className="edit-label__text">height</span>
+                  </span>
+                  <input
+                    type="number"
+                    min="8"
+                    step="8"
+                    value={imageSettingsDraft.height}
+                    onChange={(event) => updateImageSettingsDraft('height', event.target.value)}
+                    className="edit-control h-10 w-full px-3 text-right text-sm"
+                  />
+                </label>
+
+                <label className="vn-image-settings-field">
+                  <span className="edit-label">
+                    <span className="edit-label__text">width</span>
+                  </span>
+                  <input
+                    type="number"
+                    min="8"
+                    step="8"
+                    value={imageSettingsDraft.width}
+                    onChange={(event) => updateImageSettingsDraft('width', event.target.value)}
+                    className="edit-control h-10 w-full px-3 text-right text-sm"
+                  />
+                </label>
+              </div>
+
+              {imageSettingsError ? (
+                <p className="text-sm font-semibold text-[#ff9ab8]">{imageSettingsError}</p>
+              ) : null}
+
+              <div className="vn-modal-footer">
+                <button
+                  type="button"
+                  className="vn-button px-4 py-2 text-sm"
+                  onClick={resetImageSettingsToDefaults}
+                >
+                  기본값으로 초기화
+                </button>
+                <div className="vn-modal-footer-actions">
+                  <button
+                    type="button"
+                    className="vn-button px-4 py-2 text-sm"
+                    onClick={() => setIsImageSettingsOpen(false)}
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    className="vn-button vn-button-primary px-4 py-2 text-sm"
+                    onClick={applyImageSettings}
+                  >
+                    적용
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
