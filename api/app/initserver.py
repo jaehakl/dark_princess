@@ -10,25 +10,6 @@ from db import Base, engine
 from settings import settings
 
 
-def scene_script_to_text(raw_script: str) -> str:
-    try:
-        script_items = json.loads(raw_script)
-    except json.JSONDecodeError:
-        return raw_script
-    if not isinstance(script_items, list):
-        return raw_script
-
-    lines: list[str] = []
-    for item in script_items:
-        if isinstance(item, str):
-            lines.extend(item.splitlines())
-        elif isinstance(item, dict):
-            for value in item.values():
-                if isinstance(value, str):
-                    lines.extend(value.splitlines())
-    return "\n".join(line for line in lines if line)
-
-
 def server():
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -41,6 +22,7 @@ def server():
     origins = [
         "http://localhost",
         "http://localhost:5173",
+        "http://127.0.0.1:5173",
         settings.app_base_url,
     ]
 
@@ -54,7 +36,14 @@ def server():
 
     upload_dir = Path(settings.LOCAL_UPLOAD_DIR).expanduser().resolve()
     upload_dir.mkdir(parents=True, exist_ok=True)
-    app.mount("/uploads", StaticFiles(directory=upload_dir), name="uploads")
+    uploads_app = CORSMiddleware(
+        StaticFiles(directory=upload_dir),
+        allow_credentials=False,
+        allow_origins=origins,
+        allow_methods=["GET", "OPTIONS"],
+        allow_headers=["*"],
+    )
+    app.mount("/uploads", uploads_app, name="uploads")
 
     async def start():
         app.state.progress = 0

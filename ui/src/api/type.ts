@@ -23,6 +23,7 @@ export type ImageGenerationSettings = {
   negative_prompt: string;
   steps: number;
   cfg: number;
+  strength: number;
   sampler: string;
   scheduler: string;
   clip_skip: number | null;

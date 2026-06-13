@@ -28,11 +28,13 @@ async def generate_images_batch(
     ckpt_path: str,
     positive_prompt_list: list[str],
     negative_prompt_list: list[str],
+    init_image_list: list[Any],
     seed_list: list[int | None],
     step: int,
     cfg: float,
     height: int,
     width: int,
+    strength: float,
     max_chunk_size: int,
     seed_min: int,
     seed_max: int,
@@ -46,11 +48,13 @@ async def generate_images_batch(
             ckpt_path,
             positive_prompt_list,
             negative_prompt_list,
+            init_image_list,
             seed_list,
             step,
             cfg,
             height,
             width,
+            strength,
             max_chunk_size,
             seed_min,
             seed_max,
@@ -122,11 +126,13 @@ def _generate_images_batch_locked(
     ckpt_path: str,
     positive_prompt_list: list[str],
     negative_prompt_list: list[str],
+    init_image_list: list[Any],
     seed_list: list[int | None],
     step: int,
     cfg: float,
     height: int,
     width: int,
+    strength: float,
     max_chunk_size: int,
     seed_min: int,
     seed_max: int,
@@ -173,6 +179,7 @@ def _generate_images_batch_locked(
         chunk_size = min(max_chunk_size, len(positive_prompt_list) - i)
         positive_prompt_chunk = positive_prompt_list[i:i + chunk_size]
         negative_prompt_chunk = negative_prompt_list[i:i + chunk_size]
+        init_image_chunk = init_image_list[i:i + chunk_size]
         seed_chunk = [
             random.randint(seed_min, seed_max)
             if seed_list[i + j] is None
@@ -187,10 +194,10 @@ def _generate_images_batch_locked(
         call_kwargs = {
             "prompt": positive_prompt_chunk,
             "negative_prompt": negative_prompt_chunk,
+            "image": init_image_chunk,
+            "strength": strength,
             "num_inference_steps": step,
             "guidance_scale": cfg,
-            "height": height,
-            "width": width,
             "generator": generators_chunk,
         }
         if clip_skip is not None:
@@ -211,10 +218,10 @@ def _get_image_pipe_locked(ckpt_path: str, torch: Any) -> Any:
         _clear_cuda_cache(torch)
 
     if _image_pipe is None:
-        from diffusers import StableDiffusionXLPipeline
+        from diffusers import StableDiffusionXLImg2ImgPipeline
 
-        print(f"Loading Stable Diffusion checkpoint: {ckpt_path}", flush=True)
-        pipe = StableDiffusionXLPipeline.from_single_file(
+        print(f"Loading Stable Diffusion img2img checkpoint: {ckpt_path}", flush=True)
+        pipe = StableDiffusionXLImg2ImgPipeline.from_single_file(
             ckpt_path,
             torch_dtype=torch.float16,
             use_safetensors=True,

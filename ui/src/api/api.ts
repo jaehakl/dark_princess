@@ -37,7 +37,7 @@ export const dbTables = {
     listRows: (listRequest: GetListRequest) =>
       request<GetListResponse<SceneRecord>>('post', '/scene/list', listRequest),
     upsertRow: (items: unknown) => request<UpsertResponse[]>('post', '/scene/upsert', items),
-    generateScene: (item: GenerateSceneRequest) =>
+    generateScene: (item: GenerateSceneRequest | FormData) =>
       request<SceneRecord>('post', '/scene/generate', item),
     getImageSettingsDefaults: () =>
       request<ImageGenerationSettings>('get', '/scene/image-settings/defaults'),

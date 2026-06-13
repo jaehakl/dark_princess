@@ -43,6 +43,7 @@ class ImageGenerationSettingsBase(BaseModel):
     negative_prompt: Optional[str] = None
     steps: Optional[int] = None
     cfg: Optional[float] = None
+    strength: Optional[float] = None
     sampler: Optional[str] = None
     scheduler: Optional[str] = None
     clip_skip: Optional[int] = None

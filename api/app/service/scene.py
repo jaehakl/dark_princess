@@ -6,6 +6,7 @@ from io import BytesIO
 from pathlib import Path
 
 from fastapi import HTTPException, status
+from PIL import Image, UnidentifiedImageError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,6 +36,7 @@ GEN_IMAGE_NEGATIVE_PROMPT = "blurry, low quality, bad anatomy, disfigured, defor
 
 GEN_IMAGE_STEPS = 30
 GEN_IMAGE_CFG = 5
+GEN_IMAGE_STRENGTH = 1.0
 GEN_IMAGE_SAMPLER = "euler_a" #"dpmpp_2m"
 GEN_IMAGE_SCHEDULER = "" #"karras"
 GEN_IMAGE_CLIP_SKIP: int | None = None #2
@@ -54,6 +56,7 @@ GEN_IMAGE_ALLOWED_SCHEDULERS = {"", "karras"}
 async def generate_scene(
     db: AsyncSession,
     request: GenerateSceneRequestBase,
+    seed_image: bytes | None = None,
 ) -> Scene:
     prompt = request.prompt.strip()
     if not prompt:
@@ -63,6 +66,8 @@ async def generate_scene(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="new scene requires image generation",
         )
+    if request.generate_image and seed_image is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="seed image is required")
 
     scene = None
     old_image_url = None
@@ -77,7 +82,7 @@ async def generate_scene(
     script = normalize_scene_script(request.script)
     embedding = await make_scene_embedding(prompt, script)
     if request.generate_image:
-        image_url, image_key = await generate_scene_image(prompt, request.image_settings)
+        image_url, image_key = await generate_scene_image(prompt, seed_image, request.image_settings)
 
     try:
         if scene is None:
@@ -241,6 +246,7 @@ def get_default_image_generation_settings() -> ImageGenerationSettingsBase:
         negative_prompt=GEN_IMAGE_NEGATIVE_PROMPT,
         steps=GEN_IMAGE_STEPS,
         cfg=GEN_IMAGE_CFG,
+        strength=GEN_IMAGE_STRENGTH,
         sampler=GEN_IMAGE_SAMPLER,
         scheduler=GEN_IMAGE_SCHEDULER,
         clip_skip=GEN_IMAGE_CLIP_SKIP,
@@ -261,6 +267,7 @@ def resolve_image_generation_settings(
         negative_prompt=defaults.negative_prompt if image_settings.negative_prompt is None else image_settings.negative_prompt,
         steps=defaults.steps if image_settings.steps is None else image_settings.steps,
         cfg=defaults.cfg if image_settings.cfg is None else image_settings.cfg,
+        strength=defaults.strength if image_settings.strength is None else image_settings.strength,
         sampler=defaults.sampler if image_settings.sampler is None else image_settings.sampler,
         scheduler=defaults.scheduler if image_settings.scheduler is None else image_settings.scheduler,
         clip_skip=defaults.clip_skip if image_settings.clip_skip is None else image_settings.clip_skip,
@@ -275,6 +282,7 @@ def _validate_image_generation_settings(
 ) -> ImageGenerationSettingsBase:
     steps = image_settings.steps
     cfg = image_settings.cfg
+    strength = image_settings.strength
     height = image_settings.height
     width = image_settings.width
     clip_skip = image_settings.clip_skip
@@ -285,6 +293,8 @@ def _validate_image_generation_settings(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="image steps must be 1 or greater")
     if cfg is None or cfg <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="image cfg must be greater than 0")
+    if strength is None or strength <= 0 or strength > 1:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="image strength must be greater than 0 and at most 1")
     if height is None or height <= 0 or height % 8 != 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -307,6 +317,7 @@ def _validate_image_generation_settings(
         negative_prompt=(image_settings.negative_prompt or "").strip(),
         steps=steps,
         cfg=cfg,
+        strength=strength,
         sampler=sampler,
         scheduler=scheduler,
         clip_skip=clip_skip,
@@ -325,6 +336,7 @@ def build_scene_embedding_input(prompt: str, script: str) -> str:
 
 async def generate_scene_image(
     prompt: str,
+    seed_image: bytes,
     image_settings: ImageGenerationSettingsBase | None = None,
 ) -> tuple[str, str]:
     model_path_value = settings.stable_diffusion_model_path.strip()
@@ -346,6 +358,21 @@ async def generate_scene_image(
         ) from exc
 
     resolved_settings = resolve_image_generation_settings(image_settings)
+    try:
+        with Image.open(BytesIO(seed_image)) as opened_seed_image:
+            init_image = opened_seed_image.convert("RGB")
+    except UnidentifiedImageError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="seed image is not a supported image") from exc
+    except OSError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="seed image could not be read") from exc
+
+    target_size = (
+        resolved_settings.width or GEN_IMAGE_WIDTH,
+        resolved_settings.height or GEN_IMAGE_HEIGHT,
+    )
+    if init_image.size != target_size:
+        init_image = init_image.resize(target_size, Image.Resampling.LANCZOS)
+
     positive_prompt_parts = [
         (resolved_settings.positive_base or "").strip().strip(","),
         prompt.strip().strip(","),
@@ -355,11 +382,13 @@ async def generate_scene_image(
         str(model_path),
         [", ".join(part for part in positive_prompt_parts if part)],
         [resolved_settings.negative_prompt or ""],
+        [init_image],
         [seed],
         resolved_settings.steps or GEN_IMAGE_STEPS,
         resolved_settings.cfg or GEN_IMAGE_CFG,
         resolved_settings.height or GEN_IMAGE_HEIGHT,
         resolved_settings.width or GEN_IMAGE_WIDTH,
+        resolved_settings.strength or GEN_IMAGE_STRENGTH,
         GEN_IMAGE_MAX_CHUNK_SIZE,
         GEN_IMAGE_SEED_MIN,
         GEN_IMAGE_SEED_MAX,

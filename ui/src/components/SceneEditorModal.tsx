@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { dbTables } from '../api/api';
 import type { ImageGenerationSettings, RecommendPromptItem, SceneRecord } from '../api/type';
 
@@ -16,15 +16,24 @@ const STATUS_CHANGE_FIELDS = [
 const IMAGE_SETTINGS_SESSION_KEY = 'dark_princess.scene.image_settings';
 const IMAGE_SAMPLER_OPTIONS = ['', 'euler', 'euler_a', 'dpmpp_2m', 'unipc'] as const;
 const IMAGE_SCHEDULER_OPTIONS = ['', 'karras'] as const;
+const EXISTING_IMAGE_SEED_STRENGTH = 0.45;
+const NOISE_SEED_STRENGTH = 1;
 
 type StatusChangeKey = (typeof STATUS_CHANGE_FIELDS)[number]['key'];
 type StatusChangeValues = Record<StatusChangeKey, string>;
 type SaveMode = 'text' | 'image' | 'create';
+type SeedImageSource = 'existing' | 'noise';
+type SeedImageState = {
+  blob: Blob;
+  previewUrl: string;
+  source: SeedImageSource;
+};
 type ImageGenerationSettingsDraft = {
   positive_base: string;
   negative_prompt: string;
   steps: string;
   cfg: string;
+  strength: string;
   sampler: string;
   scheduler: string;
   clip_skip: string;
@@ -65,6 +74,7 @@ function mergeImageSettings(
     negative_prompt: overrides.negative_prompt ?? defaults.negative_prompt,
     steps: overrides.steps ?? defaults.steps,
     cfg: overrides.cfg ?? defaults.cfg,
+    strength: overrides.strength ?? defaults.strength,
     sampler: overrides.sampler ?? defaults.sampler,
     scheduler: overrides.scheduler ?? defaults.scheduler,
     clip_skip: overrides.clip_skip ?? defaults.clip_skip,
@@ -79,6 +89,7 @@ function imageSettingsToDraft(settings: ImageGenerationSettings): ImageGeneratio
     negative_prompt: settings.negative_prompt,
     steps: String(settings.steps),
     cfg: String(settings.cfg),
+    strength: String(settings.strength),
     sampler: settings.sampler,
     scheduler: settings.scheduler,
     clip_skip: settings.clip_skip === null ? '' : String(settings.clip_skip),
@@ -102,6 +113,78 @@ function readSessionImageSettings(defaults: ImageGenerationSettings): ImageGener
   }
 }
 
+function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob);
+      } else {
+        reject(new Error('seed image를 생성하지 못했습니다.'));
+      }
+    }, 'image/png');
+  });
+}
+
+async function createNoiseSeedImage(width: number, height: number): Promise<Blob> {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('canvas를 사용할 수 없습니다.');
+  }
+
+  const imageData = context.createImageData(width, height);
+  const randomValues = new Uint8Array(width * height * 3);
+  for (let offset = 0; offset < randomValues.length; offset += 65536) {
+    crypto.getRandomValues(randomValues.subarray(offset, Math.min(offset + 65536, randomValues.length)));
+  }
+
+  for (let index = 0, randomIndex = 0; index < imageData.data.length; index += 4, randomIndex += 3) {
+    imageData.data[index] = randomValues[randomIndex];
+    imageData.data[index + 1] = randomValues[randomIndex + 1];
+    imageData.data[index + 2] = randomValues[randomIndex + 2];
+    imageData.data[index + 3] = 255;
+  }
+
+  context.putImageData(imageData, 0, 0);
+  return await canvasToPngBlob(canvas);
+}
+
+async function createSeedImageFromUrl(imageUrl: string, width: number, height: number): Promise<Blob> {
+  const response = await fetch(imageUrl);
+  if (!response.ok) {
+    throw new Error('기존 이미지를 불러오지 못했습니다.');
+  }
+
+  const bitmap = await createImageBitmap(await response.blob());
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('canvas를 사용할 수 없습니다.');
+    }
+
+    context.fillStyle = '#000000';
+    context.fillRect(0, 0, width, height);
+    const scale = Math.min(width / bitmap.width, height / bitmap.height);
+    const drawWidth = Math.round(bitmap.width * scale);
+    const drawHeight = Math.round(bitmap.height * scale);
+    context.drawImage(
+      bitmap,
+      Math.floor((width - drawWidth) / 2),
+      Math.floor((height - drawHeight) / 2),
+      drawWidth,
+      drawHeight,
+    );
+    return await canvasToPngBlob(canvas);
+  } finally {
+    bitmap.close();
+  }
+}
+
 export function SceneEditorModal({
   scene,
   onClose,
@@ -114,7 +197,10 @@ export function SceneEditorModal({
   const [statusChangeValues, setStatusChangeValues] = useState<StatusChangeValues>(() =>
     statusChangeToValues(scene?.status_change),
   );
-  const [imageUrl, setImageUrl] = useState(scene?.image_url ?? null);
+  const [seedImage, setSeedImage] = useState<SeedImageState | null>(null);
+  const [isPreparingSeedImage, setIsPreparingSeedImage] = useState(false);
+  const [seedImageError, setSeedImageError] = useState<string | null>(null);
+  const seedSourceRef = useRef<SeedImageSource | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRecommendingPrompt, setIsRecommendingPrompt] = useState(false);
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
@@ -134,6 +220,7 @@ export function SceneEditorModal({
   const canSave = prompt.trim().length > 0 && !isInputDisabled;
   const canRecommendPrompt = script.trim().length > 0 && !isInputDisabled;
   const canGeneratePrompt = script.trim().length > 0 && !isInputDisabled;
+  const canGenerateImage = canSave && Boolean(seedImage) && !isPreparingSeedImage;
   const isGeneratingImage = savingMode === 'image' || savingMode === 'create';
 
   const modalTitle = useMemo(
@@ -141,11 +228,37 @@ export function SceneEditorModal({
     [editedSceneId],
   );
 
+  const applySeedImage = useCallback((blob: Blob, source: SeedImageSource, resetStrength = true) => {
+    const strength = source === 'existing'
+      ? EXISTING_IMAGE_SEED_STRENGTH
+      : NOISE_SEED_STRENGTH;
+    seedSourceRef.current = source;
+    setSeedImage({
+      blob,
+      previewUrl: URL.createObjectURL(blob),
+      source,
+    });
+    if (resetStrength) {
+      setImageSettings((currentSettings) => (
+        currentSettings ? { ...currentSettings, strength } : currentSettings
+      ));
+      setImageSettingsDraft((currentDraft) => (
+        currentDraft ? { ...currentDraft, strength: String(strength) } : currentDraft
+      ));
+    }
+  }, []);
+
+  useEffect(() => () => {
+    if (seedImage?.previewUrl) {
+      URL.revokeObjectURL(seedImage.previewUrl);
+    }
+  }, [seedImage?.previewUrl]);
+
   useEffect(() => {
     setPrompt(scene?.prompt ?? '');
     setScript(scene?.script ?? '');
     setStatusChangeValues(statusChangeToValues(scene?.status_change));
-    setImageUrl(scene?.image_url ?? null);
+    setSeedImageError(null);
     setError(null);
     setSavingMode(null);
     setIsDeleting(false);
@@ -181,10 +294,68 @@ export function SceneEditorModal({
     };
   }, []);
 
+  useEffect(() => {
+    if (!imageSettings) {
+      return;
+    }
+
+    const resolvedImageSettings = imageSettings;
+    let isCancelled = false;
+    async function prepareSeedImage() {
+      const width = resolvedImageSettings.width;
+      const height = resolvedImageSettings.height;
+      setIsPreparingSeedImage(true);
+      setSeedImageError(null);
+      try {
+        const source = scene?.image_url ? 'existing' : 'noise';
+        const blob = scene?.image_url
+          ? await createSeedImageFromUrl(scene.image_url, width, height)
+          : await createNoiseSeedImage(width, height);
+        if (!isCancelled) {
+          applySeedImage(blob, source, seedSourceRef.current !== source);
+        }
+      } catch (seedError) {
+        if (!isCancelled) {
+          setSeedImage(null);
+          setSeedImageError(getErrorMessage(seedError));
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsPreparingSeedImage(false);
+        }
+      }
+    }
+
+    void prepareSeedImage();
+    return () => {
+      isCancelled = true;
+    };
+  }, [applySeedImage, imageSettings?.height, imageSettings?.width, scene?.id, scene?.image_url]);
+
   function updateImageSettingsDraft(field: keyof ImageGenerationSettingsDraft, value: string) {
     setImageSettingsDraft((currentDraft) => (
       currentDraft ? { ...currentDraft, [field]: value } : currentDraft
     ));
+  }
+
+  async function shuffleSeedImage() {
+    if (!imageSettings) {
+      setSeedImageError('이미지 설정 기본값을 불러오는 중입니다.');
+      return;
+    }
+
+    setIsPreparingSeedImage(true);
+    setSeedImageError(null);
+    try {
+      applySeedImage(
+        await createNoiseSeedImage(imageSettings.width, imageSettings.height),
+        'noise',
+      );
+    } catch (seedError) {
+      setSeedImageError(getErrorMessage(seedError));
+    } finally {
+      setIsPreparingSeedImage(false);
+    }
   }
 
   async function recommendPromptFromScript() {
@@ -266,6 +437,7 @@ export function SceneEditorModal({
 
     const steps = Number(imageSettingsDraft.steps);
     const cfg = Number(imageSettingsDraft.cfg);
+    const strength = Number(imageSettingsDraft.strength);
     const height = Number(imageSettingsDraft.height);
     const width = Number(imageSettingsDraft.width);
     const clipSkip = imageSettingsDraft.clip_skip.trim() === ''
@@ -280,6 +452,10 @@ export function SceneEditorModal({
     }
     if (!Number.isFinite(cfg) || cfg <= 0) {
       setImageSettingsError('cfg는 0보다 큰 숫자로 입력해 주세요.');
+      return;
+    }
+    if (!Number.isFinite(strength) || strength <= 0 || strength > 1) {
+      setImageSettingsError('strength는 0보다 크고 1 이하인 숫자로 입력해 주세요.');
       return;
     }
     if (!Number.isInteger(height) || height <= 0 || height % 8 !== 0) {
@@ -308,6 +484,7 @@ export function SceneEditorModal({
       negative_prompt: imageSettingsDraft.negative_prompt.trim(),
       steps,
       cfg,
+      strength,
       sampler,
       scheduler,
       clip_skip: clipSkip,
@@ -346,18 +523,29 @@ export function SceneEditorModal({
     setSavingMode(mode);
     setError(null);
     try {
-      const savedScene = await dbTables.Scene.generateScene({
+      const payload = {
         scene_id: mode === 'create' ? null : scene?.id ?? null,
         prompt: trimmedPrompt,
         script,
         status_change: statusChange,
         generate_image: mode !== 'text',
         ...(mode === 'text' || !imageSettings ? {} : { image_settings: imageSettings }),
-      });
+      };
+      const savedScene = mode === 'text'
+        ? await dbTables.Scene.generateScene(payload)
+        : await (async () => {
+          if (!seedImage) {
+            throw new Error(seedImageError ?? 'seed image를 준비해 주세요.');
+          }
+
+          const formData = new FormData();
+          formData.append('payload', JSON.stringify(payload));
+          formData.append('seed_image', seedImage.blob, `scene-seed-${seedImage.source}.png`);
+          return await dbTables.Scene.generateScene(formData);
+        })();
       setPrompt(savedScene.prompt);
       setScript(savedScene.script);
       setStatusChangeValues(statusChangeToValues(savedScene.status_change));
-      setImageUrl(savedScene.image_url ?? null);
       onSaved(savedScene, mode === 'create' ? null : scene?.id ?? null);
     } catch (saveError) {
       setError(getErrorMessage(saveError));
@@ -535,21 +723,53 @@ export function SceneEditorModal({
             </div>
 
             <div className="vn-scene-editor-preview">
-              <span className="edit-label">
-                <span className="edit-label__text">image</span>
-              </span>
+              <div className="flex min-w-0 items-center justify-between gap-2">
+                <span className="edit-label">
+                  <span className="edit-label__text">image</span>
+                </span>
+                <div className="flex min-w-0 items-center gap-2">
+                  {seedImage ? (
+                    <span className="truncate text-xs font-semibold text-[var(--app-muted)]">
+                      {seedImage.source === 'existing' ? 'existing seed' : 'noise seed'}
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="vn-button px-2.5 py-1 text-xs"
+                    onClick={() => void shuffleSeedImage()}
+                    disabled={isInputDisabled || isPreparingSeedImage || !imageSettings}
+                  >
+                    shuffle
+                  </button>
+                </div>
+              </div>
               <div className="dp-image-frame vn-scene-editor-image-frame">
-                {isGeneratingImage ? (
+                {seedImage ? (
+                  <img src={seedImage.previewUrl} alt={prompt || 'Seed image'} className="dp-image-media" />
+                ) : isPreparingSeedImage ? (
                   <div className="vn-scene-empty">
+                    <span className="vn-spinner" aria-hidden="true" />
+                    <span>seed 준비 중</span>
+                  </div>
+                ) : (
+                  <div className="vn-scene-empty">seed image가 없습니다.</div>
+                )}
+                {isGeneratingImage && seedImage ? (
+                  <div className="vn-scene-seed-overlay">
                     <span className="vn-spinner" aria-hidden="true" />
                     <span>이미지 생성 중</span>
                   </div>
-                ) : imageUrl ? (
-                  <img src={imageUrl} alt={prompt || 'Scene image'} className="dp-image-media" />
-                ) : (
-                  <div className="vn-scene-empty">생성된 이미지가 없습니다.</div>
-                )}
+                ) : null}
+                {isPreparingSeedImage && seedImage ? (
+                  <div className="vn-scene-seed-overlay">
+                    <span className="vn-spinner" aria-hidden="true" />
+                    <span>seed 준비 중</span>
+                  </div>
+                ) : null}
               </div>
+              {seedImageError ? (
+                <p className="text-sm font-semibold text-[#ff9ab8]">{seedImageError}</p>
+              ) : null}
             </div>
           </div>
 
@@ -593,7 +813,7 @@ export function SceneEditorModal({
                 type="button"
                 className="vn-button inline-flex items-center gap-2 px-4 py-2 text-sm"
                 onClick={() => void saveScene('image')}
-                disabled={!canSave || !canSaveWithoutCreate}
+                disabled={!canGenerateImage || !canSaveWithoutCreate}
               >
                 {savingMode === 'image' ? <span className="vn-spinner" aria-hidden="true" /> : null}
                 {savingMode === 'image' ? '이미지 업데이트 중' : '이미지 업데이트'}
@@ -602,7 +822,7 @@ export function SceneEditorModal({
                 type="button"
                 className="vn-button vn-button-primary inline-flex items-center gap-2 px-4 py-2 text-sm"
                 onClick={() => void saveScene('create')}
-                disabled={!canSave}
+                disabled={!canGenerateImage}
               >
                 {savingMode === 'create' ? <span className="vn-spinner" aria-hidden="true" /> : null}
                 {savingMode === 'create' ? 'Scene 생성 중' : '새 Scene 생성'}
@@ -687,6 +907,21 @@ export function SceneEditorModal({
                     step="0.1"
                     value={imageSettingsDraft.cfg}
                     onChange={(event) => updateImageSettingsDraft('cfg', event.target.value)}
+                    className="edit-control h-10 w-full px-3 text-right text-sm"
+                  />
+                </label>
+
+                <label className="vn-image-settings-field">
+                  <span className="edit-label">
+                    <span className="edit-label__text">strength</span>
+                  </span>
+                  <input
+                    type="number"
+                    min="0.01"
+                    max="1"
+                    step="0.01"
+                    value={imageSettingsDraft.strength}
+                    onChange={(event) => updateImageSettingsDraft('strength', event.target.value)}
                     className="edit-control h-10 w-full px-3 text-right text-sm"
                   />
                 </label>
