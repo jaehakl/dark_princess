@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { dbTables } from '../api/api';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { API_URL, dbTables } from '../api/api';
 import type { ImageGenerationSettings, RecommendPromptItem, SceneRecord } from '../api/type';
 
 const STATUS_CHANGE_FIELDS = [
@@ -16,13 +16,12 @@ const STATUS_CHANGE_FIELDS = [
 const IMAGE_SETTINGS_SESSION_KEY = 'dark_princess.scene.image_settings';
 const IMAGE_SAMPLER_OPTIONS = ['', 'euler', 'euler_a', 'dpmpp_2m', 'unipc'] as const;
 const IMAGE_SCHEDULER_OPTIONS = ['', 'karras'] as const;
-const EXISTING_IMAGE_SEED_STRENGTH = 0.45;
-const NOISE_SEED_STRENGTH = 1;
+const NOISE_CHANNEL_SAMPLE_COUNT = 4;
 
 type StatusChangeKey = (typeof STATUS_CHANGE_FIELDS)[number]['key'];
 type StatusChangeValues = Record<StatusChangeKey, string>;
 type SaveMode = 'text' | 'image' | 'create';
-type SeedImageSource = 'existing' | 'noise';
+type SeedImageSource = 'existing' | 'noise' | 'clipboard';
 type SeedImageState = {
   blob: Blob;
   previewUrl: string;
@@ -135,15 +134,21 @@ async function createNoiseSeedImage(width: number, height: number): Promise<Blob
   }
 
   const imageData = context.createImageData(width, height);
-  const randomValues = new Uint8Array(width * height * 3);
+  const randomValues = new Uint8Array(width * height * 3 * NOISE_CHANNEL_SAMPLE_COUNT);
   for (let offset = 0; offset < randomValues.length; offset += 65536) {
     crypto.getRandomValues(randomValues.subarray(offset, Math.min(offset + 65536, randomValues.length)));
   }
 
-  for (let index = 0, randomIndex = 0; index < imageData.data.length; index += 4, randomIndex += 3) {
-    imageData.data[index] = randomValues[randomIndex];
-    imageData.data[index + 1] = randomValues[randomIndex + 1];
-    imageData.data[index + 2] = randomValues[randomIndex + 2];
+  let randomIndex = 0;
+  for (let index = 0; index < imageData.data.length; index += 4) {
+    for (let channel = 0; channel < 3; channel += 1) {
+      let sum = 0;
+      for (let sample = 0; sample < NOISE_CHANNEL_SAMPLE_COUNT; sample += 1) {
+        sum += randomValues[randomIndex];
+        randomIndex += 1;
+      }
+      imageData.data[index + channel] = Math.round(sum / NOISE_CHANNEL_SAMPLE_COUNT);
+    }
     imageData.data[index + 3] = 255;
   }
 
@@ -152,12 +157,27 @@ async function createNoiseSeedImage(width: number, height: number): Promise<Blob
 }
 
 async function createSeedImageFromUrl(imageUrl: string, width: number, height: number): Promise<Blob> {
-  const response = await fetch(imageUrl);
+  let fetchUrl = imageUrl;
+  try {
+    const parsedImageUrl = new URL(imageUrl, window.location.href);
+    const parsedApiUrl = new URL(API_URL, window.location.href);
+    if (parsedImageUrl.origin === parsedApiUrl.origin && parsedImageUrl.pathname.startsWith('/uploads/')) {
+      fetchUrl = `${parsedImageUrl.pathname}${parsedImageUrl.search}`;
+    }
+  } catch {
+    fetchUrl = imageUrl;
+  }
+
+  const response = await fetch(fetchUrl, { cache: 'no-store' });
   if (!response.ok) {
     throw new Error('기존 이미지를 불러오지 못했습니다.');
   }
 
-  const bitmap = await createImageBitmap(await response.blob());
+  return await createSeedImageFromBlob(await response.blob(), width, height);
+}
+
+async function createSeedImageFromBlob(imageBlob: Blob, width: number, height: number): Promise<Blob> {
+  const bitmap = await createImageBitmap(imageBlob);
   try {
     const canvas = document.createElement('canvas');
     canvas.width = width;
@@ -167,9 +187,9 @@ async function createSeedImageFromUrl(imageUrl: string, width: number, height: n
       throw new Error('canvas를 사용할 수 없습니다.');
     }
 
-    context.fillStyle = '#000000';
+    context.fillStyle = '#ffffff';
     context.fillRect(0, 0, width, height);
-    const scale = Math.min(width / bitmap.width, height / bitmap.height);
+    const scale = Math.max(width / bitmap.width, height / bitmap.height);
     const drawWidth = Math.round(bitmap.width * scale);
     const drawHeight = Math.round(bitmap.height * scale);
     context.drawImage(
@@ -200,7 +220,6 @@ export function SceneEditorModal({
   const [seedImage, setSeedImage] = useState<SeedImageState | null>(null);
   const [isPreparingSeedImage, setIsPreparingSeedImage] = useState(false);
   const [seedImageError, setSeedImageError] = useState<string | null>(null);
-  const seedSourceRef = useRef<SeedImageSource | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRecommendingPrompt, setIsRecommendingPrompt] = useState(false);
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
@@ -208,6 +227,7 @@ export function SceneEditorModal({
   const [imageSettingsDefaults, setImageSettingsDefaults] = useState<ImageGenerationSettings | null>(null);
   const [imageSettings, setImageSettings] = useState<ImageGenerationSettings | null>(null);
   const [imageSettingsDraft, setImageSettingsDraft] = useState<ImageGenerationSettingsDraft | null>(null);
+  const [strengthControlValue, setStrengthControlValue] = useState('');
   const [isImageSettingsOpen, setIsImageSettingsOpen] = useState(false);
   const [imageSettingsError, setImageSettingsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -228,24 +248,12 @@ export function SceneEditorModal({
     [editedSceneId],
   );
 
-  const applySeedImage = useCallback((blob: Blob, source: SeedImageSource, resetStrength = true) => {
-    const strength = source === 'existing'
-      ? EXISTING_IMAGE_SEED_STRENGTH
-      : NOISE_SEED_STRENGTH;
-    seedSourceRef.current = source;
+  const applySeedImage = useCallback((blob: Blob, source: SeedImageSource) => {
     setSeedImage({
       blob,
       previewUrl: URL.createObjectURL(blob),
       source,
     });
-    if (resetStrength) {
-      setImageSettings((currentSettings) => (
-        currentSettings ? { ...currentSettings, strength } : currentSettings
-      ));
-      setImageSettingsDraft((currentDraft) => (
-        currentDraft ? { ...currentDraft, strength: String(strength) } : currentDraft
-      ));
-    }
   }, []);
 
   useEffect(() => () => {
@@ -295,6 +303,10 @@ export function SceneEditorModal({
   }, []);
 
   useEffect(() => {
+    setStrengthControlValue(imageSettings ? String(imageSettings.strength) : '');
+  }, [imageSettings]);
+
+  useEffect(() => {
     if (!imageSettings) {
       return;
     }
@@ -307,12 +319,12 @@ export function SceneEditorModal({
       setIsPreparingSeedImage(true);
       setSeedImageError(null);
       try {
-        const source = scene?.image_url ? 'existing' : 'noise';
+        const source: SeedImageSource = scene?.image_url ? 'existing' : 'noise';
         const blob = scene?.image_url
           ? await createSeedImageFromUrl(scene.image_url, width, height)
           : await createNoiseSeedImage(width, height);
         if (!isCancelled) {
-          applySeedImage(blob, source, seedSourceRef.current !== source);
+          applySeedImage(blob, source);
         }
       } catch (seedError) {
         if (!isCancelled) {
@@ -332,10 +344,72 @@ export function SceneEditorModal({
     };
   }, [applySeedImage, imageSettings?.height, imageSettings?.width, scene?.id, scene?.image_url]);
 
+  const applyClipboardSeedImage = useCallback(async (blob: Blob) => {
+    if (!imageSettings) {
+      setSeedImageError('이미지 설정 기본값을 불러오는 중입니다.');
+      return;
+    }
+
+    setIsPreparingSeedImage(true);
+    setSeedImageError(null);
+    try {
+      applySeedImage(
+        await createSeedImageFromBlob(blob, imageSettings.width, imageSettings.height),
+        'clipboard',
+      );
+    } catch (seedError) {
+      setSeedImageError(getErrorMessage(seedError));
+    } finally {
+      setIsPreparingSeedImage(false);
+    }
+  }, [applySeedImage, imageSettings]);
+
+  useEffect(() => {
+    function handlePaste(event: ClipboardEvent) {
+      if (isInputDisabled || isImageSettingsOpen || isPreparingSeedImage) {
+        return;
+      }
+
+      const imageItem = Array.from(event.clipboardData?.items ?? [])
+        .find((item) => item.type.startsWith('image/'));
+      const imageFile = imageItem?.getAsFile();
+      if (!imageFile) {
+        return;
+      }
+
+      event.preventDefault();
+      void applyClipboardSeedImage(imageFile);
+    }
+
+    window.addEventListener('paste', handlePaste);
+    return () => {
+      window.removeEventListener('paste', handlePaste);
+    };
+  }, [applyClipboardSeedImage, isImageSettingsOpen, isInputDisabled, isPreparingSeedImage]);
+
   function updateImageSettingsDraft(field: keyof ImageGenerationSettingsDraft, value: string) {
     setImageSettingsDraft((currentDraft) => (
       currentDraft ? { ...currentDraft, [field]: value } : currentDraft
     ));
+  }
+
+  function updateImageStrength(value: string) {
+    setStrengthControlValue(value);
+    if (!imageSettings) {
+      return;
+    }
+
+    const strength = Number(value);
+    if (!Number.isFinite(strength) || strength <= 0 || strength > 1) {
+      setSeedImageError('strength는 0보다 크고 1 이하인 숫자로 입력해 주세요.');
+      return;
+    }
+
+    const nextImageSettings = { ...imageSettings, strength };
+    setImageSettings(nextImageSettings);
+    setImageSettingsDraft(imageSettingsToDraft(nextImageSettings));
+    sessionStorage.setItem(IMAGE_SETTINGS_SESSION_KEY, JSON.stringify(nextImageSettings));
+    setSeedImageError(null);
   }
 
   async function shuffleSeedImage() {
@@ -730,9 +804,26 @@ export function SceneEditorModal({
                 <div className="flex min-w-0 items-center gap-2">
                   {seedImage ? (
                     <span className="truncate text-xs font-semibold text-[var(--app-muted)]">
-                      {seedImage.source === 'existing' ? 'existing seed' : 'noise seed'}
+                      {seedImage.source === 'existing'
+                        ? 'existing seed'
+                        : seedImage.source === 'clipboard'
+                          ? 'clipboard seed'
+                          : 'noise seed'}
                     </span>
                   ) : null}
+                  <label className="flex shrink-0 items-center gap-1 text-xs font-semibold text-[var(--app-muted)]">
+                    <span>strength</span>
+                    <input
+                      type="number"
+                      min="0.01"
+                      max="1"
+                      step="0.01"
+                      value={strengthControlValue}
+                      onChange={(event) => updateImageStrength(event.target.value)}
+                      className="edit-control h-8 w-20 px-2 text-right text-xs"
+                      disabled={isInputDisabled || !imageSettings}
+                    />
+                  </label>
                   <button
                     type="button"
                     className="vn-button px-2.5 py-1 text-xs"
@@ -907,21 +998,6 @@ export function SceneEditorModal({
                     step="0.1"
                     value={imageSettingsDraft.cfg}
                     onChange={(event) => updateImageSettingsDraft('cfg', event.target.value)}
-                    className="edit-control h-10 w-full px-3 text-right text-sm"
-                  />
-                </label>
-
-                <label className="vn-image-settings-field">
-                  <span className="edit-label">
-                    <span className="edit-label__text">strength</span>
-                  </span>
-                  <input
-                    type="number"
-                    min="0.01"
-                    max="1"
-                    step="0.01"
-                    value={imageSettingsDraft.strength}
-                    onChange={(event) => updateImageSettingsDraft('strength', event.target.value)}
                     className="edit-control h-10 w-full px-3 text-right text-sm"
                   />
                 </label>

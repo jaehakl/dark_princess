@@ -10,4 +10,12 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  server: {
+    proxy: {
+      '/uploads': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+    },
+  },
 });
