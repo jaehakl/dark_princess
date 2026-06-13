@@ -170,17 +170,17 @@ async def recommend_prompt(db: AsyncSession, text: str) -> list[RecommendPromptI
     ]
 
 
-async def generate_prompt_by_struct(
+async def generate_prompt(
     text: str,
     max_tokens: int | None = None,
     temperature: float | None = None,
 ) -> str:
-    print("[generate_prompt_by_struct] start", flush=True)
+    print("[generate_prompt] start", flush=True)
     print(
-        f"[generate_prompt_by_struct] options max_tokens={max_tokens!r} temperature={temperature!r}",
+        f"[generate_prompt] options max_tokens={max_tokens!r} temperature={temperature!r}",
         flush=True,
     )
-    print(f"[generate_prompt_by_struct] source_text={text!r}", flush=True)
+    print(f"[generate_prompt] source_text={text!r}", flush=True)
     try:
         korean_keywords = await extract_visual_keywords(
             text,
@@ -189,11 +189,11 @@ async def generate_prompt_by_struct(
         )
     except HTTPException as exc:
         print(
-            f"[generate_prompt_by_struct] extract_keywords failed status={exc.status_code} detail={exc.detail!r}",
+            f"[generate_prompt] extract_keywords failed status={exc.status_code} detail={exc.detail!r}",
             flush=True,
         )
         raise
-    print(f"[generate_prompt_by_struct] korean_keywords={korean_keywords!r}", flush=True)
+    print(f"[generate_prompt] korean_keywords={korean_keywords!r}", flush=True)
 
     try:
         english_keywords = await translate_visual_keywords_to_english(
@@ -203,11 +203,11 @@ async def generate_prompt_by_struct(
         )
     except HTTPException as exc:
         print(
-            f"[generate_prompt_by_struct] translate_keywords failed status={exc.status_code} detail={exc.detail!r}",
+            f"[generate_prompt] translate_keywords failed status={exc.status_code} detail={exc.detail!r}",
             flush=True,
         )
         raise
-    print(f"[generate_prompt_by_struct] english_keywords={english_keywords!r}", flush=True)
+    print(f"[generate_prompt] english_keywords={english_keywords!r}", flush=True)
 
     prompt_keywords = [
         keyword.strip()
@@ -216,8 +216,8 @@ async def generate_prompt_by_struct(
         if isinstance(keyword, str) and keyword.strip()
     ]
     prompt = ", ".join(prompt_keywords)
-    print(f"[generate_prompt_by_struct] prompt_keywords={prompt_keywords!r}", flush=True)
-    print(f"[generate_prompt_by_struct] prompt={prompt!r}", flush=True)
+    print(f"[generate_prompt] prompt_keywords={prompt_keywords!r}", flush=True)
+    print(f"[generate_prompt] prompt={prompt!r}", flush=True)
     return prompt
 
 

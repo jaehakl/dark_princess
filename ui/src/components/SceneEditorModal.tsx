@@ -20,7 +20,6 @@ const IMAGE_SCHEDULER_OPTIONS = ['', 'karras'] as const;
 type StatusChangeKey = (typeof STATUS_CHANGE_FIELDS)[number]['key'];
 type StatusChangeValues = Record<StatusChangeKey, string>;
 type SaveMode = 'text' | 'image' | 'create';
-type PromptGenerationMode = 'direct' | 'struct';
 type ImageGenerationSettingsDraft = {
   positive_base: string;
   negative_prompt: string;
@@ -118,7 +117,7 @@ export function SceneEditorModal({
   const [imageUrl, setImageUrl] = useState(scene?.image_url ?? null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRecommendingPrompt, setIsRecommendingPrompt] = useState(false);
-  const [generatingPromptMode, setGeneratingPromptMode] = useState<PromptGenerationMode | null>(null);
+  const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
   const [promptRecommendations, setPromptRecommendations] = useState<RecommendPromptItem[]>([]);
   const [imageSettingsDefaults, setImageSettingsDefaults] = useState<ImageGenerationSettings | null>(null);
   const [imageSettings, setImageSettings] = useState<ImageGenerationSettings | null>(null);
@@ -130,7 +129,7 @@ export function SceneEditorModal({
   const editedSceneId = scene?.id ?? null;
   const canSaveWithoutCreate = Boolean(scene?.id);
   const isInputDisabled =
-    Boolean(savingMode) || isDeleting || isRecommendingPrompt || Boolean(generatingPromptMode);
+    Boolean(savingMode) || isDeleting || isRecommendingPrompt || isGeneratingPrompt;
   const canDelete = Boolean(editedSceneId) && !isInputDisabled;
   const canSave = prompt.trim().length > 0 && !isInputDisabled;
   const canRecommendPrompt = script.trim().length > 0 && !isInputDisabled;
@@ -151,7 +150,7 @@ export function SceneEditorModal({
     setSavingMode(null);
     setIsDeleting(false);
     setIsRecommendingPrompt(false);
-    setGeneratingPromptMode(null);
+    setIsGeneratingPrompt(false);
     setPromptRecommendations([]);
   }, [scene]);
 
@@ -212,19 +211,17 @@ export function SceneEditorModal({
     }
   }
 
-  async function generatePromptFromScript(mode: PromptGenerationMode) {
+  async function generatePromptFromScript() {
     const text = script.trim();
     if (!text) {
       setError('script를 입력해 주세요.');
       return;
     }
 
-    setGeneratingPromptMode(mode);
+    setIsGeneratingPrompt(true);
     setError(null);
     try {
-      const generation = mode === 'struct'
-        ? await dbTables.Scene.generatePromptByStruct(text)
-        : await dbTables.Scene.generatePrompt(text);
+      const generation = await dbTables.Scene.generatePrompt(text);
       const generatedPrompt = generation.prompt.trim();
       if (!generatedPrompt) {
         setError('생성된 prompt가 없습니다.');
@@ -235,7 +232,7 @@ export function SceneEditorModal({
     } catch (generateError) {
       setError(getErrorMessage(generateError));
     } finally {
-      setGeneratingPromptMode(null);
+      setIsGeneratingPrompt(false);
     }
   }
 
@@ -456,20 +453,11 @@ export function SceneEditorModal({
                     <button
                       type="button"
                       className="vn-button inline-flex items-center gap-2 px-3 py-1.5 text-xs"
-                      onClick={() => void generatePromptFromScript('direct')}
+                      onClick={() => void generatePromptFromScript()}
                       disabled={!canGeneratePrompt}
                     >
-                      {generatingPromptMode === 'direct' ? <span className="vn-spinner" aria-hidden="true" /> : null}
-                      {generatingPromptMode === 'direct' ? '생성 중' : 'prompt 생성'}
-                    </button>
-                    <button
-                      type="button"
-                      className="vn-button inline-flex items-center gap-2 px-3 py-1.5 text-xs"
-                      onClick={() => void generatePromptFromScript('struct')}
-                      disabled={!canGeneratePrompt}
-                    >
-                      {generatingPromptMode === 'struct' ? <span className="vn-spinner" aria-hidden="true" /> : null}
-                      {generatingPromptMode === 'struct' ? '구조 생성 중' : '구조 prompt 생성'}
+                      {isGeneratingPrompt ? <span className="vn-spinner" aria-hidden="true" /> : null}
+                      {isGeneratingPrompt ? '생성 중' : 'prompt 생성'}
                     </button>
                   </div>
                 </div>

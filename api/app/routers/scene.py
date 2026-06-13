@@ -21,7 +21,7 @@ from models import (
 )
 from service.scene import (
     get_default_image_generation_settings,
-    generate_prompt_by_struct,
+    generate_prompt,
     generate_scene,
     generate_scene_script,
     recommend_prompt,
@@ -83,15 +83,8 @@ async def api_recommend_prompt(
 async def api_generate_prompt(
     request: GenerateScenePromptRequestBase,
 ):
-    return await api_generate_prompt_by_struct(request)
-
-
-@router.post("/generate-prompt-by-struct", response_model=GenerateScenePromptResponseBase)
-async def api_generate_prompt_by_struct(
-    request: GenerateScenePromptRequestBase,
-):
     return GenerateScenePromptResponseBase(
-        prompt=await generate_prompt_by_struct(
+        prompt=await generate_prompt(
             request.text,
             max_tokens=request.max_tokens,
             temperature=request.temperature,

@@ -45,8 +45,6 @@ export const dbTables = {
       request<RecommendPromptItem[]>('post', '/scene/recommend-prompt', { text }),
     generatePrompt: (text: string) =>
       request<GenerateScenePromptResponse>('post', '/scene/generate-prompt', { text }),
-    generatePromptByStruct: (text: string) =>
-      request<GenerateScenePromptResponse>('post', '/scene/generate-prompt-by-struct', { text }),
     generateScript: (item: GenerateSceneScriptRequest) =>
       request<GenerateSceneScriptResponse>('post', '/scene/generate-script', item),
     updateContext: (item: UpdateSceneContextRequest) =>

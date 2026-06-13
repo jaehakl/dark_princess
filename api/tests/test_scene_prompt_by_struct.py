@@ -16,8 +16,8 @@ from routers import scene as scene_router
 from service import scene as scene_service
 
 
-class ScenePromptByStructTests(unittest.IsolatedAsyncioTestCase):
-    async def test_generate_prompt_by_struct_extracts_then_translates_and_joins_keywords(self) -> None:
+class ScenePromptTests(unittest.IsolatedAsyncioTestCase):
+    async def test_generate_prompt_extracts_then_translates_and_joins_keywords(self) -> None:
         calls: list[str] = []
 
         async def extract(text: str, max_tokens: int | None = None, temperature: float | None = None) -> dict[str, list[str]]:
@@ -48,7 +48,7 @@ class ScenePromptByStructTests(unittest.IsolatedAsyncioTestCase):
             patch.object(scene_service, "extract_visual_keywords", side_effect=extract),
             patch.object(scene_service, "translate_visual_keywords_to_english", side_effect=translate),
         ):
-            result = await scene_service.generate_prompt_by_struct(
+            result = await scene_service.generate_prompt(
                 "공주는 달빛 아래 성에서 기다렸다.",
                 max_tokens=128,
                 temperature=0.2,
@@ -66,7 +66,7 @@ class ScenePromptByStructTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result, "princess, moonlit castle, waits, quiet, lonely, silver key")
 
-    async def test_generate_prompt_by_struct_skips_empty_arrays_and_empty_keywords(self) -> None:
+    async def test_generate_prompt_skips_empty_arrays_and_empty_keywords(self) -> None:
         with (
             patch.object(
                 scene_service,
@@ -92,22 +92,22 @@ class ScenePromptByStructTests(unittest.IsolatedAsyncioTestCase):
                 ),
             ),
         ):
-            result = await scene_service.generate_prompt_by_struct("공주는 기다렸다.")
+            result = await scene_service.generate_prompt("공주는 기다렸다.")
 
         self.assertEqual(result, "princess, morning light, waits")
 
-    async def test_generate_prompt_by_struct_propagates_keyword_extraction_error(self) -> None:
+    async def test_generate_prompt_propagates_keyword_extraction_error(self) -> None:
         with patch.object(
             scene_service,
             "extract_visual_keywords",
             new=AsyncMock(side_effect=HTTPException(status_code=400, detail="text is required")),
         ):
             with self.assertRaises(HTTPException) as raised:
-                await scene_service.generate_prompt_by_struct("  ")
+                await scene_service.generate_prompt("  ")
 
         self.assertEqual(raised.exception.status_code, 400)
 
-    async def test_generate_prompt_by_struct_propagates_keyword_translation_error(self) -> None:
+    async def test_generate_prompt_propagates_keyword_translation_error(self) -> None:
         with (
             patch.object(
                 scene_service,
@@ -121,11 +121,11 @@ class ScenePromptByStructTests(unittest.IsolatedAsyncioTestCase):
             ),
         ):
             with self.assertRaises(HTTPException) as raised:
-                await scene_service.generate_prompt_by_struct("공주는 기다렸다.")
+                await scene_service.generate_prompt("공주는 기다렸다.")
 
         self.assertEqual(raised.exception.status_code, 502)
 
-    async def test_api_generate_prompt_by_struct_returns_prompt_response(self) -> None:
+    async def test_api_generate_prompt_returns_prompt_response(self) -> None:
         request = GenerateScenePromptRequestBase(
             text="공주는 기다렸다.",
             max_tokens=64,
@@ -134,24 +134,7 @@ class ScenePromptByStructTests(unittest.IsolatedAsyncioTestCase):
 
         with patch.object(
             scene_router,
-            "generate_prompt_by_struct",
-            new=AsyncMock(return_value="princess, waits"),
-        ) as generate:
-            response = await scene_router.api_generate_prompt_by_struct(request)
-
-        generate.assert_awaited_once_with("공주는 기다렸다.", max_tokens=64, temperature=0.1)
-        self.assertEqual(response.prompt, "princess, waits")
-
-    async def test_api_generate_prompt_returns_struct_prompt_response(self) -> None:
-        request = GenerateScenePromptRequestBase(
-            text="공주는 기다렸다.",
-            max_tokens=64,
-            temperature=0.1,
-        )
-
-        with patch.object(
-            scene_router,
-            "generate_prompt_by_struct",
+            "generate_prompt",
             new=AsyncMock(return_value="princess, waits"),
         ) as generate:
             response = await scene_router.api_generate_prompt(request)
