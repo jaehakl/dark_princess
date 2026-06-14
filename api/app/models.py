@@ -58,6 +58,11 @@ class GenerateSceneRequestBase(BaseModel):
     status_change: Dict[str, Any] = Field(default_factory=dict)
     generate_image: bool = True
     image_settings: Optional[ImageGenerationSettingsBase] = None
+    background: Optional[str] = None
+    subject: Optional[str] = None
+    object: Optional[str] = None
+    action: Optional[str] = None
+    detail: Optional[str] = None
 
 
 class GenerateScenePromptRequestBase(BaseModel):

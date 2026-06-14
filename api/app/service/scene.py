@@ -7,8 +7,10 @@ from pathlib import Path
 
 from fastapi import HTTPException, status
 from PIL import Image, UnidentifiedImageError
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.datastructures import FormData, UploadFile
 
 from db import Scene, Status
 from models import (
@@ -16,14 +18,26 @@ from models import (
     ImageGenerationSettingsBase,
     RecommendPromptItemBase,
     UpdateSceneContextRequestBase,
+    UpsertResponseBase,
+    SceneBase,
 )
 from settings import API_ROOT, settings
 from service.selection_model import cosine_distance
+from utils.crud_helpers import cleanup_orphaned_object_keys
 from utils.llm import (
+    SCENE_COMPONENT_FIELDS,
+    analyze_scene_components,
     extract_visual_keywords,
     translate_visual_keywords_to_english,
 )
-from utils.local_storage import build_object_key, delete_object, object_key_from_public_url, public_file_url, upload_fileobj
+from utils.local_storage import (
+    build_object_key,
+    delete_object,
+    is_allowed_content_type,
+    object_key_from_public_url,
+    public_file_url,
+    upload_fileobj,
+)
 from utils.model_runtime import encode_scene_text, generate_images_batch
 from utils.vector import VECTOR_DIMENSION, validate_embedding
 
@@ -50,6 +64,41 @@ GEN_IMAGE_SEED_MAX = 1_000_000
 RECOMMEND_PROMPT_DISTANCE_EPSILON = 1e-6
 GEN_IMAGE_ALLOWED_SAMPLERS = {"", "euler", "euler_a", "dpmpp_2m", "unipc"}
 GEN_IMAGE_ALLOWED_SCHEDULERS = {"", "karras"}
+
+
+async def generate_scene_from_form(db: AsyncSession, form: FormData) -> Scene:
+    generate_request, seed_image = await parse_generate_scene_form(form)
+    return await generate_scene(db, generate_request, seed_image=seed_image)
+
+
+async def parse_generate_scene_form(form: FormData) -> tuple[GenerateSceneRequestBase, bytes | None]:
+    payload = form.get("payload")
+    if not isinstance(payload, str) or not payload.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="payload is required")
+    try:
+        generate_request = GenerateSceneRequestBase.model_validate_json(payload)
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.errors()) from exc
+
+    upload = form.get("seed_image")
+    if not isinstance(upload, UploadFile):
+        return generate_request, None
+    if not is_allowed_content_type(upload.content_type):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="seed_image content type is not allowed",
+        )
+
+    seed_image = await upload.read()
+    max_size_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    if not seed_image:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="seed_image is empty")
+    if len(seed_image) > max_size_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"seed_image exceeds {settings.MAX_UPLOAD_SIZE_MB} MB",
+        )
+    return generate_request, seed_image
 
 
 async def generate_scene(
@@ -80,6 +129,8 @@ async def generate_scene(
 
     script = normalize_scene_script(request.script)
     embedding = await make_scene_embedding(prompt, script)
+    column_values = {field: getattr(request, field) for field in SCENE_COMPONENT_FIELDS}
+    column_embeddings = await make_scene_column_embeddings(column_values)
     if request.generate_image:
         image_url, image_key = await generate_scene_image(prompt, seed_image, request.image_settings)
 
@@ -92,6 +143,9 @@ async def generate_scene(
         scene.script = script
         scene.status_change = request.status_change
         scene.embedding = embedding
+        for field in SCENE_COMPONENT_FIELDS:
+            setattr(scene, field, column_values[field])
+            setattr(scene, f"{field}_embedding", column_embeddings[field])
         if image_url is not None:
             scene.image_url = image_url
         await db.commit()
@@ -105,6 +159,57 @@ async def generate_scene(
     if image_url is not None:
         await cleanup_old_scene_image(db, old_image_url, image_url)
     return scene
+
+
+async def upsert_scenes(db: AsyncSession, items: list[SceneBase]) -> list[UpsertResponseBase]:
+    if not items:
+        return []
+
+    item_ids = [item.id for item in items if item.id is not None]
+    existing_scenes = {}
+    if item_ids:
+        result = await db.execute(select(Scene).where(Scene.id.in_(item_ids)))
+        existing_scenes = {scene.id: scene for scene in result.scalars().all()}
+
+    pending_results: list[Scene] = []
+    orphan_candidates: list[str | None] = []
+    try:
+        for item in items:
+            prompt = item.prompt.strip()
+            if not prompt:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scene prompt is required")
+
+            scene = existing_scenes.get(item.id) if item.id is not None else None
+            if scene is None:
+                scene = Scene()
+                db.add(scene)
+
+            old_image_url = scene.image_url
+            script = normalize_scene_script(item.script)
+            column_values = {field: getattr(item, field) for field in SCENE_COMPONENT_FIELDS}
+            column_embeddings = await make_scene_column_embeddings(column_values)
+
+            scene.prompt = prompt
+            scene.image_url = item.image_url
+            scene.script = script
+            scene.status_change = item.status_change
+            scene.embedding = await make_scene_embedding(prompt, script)
+            for field in SCENE_COMPONENT_FIELDS:
+                setattr(scene, field, column_values[field])
+                setattr(scene, f"{field}_embedding", column_embeddings[field])
+
+            if old_image_url != item.image_url:
+                orphan_candidates.append(old_image_url)
+            pending_results.append(scene)
+
+        await db.flush()
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    await cleanup_orphaned_object_keys(db, orphan_candidates)
+    return [UpsertResponseBase(id=scene.id) for scene in pending_results]
 
 
 async def make_scene_embedding(prompt: str, script: str) -> list[float]:
@@ -123,6 +228,36 @@ async def make_scene_embedding(prompt: str, script: str) -> list[float]:
             detail=f"scene embedding model must return {VECTOR_DIMENSION} dimensions",
         )
     return embedding
+
+
+async def make_scene_column_embeddings(
+    column_values: dict[str, str | None],
+) -> dict[str, list[float] | None]:
+    column_embeddings: dict[str, list[float] | None] = {field: None for field in SCENE_COMPONENT_FIELDS}
+    if not any((column_values[field] or "").strip() for field in SCENE_COMPONENT_FIELDS):
+        return column_embeddings
+
+    model_name = settings.SCENE_EMBEDDING_MODEL_NAME.strip()
+    if not model_name:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="scene embedding model name is required",
+        )
+
+    for field in SCENE_COMPONENT_FIELDS:
+        column_text = (column_values[field] or "").strip()
+        if not column_text:
+            continue
+
+        embedding = await encode_scene_text(model_name, f"passage: {column_text}")
+        if len(embedding) != VECTOR_DIMENSION:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"scene embedding model must return {VECTOR_DIMENSION} dimensions",
+            )
+        column_embeddings[field] = embedding
+
+    return column_embeddings
 
 
 async def recommend_prompt(db: AsyncSession, text: str) -> list[RecommendPromptItemBase]:
@@ -172,6 +307,68 @@ async def recommend_prompt(db: AsyncSession, text: str) -> list[RecommendPromptI
             key=lambda item: (-(score_sums[item] / frequencies[item]), item),
         )
     ]
+
+
+async def recommend_prompt_columns(db: AsyncSession, text: str) -> dict[str, list[str]]:
+    prompt_text = text.strip()
+    if not prompt_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text is required")
+
+    model_name = settings.SCENE_EMBEDDING_MODEL_NAME.strip()
+    if not model_name:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="scene embedding model name is required",
+        )
+
+    components = await analyze_scene_components(prompt_text)
+    scenes = (await db.execute(select(Scene))).scalars().all()
+    recommendations: dict[str, list[str]] = {field: [] for field in SCENE_COMPONENT_FIELDS}
+
+    for field in SCENE_COMPONENT_FIELDS:
+        component_text = components[field].strip()
+        if not component_text:
+            continue
+
+        component_embedding = await encode_scene_text(model_name, f"query: {component_text}")
+        if len(component_embedding) != VECTOR_DIMENSION:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"scene embedding model must return {VECTOR_DIMENSION} dimensions",
+            )
+
+        scene_distances = []
+        for scene in scenes:
+            try:
+                scene_embedding = validate_embedding(
+                    getattr(scene, f"{field}_embedding"),
+                    f"scene.{field}_embedding",
+                )
+            except HTTPException:
+                continue
+
+            distance = cosine_distance(component_embedding, scene_embedding)
+            if distance is None:
+                continue
+            scene_distances.append((scene, distance))
+
+        seen_tags: set[str] = set()
+        for scene, _distance in sorted(
+            scene_distances,
+            key=lambda item: (item[1], item[0].id or 0),
+        ):
+            column_text = getattr(scene, field)
+            if not isinstance(column_text, str):
+                continue
+
+            for raw_tag in column_text.split(","):
+                tag = raw_tag.strip()
+                if not tag or tag in seen_tags:
+                    continue
+                seen_tags.add(tag)
+                recommendations[field].append(tag)
+
+    return recommendations
 
 
 async def get_similar_scenes(db: AsyncSession, text: str) -> list[Scene]:

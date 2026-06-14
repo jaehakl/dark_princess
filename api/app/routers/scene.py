@@ -1,15 +1,12 @@
-from typing import List
+from typing import Dict, List
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
-from pydantic import ValidationError
+from fastapi import APIRouter, Body, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.datastructures import UploadFile
 
 from db import Scene, get_db
 from models import (
     GenerateScenePromptRequestBase,
     GenerateScenePromptResponseBase,
-    GenerateSceneRequestBase,
     GetListRequestBase,
     GetListResponseBase,
     ImageGenerationSettingsBase,
@@ -22,14 +19,14 @@ from models import (
 from service.scene import (
     get_default_image_generation_settings,
     generate_prompt,
-    generate_scene,
+    generate_scene_from_form,
     get_similar_scenes,
     recommend_prompt,
+    recommend_prompt_columns,
     update_scene_context,
+    upsert_scenes,
 )
-from utils.crud_helpers import CrudSpec, delete_items, get_list_response, upsert_items
-from utils.local_storage import is_allowed_content_type
-from settings import settings
+from utils.crud_helpers import CrudSpec, delete_items, get_list_response
 
 router = APIRouter(prefix="/scene", tags=["scene"])
 
@@ -50,7 +47,7 @@ async def api_upsert_scene_list(
     items: List[SceneBase],
     db: AsyncSession = Depends(get_db),
 ):
-    return await upsert_items(db, items, SCENE_CRUD_SPEC, cleanup_fields=("image_url",))
+    return await upsert_scenes(db, items)
 
 
 @router.get("/image-settings/defaults", response_model=ImageGenerationSettingsBase)
@@ -63,45 +60,7 @@ async def api_generate_scene(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    seed_image = None
-    content_type = request.headers.get("content-type", "")
-    if "multipart/form-data" in content_type:
-        form = await request.form()
-        payload = form.get("payload")
-        if not isinstance(payload, str) or not payload.strip():
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="payload is required")
-        try:
-            generate_request = GenerateSceneRequestBase.model_validate_json(payload)
-        except ValidationError as exc:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.errors()) from exc
-
-        upload = form.get("seed_image")
-        if isinstance(upload, UploadFile):
-            if not is_allowed_content_type(upload.content_type):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="seed_image content type is not allowed",
-                )
-            seed_image = await upload.read()
-            max_size_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
-            if not seed_image:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="seed_image is empty")
-            if len(seed_image) > max_size_bytes:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"seed_image exceeds {settings.MAX_UPLOAD_SIZE_MB} MB",
-                )
-    else:
-        try:
-            payload = await request.json()
-        except ValueError as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid JSON body") from exc
-        try:
-            generate_request = GenerateSceneRequestBase.model_validate(payload)
-        except ValidationError as exc:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.errors()) from exc
-
-    scene = await generate_scene(db, generate_request, seed_image=seed_image)
+    scene = await generate_scene_from_form(db, await request.form())
     return SceneBase(
         id=scene.id,
         prompt=scene.prompt,
@@ -122,6 +81,14 @@ async def api_recommend_prompt(
     db: AsyncSession = Depends(get_db),
 ):
     return await recommend_prompt(db, text)
+
+
+@router.post("/recommend-prompt-columns", response_model=Dict[str, List[str]])
+async def api_recommend_prompt_columns(
+    text: str = Body(..., embed=True),
+    db: AsyncSession = Depends(get_db),
+):
+    return await recommend_prompt_columns(db, text)
 
 
 @router.post("/similar", response_model=List[SceneBase])

@@ -5,12 +5,12 @@ import type {
   AdjustSelectionModelRequest,
   GenerateSceneOptionRequest,
   GenerateScenePromptResponse,
-  GenerateSceneRequest,
   GenerateSelectionModelRequest,
   GetListRequest,
   GetListResponse,
   ImageGenerationSettings,
   NextSceneRequest,
+  RecommendPromptColumns,
   RecommendPromptItem,
   SceneOptionRecord,
   SceneRecord,
@@ -35,12 +35,14 @@ export const dbTables = {
     listRows: (listRequest: GetListRequest) =>
       request<GetListResponse<SceneRecord>>('post', '/scene/list', listRequest),
     upsertRow: (items: unknown) => request<UpsertResponse[]>('post', '/scene/upsert', items),
-    generateScene: (item: GenerateSceneRequest | FormData) =>
+    generateScene: (item: FormData) =>
       request<SceneRecord>('post', '/scene/generate', item),
     getImageSettingsDefaults: () =>
       request<ImageGenerationSettings>('get', '/scene/image-settings/defaults'),
     recommendPrompt: (text: string) =>
       request<RecommendPromptItem[]>('post', '/scene/recommend-prompt', { text }),
+    recommendPromptColumns: (text: string) =>
+      request<RecommendPromptColumns>('post', '/scene/recommend-prompt-columns', { text }),
     generatePrompt: (text: string) =>
       request<GenerateScenePromptResponse>('post', '/scene/generate-prompt', { text }),
     updateContext: (item: UpdateSceneContextRequest) =>

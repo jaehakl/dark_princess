@@ -603,20 +603,22 @@ export function SceneEditorModal({
         script,
         status_change: statusChange,
         generate_image: mode !== 'text',
+        background: scene?.background ?? null,
+        subject: scene?.subject ?? null,
+        object: scene?.object ?? null,
+        action: scene?.action ?? null,
+        detail: scene?.detail ?? null,
         ...(mode === 'text' || !imageSettings ? {} : { image_settings: imageSettings }),
       };
-      const savedScene = mode === 'text'
-        ? await dbTables.Scene.generateScene(payload)
-        : await (async () => {
-          if (!seedImage) {
-            throw new Error(seedImageError ?? 'seed image를 준비해 주세요.');
-          }
-
-          const formData = new FormData();
-          formData.append('payload', JSON.stringify(payload));
-          formData.append('seed_image', seedImage.blob, `scene-seed-${seedImage.source}.png`);
-          return await dbTables.Scene.generateScene(formData);
-        })();
+      const formData = new FormData();
+      formData.append('payload', JSON.stringify(payload));
+      if (mode !== 'text') {
+        if (!seedImage) {
+          throw new Error(seedImageError ?? 'seed image를 준비해 주세요.');
+        }
+        formData.append('seed_image', seedImage.blob, `scene-seed-${seedImage.source}.png`);
+      }
+      const savedScene = await dbTables.Scene.generateScene(formData);
       setPrompt(savedScene.prompt);
       setScript(savedScene.script);
       setStatusChangeValues(statusChangeToValues(savedScene.status_change));
