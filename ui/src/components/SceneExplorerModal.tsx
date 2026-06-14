@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { dbTables } from '../api/api';
 import type { GetListRequest, SceneRecord } from '../api/type';
 
-const PAGE_SIZE = 12;
+const PAGE_SIZE = 100;
 
 type SceneExplorerModalProps = {
   currentScene: SceneRecord | null;
@@ -12,7 +12,7 @@ type SceneExplorerModalProps = {
 
 const SCENE_LIST_REQUEST: GetListRequest = {
   offset: 0,
-  limit: null,
+  limit: PAGE_SIZE,
   selected_ids: [],
   search_text: null,
   text_filter: {},
@@ -32,10 +32,6 @@ function getScriptSummary(scene: SceneRecord) {
   return summary || 'script 없음';
 }
 
-function getSearchText(scene: SceneRecord) {
-  return `${scene.prompt} ${getScriptSummary(scene)}`.toLocaleLowerCase();
-}
-
 export function SceneExplorerModal({
   currentScene,
   onClose,
@@ -43,23 +39,36 @@ export function SceneExplorerModal({
 }: SceneExplorerModalProps) {
   const [scenes, setScenes] = useState<SceneRecord[]>([]);
   const [searchText, setSearchText] = useState('');
+  const [submittedSearchText, setSubmittedSearchText] = useState('');
   const [page, setPage] = useState(1);
+  const [totalRows, setTotalRows] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const isSemanticSearch = submittedSearchText.length > 0;
 
   useEffect(() => {
+    if (isSemanticSearch) {
+      return;
+    }
+
     let isActive = true;
 
     async function loadScenes() {
       setIsLoading(true);
       setError(null);
       try {
-        const response = await dbTables.Scene.listRows(SCENE_LIST_REQUEST);
+        const response = await dbTables.Scene.listRows({
+          ...SCENE_LIST_REQUEST,
+          offset: (page - 1) * PAGE_SIZE,
+        });
         if (isActive) {
           setScenes(response.items);
+          setTotalRows(response.total);
         }
       } catch (loadError) {
         if (isActive) {
+          setScenes([]);
+          setTotalRows(0);
           setError(getErrorMessage(loadError));
         }
       } finally {
@@ -74,28 +83,57 @@ export function SceneExplorerModal({
     return () => {
       isActive = false;
     };
-  }, []);
+  }, [isSemanticSearch, page]);
 
-  const filteredScenes = useMemo(() => {
-    const normalizedSearch = searchText.trim().toLocaleLowerCase();
-    if (!normalizedSearch) {
+  const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
+  const visibleScenes = useMemo(() => {
+    if (!isSemanticSearch) {
       return scenes;
     }
-    return scenes.filter((scene) => getSearchText(scene).includes(normalizedSearch));
-  }, [scenes, searchText]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredScenes.length / PAGE_SIZE));
-  const visibleScenes = filteredScenes.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+    return scenes.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  }, [isSemanticSearch, page, scenes]);
 
   useEffect(() => {
-    setPage(1);
-  }, [searchText]);
-
-  useEffect(() => {
-    if (page > totalPages) {
-      setPage(totalPages);
+    if (page <= totalPages) {
+      return;
     }
+    setPage(totalPages);
   }, [page, totalPages]);
+
+  async function searchSimilarScenes() {
+    const trimmedSearchText = searchText.trim();
+    if (!trimmedSearchText) {
+      setError('검색할 장면 텍스트를 입력해 주세요.');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    setPage(1);
+    setSubmittedSearchText(trimmedSearchText);
+    try {
+      const results = await dbTables.Scene.similarScenes(trimmedSearchText);
+      setScenes(results);
+      setTotalRows(results.length);
+    } catch (searchError) {
+      setScenes([]);
+      setTotalRows(0);
+      setError(getErrorMessage(searchError));
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function clearSemanticSearch() {
+    setSearchText('');
+    setSubmittedSearchText('');
+    setScenes([]);
+    setTotalRows(0);
+    setPage(1);
+    setError(null);
+    setIsLoading(true);
+  }
 
   return (
     <div className="vn-modal-backdrop" role="presentation">
@@ -125,27 +163,61 @@ export function SceneExplorerModal({
         </div>
 
         <div className="vn-section-body space-y-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <input
-              value={searchText}
-              onChange={(event) => setSearchText(event.target.value)}
-              className="edit-control h-11 min-w-0 flex-1 px-3"
-              placeholder="prompt 또는 script 검색"
-            />
+          <form
+            className="flex flex-col gap-2 sm:flex-row sm:items-center"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void searchSimilarScenes();
+            }}
+          >
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <input
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
+                className="edit-control h-11 min-w-0 px-3"
+                placeholder="시멘틱 검색할 장면 텍스트"
+              />
+              {isSemanticSearch ? (
+                <span className="text-xs font-semibold text-[var(--app-muted)]">
+                  시멘틱 검색: {submittedSearchText}
+                </span>
+              ) : null}
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <button
+                type="submit"
+                className="vn-button vn-button-primary px-4 py-2 text-xs"
+                disabled={isLoading || searchText.trim().length === 0}
+              >
+                시멘틱 검색
+              </button>
+              {isSemanticSearch ? (
+                <button
+                  type="button"
+                  className="vn-button px-4 py-2 text-xs"
+                  onClick={clearSemanticSearch}
+                  disabled={isLoading}
+                >
+                  목록으로
+                </button>
+              ) : null}
+            </div>
             <span className="shrink-0 text-xs font-semibold text-[var(--app-muted)]">
-              {filteredScenes.length} / {scenes.length}
+              {visibleScenes.length} / {totalRows}
             </span>
-          </div>
+          </form>
 
           {isLoading ? (
             <div className="vn-scene-explorer-state">
               <span className="vn-spinner" aria-hidden="true" />
-              <span>Scene을 불러오는 중</span>
+              <span>{isSemanticSearch ? '유사 Scene을 찾는 중' : 'Scene을 불러오는 중'}</span>
             </div>
           ) : error ? (
             <div className="vn-scene-explorer-state text-[#ff9ab8]">{error}</div>
           ) : visibleScenes.length === 0 ? (
-            <div className="vn-scene-explorer-state">검색 결과 없음</div>
+            <div className="vn-scene-explorer-state">
+              {isSemanticSearch ? '시멘틱 검색 결과 없음' : 'Scene 없음'}
+            </div>
           ) : (
             <div className="vn-scene-grid">
               {visibleScenes.map((scene) => {

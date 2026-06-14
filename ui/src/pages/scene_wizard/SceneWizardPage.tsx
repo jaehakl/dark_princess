@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { dbTables } from '../../api/api';
+import { useSceneStore } from '../../api/store';
 import type {
   GenerateSceneRequest,
   GetListRequest,
@@ -84,11 +85,10 @@ function normalizeStatusChange(statusChange: Record<string, unknown> | undefined
 }
 
 export function SceneWizardPage() {
-  const [sceneText, setSceneText] = useState('');
-  const [submittedSceneText, setSubmittedSceneText] = useState('');
-  const [similarScenes, setSimilarScenes] = useState<SceneRecord[]>([]);
+  const selectedScene = useSceneStore((state) => state.selectedScene);
+  const lastAppliedSelectedSceneRef = useRef<SceneRecord | null>(selectedScene);
   const [activeScene, setActiveScene] = useState<SceneRecord | null>(null);
-  const [isFreshDraft, setIsFreshDraft] = useState(false);
+  const [isFreshDraft, setIsFreshDraft] = useState(true);
   const [promptDraft, setPromptDraft] = useState<Record<PromptColumnName, string>>({
     ...EMPTY_PROMPT_DRAFT,
   });
@@ -108,7 +108,6 @@ export function SceneWizardPage() {
   const [strengthControlValue, setStrengthControlValue] = useState('');
   const [isImageSettingsOpen, setIsImageSettingsOpen] = useState(false);
   const [imageSettingsError, setImageSettingsError] = useState<string | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
   const [isRecommending, setIsRecommending] = useState(false);
   const [savingMode, setSavingMode] = useState<SaveMode | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -122,21 +121,20 @@ export function SceneWizardPage() {
         .join(', '),
     [promptDraft],
   );
-  const isBusy = isSearching || isRecommending || Boolean(savingMode);
-  const canSubmitSearch = sceneText.trim().length > 0 && !isSearching;
+  const isBusy = isRecommending || Boolean(savingMode);
   const canEdit = Boolean(activeScene || isFreshDraft);
   const canSaveText = canEdit && composedPrompt.length > 0 && !isBusy;
   const canSaveExisting = canSaveText && Boolean(activeSceneId);
   const canSaveImage = canSaveText && Boolean(seedImage) && !isPreparingSeedImage && Boolean(imageSettings);
   const canSaveExistingImage = canSaveImage && Boolean(activeSceneId);
   const canRefreshRecommendations =
-    canEdit && script.trim().length > 0 && !isSearching && !isRecommending && !savingMode;
+    canEdit && script.trim().length > 0 && !isRecommending && !savingMode;
   const imageWidth = imageSettings?.width;
   const imageHeight = imageSettings?.height;
   const selectedLabel = activeSceneId
     ? `Scene #${activeSceneId}`
     : isFreshDraft
-      ? '새로 시작'
+      ? '새 Scene 생성'
       : '선택 없음';
 
   const applySeedImage = useCallback((blob: Blob, source: SeedImageSource) => {
@@ -145,6 +143,17 @@ export function SceneWizardPage() {
       previewUrl: URL.createObjectURL(blob),
       source,
     });
+  }, []);
+
+  const selectExistingScene = useCallback((scene: SceneRecord) => {
+    setActiveScene(scene);
+    setIsFreshDraft(false);
+    setPromptDraft(sceneToPromptDraft(scene));
+    setScript(scene.script ?? '');
+    setStatusChange(normalizeStatusChange(scene.status_change));
+    setRecommendations({ ...EMPTY_RECOMMENDATIONS });
+    setError(null);
+    setSeedImageError(null);
   }, []);
 
   useEffect(() => () => {
@@ -228,29 +237,18 @@ export function SceneWizardPage() {
     imageWidth,
   ]);
 
-  async function searchSimilarScenes() {
-    const trimmedSceneText = sceneText.trim();
-    if (!trimmedSceneText) {
-      setError('소설 장면을 입력해 주세요.');
+  useEffect(() => {
+    if (
+      !selectedScene?.id ||
+      selectedScene === lastAppliedSelectedSceneRef.current ||
+      selectedScene.id === activeSceneId
+    ) {
       return;
     }
 
-    setIsSearching(true);
-    setError(null);
-    setSubmittedSceneText(trimmedSceneText);
-    setActiveScene(null);
-    setIsFreshDraft(false);
-    setSeedImage(null);
-    setRecommendations({ ...EMPTY_RECOMMENDATIONS });
-    try {
-      setSimilarScenes(await dbTables.Scene.similarScenes(trimmedSceneText));
-    } catch (searchError) {
-      setSimilarScenes([]);
-      setError(getErrorMessage(searchError));
-    } finally {
-      setIsSearching(false);
-    }
-  }
+    lastAppliedSelectedSceneRef.current = selectedScene;
+    selectExistingScene(selectedScene);
+  }, [activeSceneId, selectExistingScene, selectedScene]);
 
   async function refreshRecommendationsFromScript() {
     const trimmedScript = script.trim();
@@ -271,27 +269,12 @@ export function SceneWizardPage() {
     }
   }
 
-  function selectExistingScene(scene: SceneRecord) {
-    setActiveScene(scene);
-    setIsFreshDraft(false);
-    setPromptDraft(sceneToPromptDraft(scene));
-    setScript(scene.script ?? '');
-    setStatusChange(normalizeStatusChange(scene.status_change));
-    setRecommendations({ ...EMPTY_RECOMMENDATIONS });
-    setError(null);
-    setSeedImageError(null);
-  }
-
   function startFreshScene() {
-    if (!submittedSceneText) {
-      setError('먼저 소설 장면을 제출해 주세요.');
-      return;
-    }
-
     setActiveScene(null);
     setIsFreshDraft(true);
+    setSeedImage(null);
     setPromptDraft({ ...EMPTY_PROMPT_DRAFT });
-    setScript(submittedSceneText);
+    setScript('');
     setStatusChange({ ...DEFAULT_STATUS_CHANGE });
     setRecommendations({ ...EMPTY_RECOMMENDATIONS });
     setError(null);
@@ -542,110 +525,21 @@ export function SceneWizardPage() {
         <h1 className="vn-title">Scene Wizard</h1>
       </div>
 
-      <div className="grid min-h-[calc(100vh-10rem)] gap-5 xl:grid-cols-[minmax(18rem,0.55fr)_minmax(56rem,1.85fr)]">
-        <section className="vn-panel min-h-0">
-          <div className="vn-panel-header">
-            <div className="min-w-0">
-              <p className="vn-subtitle">Novel scene</p>
-              <h2 className="truncate text-base font-semibold text-[#fff7ef]">장면 검색</h2>
-            </div>
+      <section className="vn-panel min-h-[calc(100vh-10rem)]">
+        <div className="vn-panel-header">
+          <div className="min-w-0">
+            <p className="vn-subtitle">Scene edit</p>
+            <h2 className="truncate text-base font-semibold text-[#fff7ef]">{selectedLabel}</h2>
           </div>
-
-          <div className="vn-section-body flex min-h-0 flex-col gap-4">
-            <label className="block space-y-2">
-              <span className="edit-label edit-label--required">
-                <span className="edit-label__text">소설 장면</span>
-              </span>
-              <textarea
-                value={sceneText}
-                onChange={(event) => setSceneText(event.target.value)}
-                className="edit-control min-h-48 w-full resize-y px-3 py-3 text-sm leading-6"
-                disabled={isSearching}
-                placeholder="장면 원문을 입력하세요."
-              />
-            </label>
-
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              className="vn-button vn-button-primary inline-flex items-center justify-center gap-2 px-5 py-3"
-              onClick={() => void searchSimilarScenes()}
-              disabled={!canSubmitSearch}
+              className="vn-button px-3 py-2 text-xs"
+              onClick={startFreshScene}
+              disabled={isBusy}
             >
-              {isSearching ? <span className="vn-spinner" aria-hidden="true" /> : null}
-              {isSearching ? '검색 중' : '유사 장면 찾기'}
+              새 Scene 생성
             </button>
-
-            {submittedSceneText ? (
-              <div className="flex min-h-0 flex-1 flex-col gap-3 border-t border-[var(--app-border)] pt-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-sm font-semibold text-[#fff7ef]">추천 장면</span>
-                  <button
-                    type="button"
-                    className="vn-button px-3 py-2 text-xs"
-                    onClick={startFreshScene}
-                    disabled={isBusy || isRecommending}
-                  >
-                    새로 시작
-                  </button>
-                </div>
-
-                {isSearching ? (
-                  <div className="vn-scene-explorer-state">
-                    <span className="vn-spinner" aria-hidden="true" />
-                    <span>유사 장면을 찾는 중</span>
-                  </div>
-                ) : similarScenes.length === 0 ? (
-                  <div className="vn-scene-explorer-state">유사 장면 없음</div>
-                ) : (
-                  <div className="vn-list flex min-h-0 flex-col gap-2 pr-1">
-                    {similarScenes.map((scene) => {
-                      const summary = scene.script.replace(/\s+/g, ' ').trim() || 'script 없음';
-                      const isSelected = activeSceneId !== null && scene.id === activeSceneId;
-                      return (
-                        <button
-                          key={scene.id}
-                          type="button"
-                          className={[
-                            'vn-scene-card',
-                            isSelected ? 'vn-scene-card-current' : '',
-                          ].join(' ')}
-                          onClick={() => selectExistingScene(scene)}
-                          disabled={isBusy}
-                        >
-                          <div className="vn-scene-thumb">
-                            {scene.image_url ? (
-                              <img src={scene.image_url} alt="" className="dp-image-media" />
-                            ) : (
-                              <span>이미지 없음</span>
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="mb-2 flex items-center justify-between gap-2">
-                              <span className="text-xs font-semibold text-[var(--app-accent)]">
-                                Scene #{scene.id ?? '-'}
-                              </span>
-                              {isSelected ? (
-                                <span className="text-xs font-semibold text-[#fff7ef]">선택됨</span>
-                              ) : null}
-                            </div>
-                            <p className="vn-scene-script-summary">{summary}</p>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            ) : null}
-          </div>
-        </section>
-
-        <section className="vn-panel min-h-0">
-          <div className="vn-panel-header">
-            <div className="min-w-0">
-              <p className="vn-subtitle">Scene edit</p>
-              <h2 className="truncate text-base font-semibold text-[#fff7ef]">{selectedLabel}</h2>
-            </div>
             <button
               type="button"
               className="vn-button px-3 py-2 text-xs"
@@ -655,14 +549,10 @@ export function SceneWizardPage() {
               이미지 설정
             </button>
           </div>
+        </div>
 
-          <div className="vn-section-body">
-            {!canEdit ? (
-              <div className="vn-scene-explorer-state">
-                왼쪽에서 추천 장면을 선택하거나 새로 시작해 주세요.
-              </div>
-            ) : (
-              <div className="space-y-4">
+        <div className="vn-section-body">
+          <div className="space-y-4">
                 <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.42fr)] xl:items-start">
                   <div className="min-w-0 space-y-4">
                     <label className="block space-y-2">
@@ -856,11 +746,9 @@ export function SceneWizardPage() {
                     </button>
                   </div>
                 </div>
-              </div>
-            )}
           </div>
-        </section>
-      </div>
+        </div>
+      </section>
 
       {isImageSettingsOpen && imageSettingsDraft ? (
         <div className="vn-modal-backdrop" role="presentation">
