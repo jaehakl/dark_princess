@@ -25,7 +25,6 @@ from settings import API_ROOT, settings
 from service.selection_model import cosine_distance
 from utils.crud_helpers import cleanup_orphaned_object_keys
 from utils.llm import (
-    SCENE_COMPONENT_FIELDS,
     analyze_scene_components,
     extract_visual_keywords,
     translate_visual_keywords_to_english,
@@ -64,6 +63,7 @@ GEN_IMAGE_SEED_MAX = 1_000_000
 RECOMMEND_PROMPT_DISTANCE_EPSILON = 1e-6
 GEN_IMAGE_ALLOWED_SAMPLERS = {"", "euler", "euler_a", "dpmpp_2m", "unipc"}
 GEN_IMAGE_ALLOWED_SCHEDULERS = {"", "karras"}
+SCENE_PROMPT_FIELDS = ("background", "subject", "object", "action", "detail")
 
 
 async def generate_scene_from_form(db: AsyncSession, form: FormData) -> Scene:
@@ -129,7 +129,7 @@ async def generate_scene(
 
     script = normalize_scene_script(request.script)
     embedding = await make_scene_embedding(prompt, script)
-    column_values = {field: getattr(request, field) for field in SCENE_COMPONENT_FIELDS}
+    column_values = {field: getattr(request, field) for field in SCENE_PROMPT_FIELDS}
     column_embeddings = await make_scene_column_embeddings(column_values)
     if request.generate_image:
         image_url, image_key = await generate_scene_image(prompt, seed_image, request.image_settings)
@@ -143,7 +143,7 @@ async def generate_scene(
         scene.script = script
         scene.status_change = request.status_change
         scene.embedding = embedding
-        for field in SCENE_COMPONENT_FIELDS:
+        for field in SCENE_PROMPT_FIELDS:
             setattr(scene, field, column_values[field])
             setattr(scene, f"{field}_embedding", column_embeddings[field])
         if image_url is not None:
@@ -186,7 +186,7 @@ async def upsert_scenes(db: AsyncSession, items: list[SceneBase]) -> list[Upsert
 
             old_image_url = scene.image_url
             script = normalize_scene_script(item.script)
-            column_values = {field: getattr(item, field) for field in SCENE_COMPONENT_FIELDS}
+            column_values = {field: getattr(item, field) for field in SCENE_PROMPT_FIELDS}
             column_embeddings = await make_scene_column_embeddings(column_values)
 
             scene.prompt = prompt
@@ -194,7 +194,7 @@ async def upsert_scenes(db: AsyncSession, items: list[SceneBase]) -> list[Upsert
             scene.script = script
             scene.status_change = item.status_change
             scene.embedding = await make_scene_embedding(prompt, script)
-            for field in SCENE_COMPONENT_FIELDS:
+            for field in SCENE_PROMPT_FIELDS:
                 setattr(scene, field, column_values[field])
                 setattr(scene, f"{field}_embedding", column_embeddings[field])
 
@@ -233,8 +233,8 @@ async def make_scene_embedding(prompt: str, script: str) -> list[float]:
 async def make_scene_column_embeddings(
     column_values: dict[str, str | None],
 ) -> dict[str, list[float] | None]:
-    column_embeddings: dict[str, list[float] | None] = {field: None for field in SCENE_COMPONENT_FIELDS}
-    if not any((column_values[field] or "").strip() for field in SCENE_COMPONENT_FIELDS):
+    column_embeddings: dict[str, list[float] | None] = {field: None for field in SCENE_PROMPT_FIELDS}
+    if not any((column_values[field] or "").strip() for field in SCENE_PROMPT_FIELDS):
         return column_embeddings
 
     model_name = settings.SCENE_EMBEDDING_MODEL_NAME.strip()
@@ -244,7 +244,7 @@ async def make_scene_column_embeddings(
             detail="scene embedding model name is required",
         )
 
-    for field in SCENE_COMPONENT_FIELDS:
+    for field in SCENE_PROMPT_FIELDS:
         column_text = (column_values[field] or "").strip()
         if not column_text:
             continue
@@ -321,11 +321,11 @@ async def recommend_prompt_columns(db: AsyncSession, text: str) -> dict[str, lis
             detail="scene embedding model name is required",
         )
 
-    components = await analyze_scene_components(prompt_text)
+    components = await analyze_scene_components(prompt_text, SCENE_PROMPT_FIELDS)
     scenes = (await db.execute(select(Scene))).scalars().all()
-    recommendations: dict[str, list[str]] = {field: [] for field in SCENE_COMPONENT_FIELDS}
+    recommendations: dict[str, list[str]] = {field: [] for field in SCENE_PROMPT_FIELDS}
 
-    for field in SCENE_COMPONENT_FIELDS:
+    for field in SCENE_PROMPT_FIELDS:
         component_text = components[field].strip()
         if not component_text:
             continue

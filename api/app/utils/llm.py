@@ -24,7 +24,6 @@ LLM_MIN_MAX_TOKENS = 16
 LLM_MAX_MAX_TOKENS = 1024
 LLM_MIN_TEMPERATURE = 0.0
 LLM_MAX_TEMPERATURE = 2.0
-SCENE_COMPONENT_FIELDS = ("background", "subject", "object", "action", "detail")
 
 KOREAN_TO_ENGLISH_TRANSLATION_SYSTEM_MESSAGE = (
     "You translate Korean user text into natural English. "
@@ -34,8 +33,7 @@ KOREAN_TO_ENGLISH_TRANSLATION_SYSTEM_MESSAGE = (
 )
 SCENE_COMPONENT_ANALYSIS_SYSTEM_MESSAGE = (
     "You analyze scene text into structured visual-narrative components. "
-    "Return only one valid JSON object with exactly these five string fields: "
-    "background, subject, object, action, detail. "
+    "Return only one valid JSON object with exactly the string fields requested by the user. "
     "Each value must be a concise text summary, not an array. "
     "Use an empty string only when the component cannot be inferred. "
     "Use the language that best matches the source text. "
@@ -160,6 +158,7 @@ async def translate_korean_to_english(
 
 async def analyze_scene_components(
     text: str,
+    fields: tuple[str, ...] | list[str],
     max_tokens: int | None = None,
     temperature: float | None = None,
     max_attempts: int = 3,
@@ -173,6 +172,8 @@ async def analyze_scene_components(
             detail=f"text must be {LLM_MAX_SOURCE_TEXT_LENGTH} characters or fewer",
         )
 
+    component_fields = _normalize_scene_component_fields(fields)
+    field_list_text = ", ".join(component_fields)
     attempts = max(1, max_attempts)
     last_failure = "scene component LLM returned invalid components"
     for _ in range(attempts):
@@ -182,8 +183,8 @@ async def analyze_scene_components(
                 {
                     "role": "user",
                     "content": (
-                        "Analyze the following scene text into background, subject, object, action, and detail.\n"
-                        "Return JSON only, using exactly those five keys and string values.\n\n"
+                        f"Analyze the following scene text into these fields: {field_list_text}.\n"
+                        "Return JSON only, using exactly those keys and string values.\n\n"
                         f"Scene text:\n{scene_text}\n\n"
                         "Return JSON now."
                     ),
@@ -204,12 +205,12 @@ async def analyze_scene_components(
             last_failure = str(exc.detail)
             continue
 
-        if set(payload) != set(SCENE_COMPONENT_FIELDS):
+        if set(payload) != set(component_fields):
             last_failure = "scene component LLM returned invalid component keys"
             continue
 
         result: dict[str, str] = {}
-        for field in SCENE_COMPONENT_FIELDS:
+        for field in component_fields:
             value = payload[field]
             if not isinstance(value, str):
                 last_failure = f"scene component LLM returned non-string {field}"
@@ -237,6 +238,26 @@ async def analyze_scene_components(
         status_code=status.HTTP_502_BAD_GATEWAY,
         detail=f"scene component analysis failed after {attempts} attempts: {last_failure}",
     )
+
+
+def _normalize_scene_component_fields(fields: tuple[str, ...] | list[str]) -> tuple[str, ...]:
+    normalized_fields: list[str] = []
+    seen_fields: set[str] = set()
+    for field in fields:
+        if not isinstance(field, str):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="fields must contain only strings")
+
+        normalized_field = field.strip()
+        if not normalized_field:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="fields must not be empty")
+        if normalized_field in seen_fields:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="fields must not contain duplicates")
+        seen_fields.add(normalized_field)
+        normalized_fields.append(normalized_field)
+
+    if not normalized_fields:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="fields are required")
+    return tuple(normalized_fields)
 
 
 async def extract_visual_keywords(
