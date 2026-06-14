@@ -21,7 +21,6 @@ from settings import API_ROOT, settings
 from service.selection_model import cosine_distance
 from utils.llm import (
     extract_visual_keywords,
-    generate_scene_script as generate_script_from_llm,
     translate_visual_keywords_to_english,
 )
 from utils.local_storage import build_object_key, delete_object, object_key_from_public_url, public_file_url, upload_fileobj
@@ -175,6 +174,47 @@ async def recommend_prompt(db: AsyncSession, text: str) -> list[RecommendPromptI
     ]
 
 
+async def get_similar_scenes(db: AsyncSession, text: str) -> list[Scene]:
+    query_text = text.strip()
+    if not query_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text is required")
+
+    model_name = settings.SCENE_EMBEDDING_MODEL_NAME.strip()
+    if not model_name:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="scene embedding model name is required",
+        )
+
+    text_embedding = await encode_scene_text(model_name, f"query: {query_text}")
+    if len(text_embedding) != VECTOR_DIMENSION:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"scene embedding model must return {VECTOR_DIMENSION} dimensions",
+        )
+
+    scenes = (await db.execute(select(Scene))).scalars().all()
+    scene_distances = []
+    for scene in scenes:
+        try:
+            scene_embedding = validate_embedding(scene.embedding, "scene.embedding")
+        except HTTPException:
+            continue
+
+        distance = cosine_distance(text_embedding, scene_embedding)
+        if distance is None:
+            continue
+        scene_distances.append((scene, distance))
+
+    return [
+        scene
+        for scene, _distance in sorted(
+            scene_distances,
+            key=lambda item: (item[1], item[0].id or 0),
+        )
+    ]
+
+
 async def generate_prompt(
     text: str,
     max_tokens: int | None = None,
@@ -224,20 +264,6 @@ async def generate_prompt(
     print(f"[generate_prompt] prompt_keywords={prompt_keywords!r}", flush=True)
     print(f"[generate_prompt] prompt={prompt!r}", flush=True)
     return prompt
-
-
-async def generate_scene_script(
-    history: str,
-    direction: str,
-    max_tokens: int | None = None,
-    temperature: float | None = None,
-) -> str:
-    return await generate_script_from_llm(
-        history,
-        direction,
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
 
 
 def get_default_image_generation_settings() -> ImageGenerationSettingsBase:

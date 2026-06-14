@@ -70,17 +70,6 @@ class GenerateScenePromptResponseBase(BaseModel):
     prompt: str
 
 
-class GenerateSceneScriptRequestBase(BaseModel):
-    history: str
-    direction: str
-    max_tokens: Optional[int] = None
-    temperature: Optional[float] = None
-
-
-class GenerateSceneScriptResponseBase(BaseModel):
-    script: str
-
-
 class GenerateSceneOptionRequestBase(BaseModel):
     option_id: Optional[int] = None
     scene_id: int
@@ -109,6 +98,11 @@ class SceneBase(BaseModel):
     image_url: Optional[str] = None
     script: str = ""
     status_change: Dict[str, Any] = Field(default_factory=dict)
+    background: Optional[str] = None
+    subject: Optional[str] = None
+    object: Optional[str] = None
+    action: Optional[str] = None
+    detail: Optional[str] = None
 
 
 class SceneOptionBase(BaseModel):

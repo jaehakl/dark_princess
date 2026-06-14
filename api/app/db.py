@@ -69,6 +69,16 @@ class Scene(Base):
     embedding: Mapped[Optional[List[float]]] = mapped_column(JSON, nullable=True)
     script: Mapped[str] = mapped_column(Text, nullable=False, default="")
     status_change: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    background: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    subject: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    object: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    action: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    background_embedding: Mapped[Optional[List[float]]] = mapped_column(JSON, nullable=True)
+    subject_embedding: Mapped[Optional[List[float]]] = mapped_column(JSON, nullable=True)
+    object_embedding: Mapped[Optional[List[float]]] = mapped_column(JSON, nullable=True)
+    action_embedding: Mapped[Optional[List[float]]] = mapped_column(JSON, nullable=True)
+    detail_embedding: Mapped[Optional[List[float]]] = mapped_column(JSON, nullable=True)
 
     scene_options: Mapped[List["SceneOption"]] = relationship(
         "SceneOption",

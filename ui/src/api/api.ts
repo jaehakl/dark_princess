@@ -6,8 +6,6 @@ import type {
   GenerateSceneOptionRequest,
   GenerateScenePromptResponse,
   GenerateSceneRequest,
-  GenerateSceneScriptRequest,
-  GenerateSceneScriptResponse,
   GenerateSelectionModelRequest,
   GetListRequest,
   GetListResponse,
@@ -45,8 +43,6 @@ export const dbTables = {
       request<RecommendPromptItem[]>('post', '/scene/recommend-prompt', { text }),
     generatePrompt: (text: string) =>
       request<GenerateScenePromptResponse>('post', '/scene/generate-prompt', { text }),
-    generateScript: (item: GenerateSceneScriptRequest) =>
-      request<GenerateSceneScriptResponse>('post', '/scene/generate-script', item),
     updateContext: (item: UpdateSceneContextRequest) =>
       request<StatusRecord>('post', '/scene/update-context', item),
     deleteRows: (ids: number[]) => request<null>('delete', '/scene/', ids).then(() => undefined),

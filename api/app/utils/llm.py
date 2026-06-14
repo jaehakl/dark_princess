@@ -24,19 +24,22 @@ LLM_MIN_MAX_TOKENS = 16
 LLM_MAX_MAX_TOKENS = 1024
 LLM_MIN_TEMPERATURE = 0.0
 LLM_MAX_TEMPERATURE = 2.0
+SCENE_COMPONENT_FIELDS = ("background", "subject", "object", "action", "detail")
 
-SCENE_SCRIPT_SYSTEM_MESSAGE = (
-    "You are a Korean visual novel/game scenario writer. "
-    "Continue the story in natural Korean text suitable for a scene script textarea. "
-    "Return only valid JSON with one string field named script. "
-    "Write only the next scenario body. "
-    "Do not include markdown, explanations, choices, image prompts, titles, or metadata."
-)
 KOREAN_TO_ENGLISH_TRANSLATION_SYSTEM_MESSAGE = (
     "You translate Korean user text into natural English. "
     "Return only valid JSON with one string field named translation. "
     "The translation must be English only. "
     "Do not include markdown, explanations, source text, field labels, or metadata."
+)
+SCENE_COMPONENT_ANALYSIS_SYSTEM_MESSAGE = (
+    "You analyze scene text into structured visual-narrative components. "
+    "Return only one valid JSON object with exactly these five string fields: "
+    "background, subject, object, action, detail. "
+    "Each value must be a concise text summary, not an array. "
+    "Use an empty string only when the component cannot be inferred. "
+    "Use the language that best matches the source text. "
+    "Do not include markdown, code fences, explanations, extra fields, or metadata."
 )
 VISUAL_KEYWORD_SYSTEM_MESSAGE = (
     "이미지 생성에 유용한 핵심 시각 키워드를 추출한다. "
@@ -81,66 +84,6 @@ class PromptLlmConfig:
     max_tokens: int
     temperature: float
     top_p: float
-
-
-async def generate_scene_script(
-    history: str,
-    direction: str,
-    max_tokens: int | None = None,
-    temperature: float | None = None,
-) -> str:
-    history_text = history.strip()
-    direction_text = direction.strip()
-    if not history_text:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="history is required")
-    if not direction_text:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="direction is required")
-
-    raw_output = await generate_prompt_with_llm(
-        [
-            {"role": "system", "content": SCENE_SCRIPT_SYSTEM_MESSAGE},
-            {
-                "role": "user",
-                "content": (
-                    "Story so far:\n"
-                    f"{history_text}\n\n"
-                    "Direction for the next scene:\n"
-                    f"{direction_text}\n\n"
-                    "Return JSON now."
-                ),
-            },
-        ],
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
-    payload = _parse_llm_json_object(
-        raw_output,
-        empty_detail="script LLM returned empty output",
-        invalid_detail="script LLM returned invalid JSON",
-    )
-
-    script = payload.get("script")
-    if not isinstance(script, str) or not script.strip():
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="script LLM returned empty script",
-        )
-
-    script = script.replace("\r\n", "\n").replace("\r", "\n").strip()
-    if script.startswith("```"):
-        lines = script.splitlines()
-        if lines:
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        script = "\n".join(lines).strip()
-    script = script.strip("\"'`").strip()
-    if not script:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="script LLM returned empty script",
-        )
-    return script
 
 
 async def translate_korean_to_english(
@@ -212,6 +155,87 @@ async def translate_korean_to_english(
     raise HTTPException(
         status_code=status.HTTP_502_BAD_GATEWAY,
         detail=f"translation failed after {attempts} attempts: {last_failure}",
+    )
+
+
+async def analyze_scene_components(
+    text: str,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
+    max_attempts: int = 3,
+) -> dict[str, str]:
+    scene_text = text.strip()
+    if not scene_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text is required")
+    if len(scene_text) > LLM_MAX_SOURCE_TEXT_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"text must be {LLM_MAX_SOURCE_TEXT_LENGTH} characters or fewer",
+        )
+
+    attempts = max(1, max_attempts)
+    last_failure = "scene component LLM returned invalid components"
+    for _ in range(attempts):
+        raw_output = await generate_prompt_with_llm(
+            [
+                {"role": "system", "content": SCENE_COMPONENT_ANALYSIS_SYSTEM_MESSAGE},
+                {
+                    "role": "user",
+                    "content": (
+                        "Analyze the following scene text into background, subject, object, action, and detail.\n"
+                        "Return JSON only, using exactly those five keys and string values.\n\n"
+                        f"Scene text:\n{scene_text}\n\n"
+                        "Return JSON now."
+                    ),
+                },
+            ],
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        try:
+            payload = _parse_llm_json_object(
+                raw_output,
+                empty_detail="scene component LLM returned empty output",
+                invalid_detail="scene component LLM returned invalid JSON",
+            )
+        except HTTPException as exc:
+            if exc.status_code != status.HTTP_502_BAD_GATEWAY:
+                raise
+            last_failure = str(exc.detail)
+            continue
+
+        if set(payload) != set(SCENE_COMPONENT_FIELDS):
+            last_failure = "scene component LLM returned invalid component keys"
+            continue
+
+        result: dict[str, str] = {}
+        for field in SCENE_COMPONENT_FIELDS:
+            value = payload[field]
+            if not isinstance(value, str):
+                last_failure = f"scene component LLM returned non-string {field}"
+                result = {}
+                break
+
+            cleaned = value.replace("\r\n", "\n").replace("\r", "\n").strip()
+            if cleaned.startswith("```"):
+                lines = cleaned.splitlines()
+                if lines:
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                cleaned = "\n".join(lines).strip()
+            result[field] = " ".join(cleaned.strip().strip("\"'`").split()).strip()
+
+        if not result:
+            continue
+        if not any(result.values()):
+            last_failure = "scene component LLM returned empty components"
+            continue
+        return result
+
+    raise HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail=f"scene component analysis failed after {attempts} attempts: {last_failure}",
     )
 
 

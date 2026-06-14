@@ -10,8 +10,6 @@ from models import (
     GenerateScenePromptRequestBase,
     GenerateScenePromptResponseBase,
     GenerateSceneRequestBase,
-    GenerateSceneScriptRequestBase,
-    GenerateSceneScriptResponseBase,
     GetListRequestBase,
     GetListResponseBase,
     ImageGenerationSettingsBase,
@@ -25,7 +23,7 @@ from service.scene import (
     get_default_image_generation_settings,
     generate_prompt,
     generate_scene,
-    generate_scene_script,
+    get_similar_scenes,
     recommend_prompt,
     update_scene_context,
 )
@@ -110,6 +108,11 @@ async def api_generate_scene(
         image_url=scene.image_url,
         script=scene.script,
         status_change=scene.status_change,
+        background=scene.background,
+        subject=scene.subject,
+        object=scene.object,
+        action=scene.action,
+        detail=scene.detail,
     )
 
 
@@ -121,6 +124,29 @@ async def api_recommend_prompt(
     return await recommend_prompt(db, text)
 
 
+@router.post("/similar", response_model=List[SceneBase])
+async def api_get_similar_scenes(
+    text: str = Body(..., embed=True),
+    db: AsyncSession = Depends(get_db),
+):
+    scenes = await get_similar_scenes(db, text)
+    return [
+        SceneBase(
+            id=scene.id,
+            prompt=scene.prompt,
+            image_url=scene.image_url,
+            script=scene.script,
+            status_change=scene.status_change,
+            background=scene.background,
+            subject=scene.subject,
+            object=scene.object,
+            action=scene.action,
+            detail=scene.detail,
+        )
+        for scene in scenes
+    ]
+
+
 @router.post("/generate-prompt", response_model=GenerateScenePromptResponseBase)
 async def api_generate_prompt(
     request: GenerateScenePromptRequestBase,
@@ -128,20 +154,6 @@ async def api_generate_prompt(
     return GenerateScenePromptResponseBase(
         prompt=await generate_prompt(
             request.text,
-            max_tokens=request.max_tokens,
-            temperature=request.temperature,
-        ),
-    )
-
-
-@router.post("/generate-script", response_model=GenerateSceneScriptResponseBase)
-async def api_generate_script(
-    request: GenerateSceneScriptRequestBase,
-):
-    return GenerateSceneScriptResponseBase(
-        script=await generate_scene_script(
-            request.history,
-            request.direction,
             max_tokens=request.max_tokens,
             temperature=request.temperature,
         ),
