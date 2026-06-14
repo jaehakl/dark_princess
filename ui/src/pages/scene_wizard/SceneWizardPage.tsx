@@ -1,0 +1,1053 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { dbTables } from '../../api/api';
+import type {
+  GenerateSceneRequest,
+  GetListRequest,
+  ImageGenerationSettings,
+  PromptColumnName,
+  RecommendPromptColumns,
+  SceneRecord,
+} from '../../api/type';
+import {
+  createNoiseSeedImage,
+  createSeedImageFromUrl,
+  IMAGE_SAMPLER_OPTIONS,
+  IMAGE_SCHEDULER_OPTIONS,
+  IMAGE_SETTINGS_SESSION_KEY,
+  imageSettingsToDraft,
+  readSessionImageSettings,
+} from '../../lib/scene-image';
+import type { ImageGenerationSettingsDraft, SeedImageSource, SeedImageState } from '../../lib/scene-image';
+
+const PROMPT_COLUMNS = [
+  { key: 'background', label: '배경' },
+  { key: 'subject', label: '인물' },
+  { key: 'object', label: '대상' },
+  { key: 'action', label: '행동' },
+  { key: 'detail', label: '디테일' },
+] as const;
+
+const EMPTY_PROMPT_DRAFT: Record<PromptColumnName, string> = {
+  background: '',
+  subject: '',
+  object: '',
+  action: '',
+  detail: '',
+};
+
+const EMPTY_RECOMMENDATIONS: RecommendPromptColumns = {
+  background: [],
+  subject: [],
+  object: [],
+  action: [],
+  detail: [],
+};
+
+const DEFAULT_STATUS_CHANGE: Record<string, number> = { turn: 1 };
+
+const FETCH_SCENE_BY_ID_REQUEST: GetListRequest = {
+  offset: 0,
+  limit: 1,
+  selected_ids: [],
+  search_text: null,
+  text_filter: {},
+  filter: {},
+  sort: null,
+};
+
+type SaveMode =
+  | 'existing-text'
+  | 'existing-image'
+  | 'new-image';
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return '요청에 실패했습니다.';
+}
+
+function sceneToPromptDraft(scene: SceneRecord): Record<PromptColumnName, string> {
+  return {
+    background: scene.background ?? '',
+    subject: scene.subject ?? '',
+    object: scene.object ?? '',
+    action: scene.action ?? '',
+    detail: scene.detail ?? scene.prompt ?? '',
+  };
+}
+
+function normalizeStatusChange(statusChange: Record<string, unknown> | undefined) {
+  return statusChange && Object.keys(statusChange).length > 0
+    ? statusChange
+    : { ...DEFAULT_STATUS_CHANGE };
+}
+
+export function SceneWizardPage() {
+  const [sceneText, setSceneText] = useState('');
+  const [submittedSceneText, setSubmittedSceneText] = useState('');
+  const [similarScenes, setSimilarScenes] = useState<SceneRecord[]>([]);
+  const [activeScene, setActiveScene] = useState<SceneRecord | null>(null);
+  const [isFreshDraft, setIsFreshDraft] = useState(false);
+  const [promptDraft, setPromptDraft] = useState<Record<PromptColumnName, string>>({
+    ...EMPTY_PROMPT_DRAFT,
+  });
+  const [script, setScript] = useState('');
+  const [statusChange, setStatusChange] = useState<Record<string, unknown>>({
+    ...DEFAULT_STATUS_CHANGE,
+  });
+  const [recommendations, setRecommendations] = useState<RecommendPromptColumns>({
+    ...EMPTY_RECOMMENDATIONS,
+  });
+  const [seedImage, setSeedImage] = useState<SeedImageState | null>(null);
+  const [isPreparingSeedImage, setIsPreparingSeedImage] = useState(false);
+  const [seedImageError, setSeedImageError] = useState<string | null>(null);
+  const [imageSettingsDefaults, setImageSettingsDefaults] = useState<ImageGenerationSettings | null>(null);
+  const [imageSettings, setImageSettings] = useState<ImageGenerationSettings | null>(null);
+  const [imageSettingsDraft, setImageSettingsDraft] = useState<ImageGenerationSettingsDraft | null>(null);
+  const [strengthControlValue, setStrengthControlValue] = useState('');
+  const [isImageSettingsOpen, setIsImageSettingsOpen] = useState(false);
+  const [imageSettingsError, setImageSettingsError] = useState<string | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isRecommending, setIsRecommending] = useState(false);
+  const [savingMode, setSavingMode] = useState<SaveMode | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const activeSceneId = activeScene?.id ?? null;
+  const composedPrompt = useMemo(
+    () =>
+      PROMPT_COLUMNS
+        .map((column) => promptDraft[column.key].trim())
+        .filter(Boolean)
+        .join(', '),
+    [promptDraft],
+  );
+  const isBusy = isSearching || isRecommending || Boolean(savingMode);
+  const canSubmitSearch = sceneText.trim().length > 0 && !isSearching;
+  const canEdit = Boolean(activeScene || isFreshDraft);
+  const canSaveText = canEdit && composedPrompt.length > 0 && !isBusy;
+  const canSaveExisting = canSaveText && Boolean(activeSceneId);
+  const canSaveImage = canSaveText && Boolean(seedImage) && !isPreparingSeedImage && Boolean(imageSettings);
+  const canSaveExistingImage = canSaveImage && Boolean(activeSceneId);
+  const canRefreshRecommendations =
+    canEdit && script.trim().length > 0 && !isSearching && !isRecommending && !savingMode;
+  const imageWidth = imageSettings?.width;
+  const imageHeight = imageSettings?.height;
+  const selectedLabel = activeSceneId
+    ? `Scene #${activeSceneId}`
+    : isFreshDraft
+      ? '새로 시작'
+      : '선택 없음';
+
+  const applySeedImage = useCallback((blob: Blob, source: SeedImageSource) => {
+    setSeedImage({
+      blob,
+      previewUrl: URL.createObjectURL(blob),
+      source,
+    });
+  }, []);
+
+  useEffect(() => () => {
+    if (seedImage?.previewUrl) {
+      URL.revokeObjectURL(seedImage.previewUrl);
+    }
+  }, [seedImage?.previewUrl]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadImageSettingsDefaults() {
+      try {
+        const defaults = await dbTables.Scene.getImageSettingsDefaults();
+        if (isCancelled) {
+          return;
+        }
+
+        const settingsFromSession = readSessionImageSettings(defaults);
+        setImageSettingsDefaults(defaults);
+        setImageSettings(settingsFromSession);
+        setImageSettingsDraft(imageSettingsToDraft(settingsFromSession));
+        setStrengthControlValue(String(settingsFromSession.strength));
+      } catch (settingsError) {
+        if (!isCancelled) {
+          setError(getErrorMessage(settingsError));
+        }
+      }
+    }
+
+    void loadImageSettingsDefaults();
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!canEdit || imageWidth === undefined || imageHeight === undefined) {
+      return;
+    }
+
+    const resolvedImageWidth = imageWidth;
+    const resolvedImageHeight = imageHeight;
+    let isCancelled = false;
+    async function prepareSeedImage() {
+      setIsPreparingSeedImage(true);
+      setSeedImageError(null);
+      try {
+        const blob = activeScene?.image_url
+          ? await createSeedImageFromUrl(
+            activeScene.image_url,
+            resolvedImageWidth,
+            resolvedImageHeight,
+          )
+          : await createNoiseSeedImage(resolvedImageWidth, resolvedImageHeight);
+        if (!isCancelled) {
+          applySeedImage(blob, activeScene?.image_url ? 'existing' : 'noise');
+        }
+      } catch (seedError) {
+        if (!isCancelled) {
+          setSeedImage(null);
+          setSeedImageError(getErrorMessage(seedError));
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsPreparingSeedImage(false);
+        }
+      }
+    }
+
+    void prepareSeedImage();
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    activeScene?.id,
+    activeScene?.image_url,
+    applySeedImage,
+    canEdit,
+    imageHeight,
+    imageWidth,
+  ]);
+
+  async function searchSimilarScenes() {
+    const trimmedSceneText = sceneText.trim();
+    if (!trimmedSceneText) {
+      setError('소설 장면을 입력해 주세요.');
+      return;
+    }
+
+    setIsSearching(true);
+    setError(null);
+    setSubmittedSceneText(trimmedSceneText);
+    setActiveScene(null);
+    setIsFreshDraft(false);
+    setSeedImage(null);
+    setRecommendations({ ...EMPTY_RECOMMENDATIONS });
+    try {
+      setSimilarScenes(await dbTables.Scene.similarScenes(trimmedSceneText));
+    } catch (searchError) {
+      setSimilarScenes([]);
+      setError(getErrorMessage(searchError));
+    } finally {
+      setIsSearching(false);
+    }
+  }
+
+  async function refreshRecommendationsFromScript() {
+    const trimmedScript = script.trim();
+    if (!trimmedScript) {
+      setError('장면 스크립트를 입력해 주세요.');
+      return;
+    }
+
+    setIsRecommending(true);
+    setError(null);
+    try {
+      setRecommendations(await dbTables.Scene.recommendPromptColumns(trimmedScript));
+    } catch (recommendError) {
+      setRecommendations({ ...EMPTY_RECOMMENDATIONS });
+      setError(getErrorMessage(recommendError));
+    } finally {
+      setIsRecommending(false);
+    }
+  }
+
+  function selectExistingScene(scene: SceneRecord) {
+    setActiveScene(scene);
+    setIsFreshDraft(false);
+    setPromptDraft(sceneToPromptDraft(scene));
+    setScript(scene.script ?? '');
+    setStatusChange(normalizeStatusChange(scene.status_change));
+    setRecommendations({ ...EMPTY_RECOMMENDATIONS });
+    setError(null);
+    setSeedImageError(null);
+  }
+
+  function startFreshScene() {
+    if (!submittedSceneText) {
+      setError('먼저 소설 장면을 제출해 주세요.');
+      return;
+    }
+
+    setActiveScene(null);
+    setIsFreshDraft(true);
+    setPromptDraft({ ...EMPTY_PROMPT_DRAFT });
+    setScript(submittedSceneText);
+    setStatusChange({ ...DEFAULT_STATUS_CHANGE });
+    setRecommendations({ ...EMPTY_RECOMMENDATIONS });
+    setError(null);
+    setSeedImageError(null);
+  }
+
+  function appendRecommendation(column: PromptColumnName, tag: string) {
+    setPromptDraft((current) => {
+      const values = current[column]
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean);
+      if (values.includes(tag)) {
+        return current;
+      }
+      return {
+        ...current,
+        [column]: [...values, tag].join(', '),
+      };
+    });
+  }
+
+  async function shuffleSeedImage() {
+    if (!imageSettings) {
+      setSeedImageError('이미지 설정 기본값을 불러오는 중입니다.');
+      return;
+    }
+
+    setIsPreparingSeedImage(true);
+    setSeedImageError(null);
+    try {
+      applySeedImage(
+        await createNoiseSeedImage(imageSettings.width, imageSettings.height),
+        'noise',
+      );
+    } catch (seedError) {
+      setSeedImageError(getErrorMessage(seedError));
+    } finally {
+      setIsPreparingSeedImage(false);
+    }
+  }
+
+  function updateImageSettingsDraft(field: keyof ImageGenerationSettingsDraft, value: string) {
+    setImageSettingsDraft((currentDraft) => (
+      currentDraft ? { ...currentDraft, [field]: value } : currentDraft
+    ));
+  }
+
+  function updateImageStrength(value: string) {
+    setStrengthControlValue(value);
+    if (!imageSettings) {
+      return;
+    }
+
+    const strength = Number(value);
+    if (!Number.isFinite(strength) || strength <= 0 || strength > 1) {
+      setSeedImageError('strength는 0보다 크고 1 이하인 숫자로 입력해 주세요.');
+      return;
+    }
+
+    const nextImageSettings = { ...imageSettings, strength };
+    setImageSettings(nextImageSettings);
+    setImageSettingsDraft(imageSettingsToDraft(nextImageSettings));
+    sessionStorage.setItem(IMAGE_SETTINGS_SESSION_KEY, JSON.stringify(nextImageSettings));
+    setSeedImageError(null);
+  }
+
+  function openImageSettings() {
+    if (!imageSettings) {
+      setError('이미지 설정 기본값을 불러오는 중입니다.');
+      return;
+    }
+
+    setImageSettingsDraft(imageSettingsToDraft(imageSettings));
+    setImageSettingsError(null);
+    setIsImageSettingsOpen(true);
+  }
+
+  function resetImageSettingsToDefaults() {
+    if (!imageSettingsDefaults) {
+      setImageSettingsError('이미지 설정 기본값을 불러오지 못했습니다.');
+      return;
+    }
+
+    setImageSettings(imageSettingsDefaults);
+    setImageSettingsDraft(imageSettingsToDraft(imageSettingsDefaults));
+    setStrengthControlValue(String(imageSettingsDefaults.strength));
+    sessionStorage.setItem(IMAGE_SETTINGS_SESSION_KEY, JSON.stringify(imageSettingsDefaults));
+    setImageSettingsError(null);
+  }
+
+  function applyImageSettings() {
+    if (!imageSettingsDraft) {
+      return;
+    }
+
+    const steps = Number(imageSettingsDraft.steps);
+    const cfg = Number(imageSettingsDraft.cfg);
+    const strength = Number(imageSettingsDraft.strength);
+    const height = Number(imageSettingsDraft.height);
+    const width = Number(imageSettingsDraft.width);
+    const clipSkip = imageSettingsDraft.clip_skip.trim() === ''
+      ? null
+      : Number(imageSettingsDraft.clip_skip);
+    const sampler = imageSettingsDraft.sampler.trim().toLowerCase();
+    const scheduler = imageSettingsDraft.scheduler.trim().toLowerCase();
+
+    if (!Number.isInteger(steps) || steps < 1) {
+      setImageSettingsError('steps는 1 이상의 정수로 입력해 주세요.');
+      return;
+    }
+    if (!Number.isFinite(cfg) || cfg <= 0) {
+      setImageSettingsError('cfg는 0보다 큰 숫자로 입력해 주세요.');
+      return;
+    }
+    if (!Number.isFinite(strength) || strength <= 0 || strength > 1) {
+      setImageSettingsError('strength는 0보다 크고 1 이하인 숫자로 입력해 주세요.');
+      return;
+    }
+    if (!Number.isInteger(height) || height <= 0 || height % 8 !== 0) {
+      setImageSettingsError('height는 8의 배수인 양의 정수로 입력해 주세요.');
+      return;
+    }
+    if (!Number.isInteger(width) || width <= 0 || width % 8 !== 0) {
+      setImageSettingsError('width는 8의 배수인 양의 정수로 입력해 주세요.');
+      return;
+    }
+    if (clipSkip !== null && (!Number.isInteger(clipSkip) || clipSkip < 1)) {
+      setImageSettingsError('clip skip은 비우거나 1 이상의 정수로 입력해 주세요.');
+      return;
+    }
+    if (!IMAGE_SAMPLER_OPTIONS.includes(sampler as (typeof IMAGE_SAMPLER_OPTIONS)[number])) {
+      setImageSettingsError('지원하지 않는 sampler입니다.');
+      return;
+    }
+    if (!IMAGE_SCHEDULER_OPTIONS.includes(scheduler as (typeof IMAGE_SCHEDULER_OPTIONS)[number])) {
+      setImageSettingsError('지원하지 않는 scheduler입니다.');
+      return;
+    }
+
+    const nextImageSettings = {
+      positive_base: imageSettingsDraft.positive_base.trim(),
+      negative_prompt: imageSettingsDraft.negative_prompt.trim(),
+      steps,
+      cfg,
+      strength,
+      sampler,
+      scheduler,
+      clip_skip: clipSkip,
+      height,
+      width,
+    };
+    setImageSettings(nextImageSettings);
+    setImageSettingsDraft(imageSettingsToDraft(nextImageSettings));
+    setStrengthControlValue(String(nextImageSettings.strength));
+    sessionStorage.setItem(IMAGE_SETTINGS_SESSION_KEY, JSON.stringify(nextImageSettings));
+    setImageSettingsError(null);
+    setIsImageSettingsOpen(false);
+  }
+
+  async function saveScene(mode: SaveMode) {
+    const isNewSave = mode.startsWith('new');
+    const isImageSave = mode.endsWith('image');
+    const targetSceneId = isNewSave ? null : activeSceneId;
+    const trimmedPrompt = composedPrompt.trim();
+
+    if (!trimmedPrompt) {
+      setError('프롬프트 항목을 하나 이상 입력해 주세요.');
+      return;
+    }
+    if (!isNewSave && !targetSceneId) {
+      setError('기존 데이터에 저장할 Scene ID가 없습니다.');
+      return;
+    }
+
+    setSavingMode(mode);
+    setError(null);
+    try {
+      const sceneColumns = {
+        background: promptDraft.background.trim() || null,
+        subject: promptDraft.subject.trim() || null,
+        object: promptDraft.object.trim() || null,
+        action: promptDraft.action.trim() || null,
+        detail: promptDraft.detail.trim() || null,
+      };
+
+      if (isImageSave) {
+        if (!seedImage) {
+          throw new Error(seedImageError ?? 'seed image를 준비해 주세요.');
+        }
+
+        const payload: GenerateSceneRequest = {
+          scene_id: targetSceneId,
+          prompt: trimmedPrompt,
+          script,
+          status_change: statusChange,
+          generate_image: true,
+          image_settings: imageSettings,
+          ...sceneColumns,
+        };
+        const formData = new FormData();
+        formData.append('payload', JSON.stringify(payload));
+        formData.append('seed_image', seedImage.blob, `scene-wizard-seed-${seedImage.source}.png`);
+        const savedScene = await dbTables.Scene.generateScene(formData);
+        setActiveScene(savedScene);
+        setIsFreshDraft(false);
+        setPromptDraft(sceneToPromptDraft(savedScene));
+        setScript(savedScene.script ?? '');
+        setStatusChange(normalizeStatusChange(savedScene.status_change));
+        return;
+      }
+
+      const row: SceneRecord = {
+        ...(targetSceneId ? { id: targetSceneId } : {}),
+        prompt: trimmedPrompt,
+        image_url: activeScene?.image_url ?? null,
+        script,
+        status_change: statusChange,
+        ...sceneColumns,
+      };
+      const response = await dbTables.Scene.upsertRow([row]);
+      const savedSceneId = response[0]?.id;
+      if (!savedSceneId) {
+        throw new Error('Scene 저장 결과를 확인할 수 없습니다.');
+      }
+
+      const sceneResponse = await dbTables.Scene.listRows({
+        ...FETCH_SCENE_BY_ID_REQUEST,
+        selected_ids: [savedSceneId],
+      });
+      const savedScene = sceneResponse.items[0] ?? { ...row, id: savedSceneId };
+      setActiveScene(savedScene);
+      setIsFreshDraft(false);
+      setPromptDraft(sceneToPromptDraft(savedScene));
+      setScript(savedScene.script ?? '');
+      setStatusChange(normalizeStatusChange(savedScene.status_change));
+    } catch (saveError) {
+      setError(getErrorMessage(saveError));
+    } finally {
+      setSavingMode(null);
+    }
+  }
+
+  return (
+    <div className="relative left-1/2 w-[min(1840px,calc(100vw-36px))] -translate-x-1/2 space-y-5">
+      <div className="flex flex-col gap-2 px-1">
+        <p className="vn-subtitle">Scene wizard</p>
+        <h1 className="vn-title">Scene Wizard</h1>
+      </div>
+
+      <div className="grid min-h-[calc(100vh-10rem)] gap-5 xl:grid-cols-[minmax(18rem,0.55fr)_minmax(56rem,1.85fr)]">
+        <section className="vn-panel min-h-0">
+          <div className="vn-panel-header">
+            <div className="min-w-0">
+              <p className="vn-subtitle">Novel scene</p>
+              <h2 className="truncate text-base font-semibold text-[#fff7ef]">장면 검색</h2>
+            </div>
+          </div>
+
+          <div className="vn-section-body flex min-h-0 flex-col gap-4">
+            <label className="block space-y-2">
+              <span className="edit-label edit-label--required">
+                <span className="edit-label__text">소설 장면</span>
+              </span>
+              <textarea
+                value={sceneText}
+                onChange={(event) => setSceneText(event.target.value)}
+                className="edit-control min-h-48 w-full resize-y px-3 py-3 text-sm leading-6"
+                disabled={isSearching}
+                placeholder="장면 원문을 입력하세요."
+              />
+            </label>
+
+            <button
+              type="button"
+              className="vn-button vn-button-primary inline-flex items-center justify-center gap-2 px-5 py-3"
+              onClick={() => void searchSimilarScenes()}
+              disabled={!canSubmitSearch}
+            >
+              {isSearching ? <span className="vn-spinner" aria-hidden="true" /> : null}
+              {isSearching ? '검색 중' : '유사 장면 찾기'}
+            </button>
+
+            {submittedSceneText ? (
+              <div className="flex min-h-0 flex-1 flex-col gap-3 border-t border-[var(--app-border)] pt-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-[#fff7ef]">추천 장면</span>
+                  <button
+                    type="button"
+                    className="vn-button px-3 py-2 text-xs"
+                    onClick={startFreshScene}
+                    disabled={isBusy || isRecommending}
+                  >
+                    새로 시작
+                  </button>
+                </div>
+
+                {isSearching ? (
+                  <div className="vn-scene-explorer-state">
+                    <span className="vn-spinner" aria-hidden="true" />
+                    <span>유사 장면을 찾는 중</span>
+                  </div>
+                ) : similarScenes.length === 0 ? (
+                  <div className="vn-scene-explorer-state">유사 장면 없음</div>
+                ) : (
+                  <div className="vn-list flex min-h-0 flex-col gap-2 pr-1">
+                    {similarScenes.map((scene) => {
+                      const summary = scene.script.replace(/\s+/g, ' ').trim() || 'script 없음';
+                      const isSelected = activeSceneId !== null && scene.id === activeSceneId;
+                      return (
+                        <button
+                          key={scene.id}
+                          type="button"
+                          className={[
+                            'vn-scene-card',
+                            isSelected ? 'vn-scene-card-current' : '',
+                          ].join(' ')}
+                          onClick={() => selectExistingScene(scene)}
+                          disabled={isBusy}
+                        >
+                          <div className="vn-scene-thumb">
+                            {scene.image_url ? (
+                              <img src={scene.image_url} alt="" className="dp-image-media" />
+                            ) : (
+                              <span>이미지 없음</span>
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                              <span className="text-xs font-semibold text-[var(--app-accent)]">
+                                Scene #{scene.id ?? '-'}
+                              </span>
+                              {isSelected ? (
+                                <span className="text-xs font-semibold text-[#fff7ef]">선택됨</span>
+                              ) : null}
+                            </div>
+                            <p className="vn-scene-script-summary">{summary}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="vn-panel min-h-0">
+          <div className="vn-panel-header">
+            <div className="min-w-0">
+              <p className="vn-subtitle">Scene edit</p>
+              <h2 className="truncate text-base font-semibold text-[#fff7ef]">{selectedLabel}</h2>
+            </div>
+            <button
+              type="button"
+              className="vn-button px-3 py-2 text-xs"
+              onClick={openImageSettings}
+              disabled={!imageSettings || isBusy}
+            >
+              이미지 설정
+            </button>
+          </div>
+
+          <div className="vn-section-body">
+            {!canEdit ? (
+              <div className="vn-scene-explorer-state">
+                왼쪽에서 추천 장면을 선택하거나 새로 시작해 주세요.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.42fr)] xl:items-start">
+                  <div className="min-w-0 space-y-4">
+                    <label className="block space-y-2">
+                      <span className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="edit-label">
+                          <span className="edit-label__text">장면 스크립트</span>
+                        </span>
+                        <button
+                          type="button"
+                          className="vn-button inline-flex items-center gap-2 px-3 py-2 text-xs"
+                          onClick={() => void refreshRecommendationsFromScript()}
+                          disabled={!canRefreshRecommendations}
+                        >
+                          {isRecommending ? <span className="vn-spinner" aria-hidden="true" /> : null}
+                          {isRecommending ? '추천 갱신 중' : '스크립트 기반 추천 갱신'}
+                        </button>
+                      </span>
+                      <textarea
+                        value={script}
+                        onChange={(event) => setScript(event.target.value)}
+                        className="edit-control min-h-44 w-full resize-y px-3 py-2 text-sm leading-6"
+                        disabled={Boolean(savingMode)}
+                      />
+                    </label>
+
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-sm font-semibold text-[#fff7ef]">프롬프트 항목</span>
+                        <span className="text-xs font-semibold text-[var(--app-muted)]">
+                          추천 태그는 눌러서 추가
+                        </span>
+                      </div>
+                      <div className="overflow-hidden rounded-[8px] border border-[rgba(255,208,222,0.24)] bg-[rgba(12,5,18,0.46)]">
+                        {PROMPT_COLUMNS.map((column) => (
+                          <div
+                            key={column.key}
+                            className="grid gap-2 border-b border-[rgba(255,208,222,0.16)] p-2 last:border-b-0 md:grid-cols-[5.5rem_minmax(0,1fr)] md:items-start"
+                          >
+                            <div className="pt-2">
+                              <span className="edit-label">
+                                <span className="edit-label__text">{column.label}</span>
+                              </span>
+                            </div>
+                            <label className="block min-w-0">
+                              <span className="sr-only">{column.label}</span>
+                              <textarea
+                                rows={1}
+                                value={promptDraft[column.key]}
+                                onChange={(event) =>
+                                  setPromptDraft((current) => ({
+                                    ...current,
+                                    [column.key]: event.target.value,
+                                  }))
+                                }
+                                className="edit-control min-h-10 w-full resize-y px-3 py-2 text-sm"
+                                disabled={Boolean(savingMode)}
+                              />
+                            </label>
+                            <div className="flex min-w-0 flex-wrap gap-1.5 md:col-start-2">
+                              {recommendations[column.key].slice(0, 12).map((tag) => (
+                                <button
+                                  key={`${column.key}-${tag}`}
+                                  type="button"
+                                  className="vn-button px-2 py-1 text-xs"
+                                  onClick={() => appendRecommendation(column.key, tag)}
+                                  disabled={Boolean(savingMode)}
+                                >
+                                  {tag}
+                                </button>
+                              ))}
+                              {recommendations[column.key].length === 0 ? (
+                                <span className="px-1 py-2 text-xs font-semibold text-[var(--app-muted)]">
+                                  추천 없음
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <aside className="min-w-0 space-y-3">
+                    <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                      <span className="edit-label">
+                        <span className="edit-label__text">SEED 이미지</span>
+                      </span>
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        {seedImage ? (
+                          <span className="truncate text-xs font-semibold text-[var(--app-muted)]">
+                            {seedImage.source === 'existing' ? 'existing seed' : 'noise seed'}
+                          </span>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="vn-button px-2.5 py-1 text-xs"
+                          onClick={() => void shuffleSeedImage()}
+                          disabled={Boolean(savingMode) || isPreparingSeedImage || !imageSettings}
+                        >
+                          shuffle
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        <label className="flex items-center justify-between gap-2 text-xs font-semibold text-[var(--app-muted)]">
+                          <span>strength</span>
+                          <input
+                            type="number"
+                            min="0.01"
+                            max="1"
+                            step="0.01"
+                            value={strengthControlValue}
+                            onChange={(event) => updateImageStrength(event.target.value)}
+                            className="edit-control h-8 w-24 px-2 text-right text-xs"
+                            disabled={Boolean(savingMode) || !imageSettings}
+                          />
+                        </label>
+
+                        <div className="dp-image-frame vn-scene-editor-image-frame">
+                          {seedImage ? (
+                            <img src={seedImage.previewUrl} alt={composedPrompt || 'Seed image'} className="dp-image-media" />
+                          ) : isPreparingSeedImage ? (
+                            <div className="vn-scene-empty">
+                              <span className="vn-spinner" aria-hidden="true" />
+                              <span>seed 준비 중</span>
+                            </div>
+                          ) : (
+                            <div className="vn-scene-empty">seed image가 없습니다.</div>
+                          )}
+                          {isPreparingSeedImage && seedImage ? (
+                            <div className="vn-scene-seed-overlay">
+                              <span className="vn-spinner" aria-hidden="true" />
+                              <span>seed 준비 중</span>
+                            </div>
+                          ) : null}
+                          {savingMode?.endsWith('image') && seedImage ? (
+                            <div className="vn-scene-seed-overlay">
+                              <span className="vn-spinner" aria-hidden="true" />
+                              <span>이미지 생성 중</span>
+                            </div>
+                          ) : null}
+                        </div>
+
+                        {seedImageError ? (
+                          <p className="text-sm font-semibold text-[#ff9ab8]">{seedImageError}</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </aside>
+                </div>
+                {/*
+                  Keep the save buttons below both columns so narrow screens preserve
+                  script -> prompt -> seed -> save order.
+                */}
+                {error ? (
+                  <p className="text-sm font-semibold text-[#ff9ab8]">{error}</p>
+                ) : null}
+
+                <div className="vn-modal-footer">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="vn-button inline-flex items-center gap-2 px-3 py-2 text-xs"
+                      onClick={() => void saveScene('existing-text')}
+                      disabled={!canSaveExisting}
+                    >
+                      {savingMode === 'existing-text' ? <span className="vn-spinner" aria-hidden="true" /> : null}
+                      기존 데이터에 텍스트 저장
+                    </button>
+                    <button
+                      type="button"
+                      className="vn-button inline-flex items-center gap-2 px-3 py-2 text-xs"
+                      onClick={() => void saveScene('existing-image')}
+                      disabled={!canSaveExistingImage}
+                    >
+                      {savingMode === 'existing-image' ? <span className="vn-spinner" aria-hidden="true" /> : null}
+                      기존 데이터 이미지 생성 저장
+                    </button>
+                  </div>
+                  <div className="vn-modal-footer-actions">
+                    <button
+                      type="button"
+                      className="vn-button vn-button-primary inline-flex items-center gap-2 px-3 py-2 text-xs"
+                      onClick={() => void saveScene('new-image')}
+                      disabled={!canSaveImage}
+                    >
+                      {savingMode === 'new-image' ? <span className="vn-spinner" aria-hidden="true" /> : null}
+                      새 데이터 이미지 생성 저장
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+
+      {isImageSettingsOpen && imageSettingsDraft ? (
+        <div className="vn-modal-backdrop" role="presentation">
+          <section
+            className="vn-panel vn-image-settings-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="wizard-image-settings-title"
+          >
+            <div className="vn-panel-header">
+              <div className="min-w-0">
+                <p className="vn-subtitle">Image generation</p>
+                <h3
+                  id="wizard-image-settings-title"
+                  className="truncate text-base font-semibold text-[#fff7ef]"
+                >
+                  이미지 설정
+                </h3>
+              </div>
+              <button
+                type="button"
+                className="vn-danger-button px-3 py-2 text-xs"
+                onClick={() => setIsImageSettingsOpen(false)}
+              >
+                닫기
+              </button>
+            </div>
+
+            <div className="vn-section-body vn-image-settings-body">
+              <label className="vn-image-settings-field vn-image-settings-wide">
+                <span className="edit-label">
+                  <span className="edit-label__text">positive base</span>
+                </span>
+                <textarea
+                  value={imageSettingsDraft.positive_base}
+                  onChange={(event) => updateImageSettingsDraft('positive_base', event.target.value)}
+                  className="edit-control min-h-20 w-full resize-y px-3 py-2 text-sm"
+                />
+              </label>
+
+              <label className="vn-image-settings-field vn-image-settings-wide">
+                <span className="edit-label">
+                  <span className="edit-label__text">negative prompt</span>
+                </span>
+                <textarea
+                  value={imageSettingsDraft.negative_prompt}
+                  onChange={(event) => updateImageSettingsDraft('negative_prompt', event.target.value)}
+                  className="edit-control min-h-24 w-full resize-y px-3 py-2 text-sm"
+                />
+              </label>
+
+              <div className="vn-image-settings-grid">
+                <label className="vn-image-settings-field">
+                  <span className="edit-label">
+                    <span className="edit-label__text">steps</span>
+                  </span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={imageSettingsDraft.steps}
+                    onChange={(event) => updateImageSettingsDraft('steps', event.target.value)}
+                    className="edit-control h-10 w-full px-3 text-right text-sm"
+                  />
+                </label>
+
+                <label className="vn-image-settings-field">
+                  <span className="edit-label">
+                    <span className="edit-label__text">cfg</span>
+                  </span>
+                  <input
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    value={imageSettingsDraft.cfg}
+                    onChange={(event) => updateImageSettingsDraft('cfg', event.target.value)}
+                    className="edit-control h-10 w-full px-3 text-right text-sm"
+                  />
+                </label>
+
+                <label className="vn-image-settings-field">
+                  <span className="edit-label">
+                    <span className="edit-label__text">sampler</span>
+                  </span>
+                  <select
+                    value={imageSettingsDraft.sampler}
+                    onChange={(event) => updateImageSettingsDraft('sampler', event.target.value)}
+                    className="edit-control h-10 w-full px-3 text-sm"
+                  >
+                    <option value="">default</option>
+                    <option value="euler">euler</option>
+                    <option value="euler_a">euler_a</option>
+                    <option value="dpmpp_2m">dpmpp_2m</option>
+                    <option value="unipc">unipc</option>
+                  </select>
+                </label>
+
+                <label className="vn-image-settings-field">
+                  <span className="edit-label">
+                    <span className="edit-label__text">scheduler</span>
+                  </span>
+                  <select
+                    value={imageSettingsDraft.scheduler}
+                    onChange={(event) => updateImageSettingsDraft('scheduler', event.target.value)}
+                    className="edit-control h-10 w-full px-3 text-sm"
+                  >
+                    <option value="">default</option>
+                    <option value="karras">karras</option>
+                  </select>
+                </label>
+
+                <label className="vn-image-settings-field">
+                  <span className="edit-label">
+                    <span className="edit-label__text">clip skip</span>
+                  </span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={imageSettingsDraft.clip_skip}
+                    onChange={(event) => updateImageSettingsDraft('clip_skip', event.target.value)}
+                    className="edit-control h-10 w-full px-3 text-right text-sm"
+                  />
+                </label>
+
+                <label className="vn-image-settings-field">
+                  <span className="edit-label">
+                    <span className="edit-label__text">height</span>
+                  </span>
+                  <input
+                    type="number"
+                    min="8"
+                    step="8"
+                    value={imageSettingsDraft.height}
+                    onChange={(event) => updateImageSettingsDraft('height', event.target.value)}
+                    className="edit-control h-10 w-full px-3 text-right text-sm"
+                  />
+                </label>
+
+                <label className="vn-image-settings-field">
+                  <span className="edit-label">
+                    <span className="edit-label__text">width</span>
+                  </span>
+                  <input
+                    type="number"
+                    min="8"
+                    step="8"
+                    value={imageSettingsDraft.width}
+                    onChange={(event) => updateImageSettingsDraft('width', event.target.value)}
+                    className="edit-control h-10 w-full px-3 text-right text-sm"
+                  />
+                </label>
+              </div>
+
+              {imageSettingsError ? (
+                <p className="text-sm font-semibold text-[#ff9ab8]">{imageSettingsError}</p>
+              ) : null}
+
+              <div className="vn-modal-footer">
+                <button
+                  type="button"
+                  className="vn-button px-4 py-2 text-sm"
+                  onClick={resetImageSettingsToDefaults}
+                >
+                  기본값으로 초기화
+                </button>
+                <div className="vn-modal-footer-actions">
+                  <button
+                    type="button"
+                    className="vn-button px-4 py-2 text-sm"
+                    onClick={() => setIsImageSettingsOpen(false)}
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    className="vn-button vn-button-primary px-4 py-2 text-sm"
+                    onClick={applyImageSettings}
+                  >
+                    적용
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
+    </div>
+  );
+}

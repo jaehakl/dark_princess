@@ -43,6 +43,8 @@ export const dbTables = {
       request<RecommendPromptItem[]>('post', '/scene/recommend-prompt', { text }),
     recommendPromptColumns: (text: string) =>
       request<RecommendPromptColumns>('post', '/scene/recommend-prompt-columns', { text }),
+    similarScenes: (text: string) =>
+      request<SceneRecord[]>('post', '/scene/similar', { text }),
     generatePrompt: (text: string) =>
       request<GenerateScenePromptResponse>('post', '/scene/generate-prompt', { text }),
     updateContext: (item: UpdateSceneContextRequest) =>

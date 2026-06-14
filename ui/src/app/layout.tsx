@@ -74,6 +74,12 @@ export function AppLayout() {
               ))}
             </ol>
           </nav>
+          <Link
+            to="/scene-wizard"
+            className="vn-button shrink-0 px-3 py-2 text-xs sm:px-4"
+          >
+            Scene Wizard
+          </Link>
           <button
             type="button"
             className="vn-button shrink-0 px-3 py-2 text-xs sm:px-4"

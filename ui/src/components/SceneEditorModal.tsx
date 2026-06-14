@@ -1,6 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { API_URL, dbTables } from '../api/api';
+import { dbTables } from '../api/api';
 import type { ImageGenerationSettings, RecommendPromptItem, SceneRecord } from '../api/type';
+import {
+  createNoiseSeedImage,
+  createSeedImageFromBlob,
+  createSeedImageFromUrl,
+  IMAGE_SAMPLER_OPTIONS,
+  IMAGE_SCHEDULER_OPTIONS,
+  IMAGE_SETTINGS_SESSION_KEY,
+  imageSettingsToDraft,
+  readSessionImageSettings,
+} from '../lib/scene-image';
+import type {
+  ImageGenerationSettingsDraft,
+  SeedImageSource,
+  SeedImageState,
+} from '../lib/scene-image';
 
 const STATUS_CHANGE_FIELDS = [
   { key: 'cash', label: '현금' },
@@ -13,32 +28,9 @@ const STATUS_CHANGE_FIELDS = [
   { key: 'stress', label: '스트레스' },
 ] as const;
 
-const IMAGE_SETTINGS_SESSION_KEY = 'dark_princess.scene.image_settings';
-const IMAGE_SAMPLER_OPTIONS = ['', 'euler', 'euler_a', 'dpmpp_2m', 'unipc'] as const;
-const IMAGE_SCHEDULER_OPTIONS = ['', 'karras'] as const;
-const NOISE_CHANNEL_SAMPLE_COUNT = 4;
-
 type StatusChangeKey = (typeof STATUS_CHANGE_FIELDS)[number]['key'];
 type StatusChangeValues = Record<StatusChangeKey, string>;
 type SaveMode = 'text' | 'image' | 'create';
-type SeedImageSource = 'existing' | 'noise' | 'clipboard';
-type SeedImageState = {
-  blob: Blob;
-  previewUrl: string;
-  source: SeedImageSource;
-};
-type ImageGenerationSettingsDraft = {
-  positive_base: string;
-  negative_prompt: string;
-  steps: string;
-  cfg: string;
-  strength: string;
-  sampler: string;
-  scheduler: string;
-  clip_skip: string;
-  height: string;
-  width: string;
-};
 
 type SceneEditorModalProps = {
   scene: SceneRecord | null;
@@ -62,147 +54,6 @@ function statusChangeToValues(statusChange: SceneRecord['status_change'] | undef
       : '0';
     return values;
   }, {} as StatusChangeValues);
-}
-
-function mergeImageSettings(
-  defaults: ImageGenerationSettings,
-  overrides: Partial<ImageGenerationSettings>,
-): ImageGenerationSettings {
-  return {
-    positive_base: overrides.positive_base ?? defaults.positive_base,
-    negative_prompt: overrides.negative_prompt ?? defaults.negative_prompt,
-    steps: overrides.steps ?? defaults.steps,
-    cfg: overrides.cfg ?? defaults.cfg,
-    strength: overrides.strength ?? defaults.strength,
-    sampler: overrides.sampler ?? defaults.sampler,
-    scheduler: overrides.scheduler ?? defaults.scheduler,
-    clip_skip: overrides.clip_skip ?? defaults.clip_skip,
-    height: overrides.height ?? defaults.height,
-    width: overrides.width ?? defaults.width,
-  };
-}
-
-function imageSettingsToDraft(settings: ImageGenerationSettings): ImageGenerationSettingsDraft {
-  return {
-    positive_base: settings.positive_base,
-    negative_prompt: settings.negative_prompt,
-    steps: String(settings.steps),
-    cfg: String(settings.cfg),
-    strength: String(settings.strength),
-    sampler: settings.sampler,
-    scheduler: settings.scheduler,
-    clip_skip: settings.clip_skip === null ? '' : String(settings.clip_skip),
-    height: String(settings.height),
-    width: String(settings.width),
-  };
-}
-
-function readSessionImageSettings(defaults: ImageGenerationSettings): ImageGenerationSettings {
-  const rawSettings = sessionStorage.getItem(IMAGE_SETTINGS_SESSION_KEY);
-  if (!rawSettings) {
-    return defaults;
-  }
-
-  try {
-    const parsedSettings = JSON.parse(rawSettings) as Partial<ImageGenerationSettings>;
-    return mergeImageSettings(defaults, parsedSettings);
-  } catch {
-    sessionStorage.removeItem(IMAGE_SETTINGS_SESSION_KEY);
-    return defaults;
-  }
-}
-
-function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) {
-        resolve(blob);
-      } else {
-        reject(new Error('seed image를 생성하지 못했습니다.'));
-      }
-    }, 'image/png');
-  });
-}
-
-async function createNoiseSeedImage(width: number, height: number): Promise<Blob> {
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext('2d');
-  if (!context) {
-    throw new Error('canvas를 사용할 수 없습니다.');
-  }
-
-  const imageData = context.createImageData(width, height);
-  const randomValues = new Uint8Array(width * height * 3 * NOISE_CHANNEL_SAMPLE_COUNT);
-  for (let offset = 0; offset < randomValues.length; offset += 65536) {
-    crypto.getRandomValues(randomValues.subarray(offset, Math.min(offset + 65536, randomValues.length)));
-  }
-
-  let randomIndex = 0;
-  for (let index = 0; index < imageData.data.length; index += 4) {
-    for (let channel = 0; channel < 3; channel += 1) {
-      let sum = 0;
-      for (let sample = 0; sample < NOISE_CHANNEL_SAMPLE_COUNT; sample += 1) {
-        sum += randomValues[randomIndex];
-        randomIndex += 1;
-      }
-      imageData.data[index + channel] = Math.round(sum / NOISE_CHANNEL_SAMPLE_COUNT);
-    }
-    imageData.data[index + 3] = 255;
-  }
-
-  context.putImageData(imageData, 0, 0);
-  return await canvasToPngBlob(canvas);
-}
-
-async function createSeedImageFromUrl(imageUrl: string, width: number, height: number): Promise<Blob> {
-  let fetchUrl = imageUrl;
-  try {
-    const parsedImageUrl = new URL(imageUrl, window.location.href);
-    const parsedApiUrl = new URL(API_URL, window.location.href);
-    if (parsedImageUrl.origin === parsedApiUrl.origin && parsedImageUrl.pathname.startsWith('/uploads/')) {
-      fetchUrl = `${parsedImageUrl.pathname}${parsedImageUrl.search}`;
-    }
-  } catch {
-    fetchUrl = imageUrl;
-  }
-
-  const response = await fetch(fetchUrl, { cache: 'no-store' });
-  if (!response.ok) {
-    throw new Error('기존 이미지를 불러오지 못했습니다.');
-  }
-
-  return await createSeedImageFromBlob(await response.blob(), width, height);
-}
-
-async function createSeedImageFromBlob(imageBlob: Blob, width: number, height: number): Promise<Blob> {
-  const bitmap = await createImageBitmap(imageBlob);
-  try {
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext('2d');
-    if (!context) {
-      throw new Error('canvas를 사용할 수 없습니다.');
-    }
-
-    context.fillStyle = '#ffffff';
-    context.fillRect(0, 0, width, height);
-    const scale = Math.max(width / bitmap.width, height / bitmap.height);
-    const drawWidth = Math.round(bitmap.width * scale);
-    const drawHeight = Math.round(bitmap.height * scale);
-    context.drawImage(
-      bitmap,
-      Math.floor((width - drawWidth) / 2),
-      Math.floor((height - drawHeight) / 2),
-      drawWidth,
-      drawHeight,
-    );
-    return await canvasToPngBlob(canvas);
-  } finally {
-    bitmap.close();
-  }
 }
 
 export function SceneEditorModal({

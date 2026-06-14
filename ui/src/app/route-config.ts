@@ -9,6 +9,7 @@ import type { RouteObject } from 'react-router-dom';
 import { AppLayout } from './layout';
 import { LandingPage } from '../pages/landing/LandingPage';
 import { PlayPage } from '../pages/play/PlayPage';
+import { SceneWizardPage } from '../pages/scene_wizard/SceneWizardPage';
 
 function RouteErrorBoundary() {
   const error = useRouteError();
@@ -40,6 +41,14 @@ export const routeObjects: RouteObject[] = [
         handle: {
           breadcrumb: 'Play',
           pageTitle: 'Play',
+        },
+      },
+      {
+        path: 'scene-wizard',
+        element: createElement(SceneWizardPage),
+        handle: {
+          breadcrumb: 'Scene Wizard',
+          pageTitle: 'Scene Wizard',
         },
       },
       {
