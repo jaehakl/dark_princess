@@ -55,6 +55,17 @@ const EMPTY_RECOMMENDATIONS: RecommendPromptColumns = {
   detail: [],
 };
 
+const STATUS_CHANGE_FIELDS = [
+  { key: 'cash', label: '현금' },
+  { key: 'strength', label: '힘' },
+  { key: 'agility', label: '민첩' },
+  { key: 'intelligence', label: '지력' },
+  { key: 'sense', label: '센스' },
+  { key: 'attractiveness', label: '매력' },
+  { key: 'toughness', label: '근성' },
+  { key: 'stress', label: '스트레스' },
+] as const;
+
 const DEFAULT_STATUS_CHANGE: Record<string, number> = { turn: 1 };
 
 const FETCH_SCENE_BY_ID_REQUEST: GetListRequest = {
@@ -70,6 +81,9 @@ const FETCH_SCENE_BY_ID_REQUEST: GetListRequest = {
 type SaveMode =
   | 'text'
   | 'image';
+
+type StatusChangeKey = (typeof STATUS_CHANGE_FIELDS)[number]['key'];
+type StatusChangeValues = Record<StatusChangeKey, string>;
 
 type SceneEditComponentProps = {
   sceneId: number | null;
@@ -98,10 +112,14 @@ function sceneToPromptDraft(scene: SceneRecord): Record<PromptColumnName, string
   };
 }
 
-function normalizeStatusChange(statusChange: Record<string, unknown> | undefined) {
-  return statusChange && Object.keys(statusChange).length > 0
-    ? statusChange
-    : { ...DEFAULT_STATUS_CHANGE };
+function statusChangeToValues(statusChange: Record<string, unknown> | undefined): StatusChangeValues {
+  return STATUS_CHANGE_FIELDS.reduce((values, field) => {
+    const rawValue = statusChange?.[field.key];
+    values[field.key] = typeof rawValue === 'number' && Number.isFinite(rawValue)
+      ? String(rawValue)
+      : '0';
+    return values;
+  }, {} as StatusChangeValues);
 }
 
 function confirmAction(message: string, action: () => void) {
@@ -128,8 +146,8 @@ export function SceneEditComponent({
     ...EMPTY_PROMPT_DRAFT,
   });
   const [script, setScript] = useState(initialScene.script ?? '');
-  const [statusChange, setStatusChange] = useState<Record<string, unknown>>(
-    () => normalizeStatusChange(initialScene.status_change),
+  const [statusChangeValues, setStatusChangeValues] = useState<StatusChangeValues>(
+    () => statusChangeToValues(initialScene.status_change),
   );
   const [recommendations, setRecommendations] = useState<RecommendPromptColumns>({
     ...EMPTY_RECOMMENDATIONS,
@@ -188,7 +206,7 @@ export function SceneEditComponent({
     setPromptDraft(sceneToPromptDraft(scene));
     setTranslationDraft({ ...EMPTY_PROMPT_DRAFT });
     setScript(scene.script ?? '');
-    setStatusChange(normalizeStatusChange(scene.status_change));
+    setStatusChangeValues(statusChangeToValues(scene.status_change));
     setRecommendations({ ...EMPTY_RECOMMENDATIONS });
     setError(null);
     setSeedImageError(null);
@@ -239,7 +257,7 @@ export function SceneEditComponent({
           setPromptDraft({ ...EMPTY_PROMPT_DRAFT });
           setTranslationDraft({ ...EMPTY_PROMPT_DRAFT });
           setScript('');
-          setStatusChange({ ...DEFAULT_STATUS_CHANGE });
+          setStatusChangeValues(statusChangeToValues(DEFAULT_STATUS_CHANGE));
           setRecommendations({ ...EMPTY_RECOMMENDATIONS });
           setError(getErrorMessage(loadError));
         }
@@ -558,6 +576,22 @@ export function SceneEditComponent({
     setIsImageSettingsOpen(false);
   }
 
+  function buildStatusChange() {
+    const statusChange: Record<string, number> = { ...DEFAULT_STATUS_CHANGE };
+
+    for (const field of STATUS_CHANGE_FIELDS) {
+      const rawValue = statusChangeValues[field.key].trim();
+      const parsedValue = rawValue === '' ? 0 : Number(rawValue);
+      if (!Number.isInteger(parsedValue) || !Number.isFinite(parsedValue)) {
+        setError(`${field.label} 변화량은 정수로 입력해 주세요.`);
+        return null;
+      }
+      statusChange[field.key] = parsedValue;
+    }
+
+    return statusChange;
+  }
+
   async function saveScene(mode: SaveMode) {
     const isImageSave = mode === 'image';
     const targetSceneId = sceneId ?? null;
@@ -565,6 +599,11 @@ export function SceneEditComponent({
 
     if (!trimmedPrompt) {
       setError('프롬프트 항목을 하나 이상 입력해 주세요.');
+      return;
+    }
+
+    const statusChange = buildStatusChange();
+    if (!statusChange) {
       return;
     }
 
@@ -644,6 +683,11 @@ export function SceneEditComponent({
 
   function duplicateScene() {
     if (!onDuplicate || !activeScene) {
+      return;
+    }
+
+    const statusChange = buildStatusChange();
+    if (!statusChange) {
       return;
     }
 
@@ -927,6 +971,33 @@ export function SceneEditComponent({
                     {seedImageError ? (
                       <p className="text-sm font-semibold text-[#ff9ab8]">{seedImageError}</p>
                     ) : null}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <FieldLabel>상태 변화</FieldLabel>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-2">
+                    {STATUS_CHANGE_FIELDS.map((field) => (
+                      <label
+                        key={field.key}
+                        className="grid min-w-0 gap-1 text-xs font-semibold text-[#fff1f5]"
+                      >
+                        <span className="truncate">{field.label}</span>
+                        <FormControl
+                          type="number"
+                          step="1"
+                          value={statusChangeValues[field.key]}
+                          onChange={(event) =>
+                            setStatusChangeValues((current) => ({
+                              ...current,
+                              [field.key]: event.target.value,
+                            }))
+                          }
+                          className="h-9 w-full px-2 text-right text-sm"
+                          disabled={isLoadingScene || Boolean(savingMode)}
+                        />
+                      </label>
+                    ))}
                   </div>
                 </div>
               </aside>
