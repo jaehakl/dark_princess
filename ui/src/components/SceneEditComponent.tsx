@@ -108,7 +108,7 @@ function sceneToPromptDraft(scene: SceneRecord): Record<PromptColumnName, string
     subject: scene.subject ?? '',
     object: scene.object ?? '',
     action: scene.action ?? '',
-    detail: scene.detail ?? scene.prompt ?? '',
+    detail: scene.detail ?? '',
   };
 }
 
@@ -620,7 +620,6 @@ export function SceneEditComponent({
 
       const payload: GenerateSceneRequest = {
         scene_id: targetSceneId,
-        prompt: trimmedPrompt,
         script,
         status_change: statusChange,
         generate_image: isImageSave,
@@ -641,14 +640,14 @@ export function SceneEditComponent({
         formData.append('seed_image', seedImage.blob, `scene-wizard-seed-${seedImage.source}.png`);
       }
 
-      const savedScene = await dbTables.Scene.generateScene(formData);
-      const savedSceneId = savedScene.id;
-      if (!savedSceneId) {
+      const generatedScene = await dbTables.Scene.generateScene(formData);
+      const generatedSceneId = generatedScene.id;
+      if (!generatedSceneId) {
         throw new Error('Scene 저장 결과를 확인할 수 없습니다.');
       }
 
-      applySceneDraft(savedScene);
-      onSaved(savedSceneId);
+      applySceneDraft(generatedScene);
+      onSaved(generatedSceneId);
     } catch (saveError) {
       setError(getErrorMessage(saveError));
     } finally {
@@ -693,7 +692,6 @@ export function SceneEditComponent({
 
     onDuplicate({
       id: null,
-      prompt: composedPrompt,
       image_url: activeScene.image_url ?? null,
       script,
       status_change: { ...statusChange },

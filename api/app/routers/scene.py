@@ -50,7 +50,6 @@ async def api_generate_scene(
     scene = await generate_scene_from_form(db, await request.form())
     return SceneBase(
         id=scene.id,
-        prompt=scene.prompt,
         image_url=scene.image_url,
         script=scene.script,
         status_change=scene.status_change,
@@ -71,7 +70,6 @@ async def api_get_similar_scenes(
     return [
         SceneBase(
             id=scene.id,
-            prompt=scene.prompt,
             image_url=scene.image_url,
             script=scene.script,
             status_change=scene.status_change,

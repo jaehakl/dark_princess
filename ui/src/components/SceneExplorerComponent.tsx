@@ -202,7 +202,7 @@ export function SceneExplorerComponent({
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
-          {visibleScenes.map((scene) => {
+          {visibleScenes.map((scene, index) => {
             const sceneId = scene.id ?? null;
             const isSelectable = sceneId !== null;
             const isCurrentScene = sceneId !== null && sceneId === currentSceneId;
@@ -210,7 +210,7 @@ export function SceneExplorerComponent({
             const sceneLabel = `Scene #${sceneId ?? '-'}`;
             return (
               <button
-                key={sceneId ?? scene.prompt}
+                key={sceneId ?? `scene-${index}`}
                 type="button"
                 className={cx(
                   'grid aspect-square min-w-0 place-items-stretch rounded-[8px] border border-[rgba(255,208,222,0.24)] bg-[linear-gradient(135deg,rgba(255,229,238,0.1),transparent_58%),rgba(12,5,18,0.58)] p-1 text-left transition-[transform,border-color,background] hover:-translate-y-px hover:border-[rgba(255,224,180,0.84)] hover:bg-[linear-gradient(135deg,rgba(255,225,191,0.16),transparent_58%),rgba(50,15,47,0.82)]',

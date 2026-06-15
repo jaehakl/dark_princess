@@ -39,7 +39,6 @@ export type GenImageResponse = {
 
 export type GenerateSceneRequest = {
   scene_id?: number | null;
-  prompt: string;
   script: string;
   status_change: Record<string, unknown>;
   generate_image?: boolean;
@@ -49,15 +48,6 @@ export type GenerateSceneRequest = {
   object?: string | null;
   action?: string | null;
   detail?: string | null;
-};
-
-export type GenerateScenePromptResponse = {
-  prompt: string;
-};
-
-export type RecommendPromptItem = {
-  word: string;
-  score: number;
 };
 
 export type PromptColumnName = 'background' | 'subject' | 'object' | 'action' | 'detail';
@@ -72,7 +62,6 @@ export type GenerateSceneOptionRequest = {
 
 export type SceneRecord = {
   id?: number | null;
-  prompt: string;
   image_url?: string | null;
   script: string;
   status_change: Record<string, unknown>;

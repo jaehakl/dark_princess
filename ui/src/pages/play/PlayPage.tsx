@@ -9,7 +9,6 @@ import type {
 } from '../../api/type';
 import { useSceneStore } from '../../api/store';
 import { SceneEditModal } from '../../components/SceneEditModal';
-import { SceneEditorModal } from '../../components/SceneEditorModal';
 import { SceneExplorerModal } from '../../components/SceneExplorerModal';
 import { SceneOptionEditorModal } from '../../components/SceneOptionEditorModal';
 import {
@@ -106,7 +105,6 @@ function isValidId(value: string | undefined) {
 export function PlayPage() {
   const { statusId } = useParams();
   const parsedStatusId = isValidId(statusId) ? Number(statusId) : null;
-  const savedScene = useSceneStore((state) => state.savedScene);
   const selectedScene = useSceneStore((state) => state.selectedScene);
   const deletedSceneId = useSceneStore((state) => state.deletedSceneId);
   const setCurrentScene = useSceneStore((state) => state.setCurrentScene);
@@ -122,8 +120,6 @@ export function PlayPage() {
   const [currentSceneEditorSceneId, setCurrentSceneEditorSceneId] = useState<number | null>(null);
   const [currentSceneEditorInitialScene, setCurrentSceneEditorInitialScene] = useState<SceneRecord | null>(null);
   const [isSceneExplorerOpen, setIsSceneExplorerOpen] = useState(false);
-  const [isSceneEditorOpen, setIsSceneEditorOpen] = useState(false);
-  const [createdReplacementScene, setCreatedReplacementScene] = useState<SceneRecord | null>(null);
   const [optionReloadKey, setOptionReloadKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingOptions, setIsLoadingOptions] = useState(false);
@@ -157,14 +153,6 @@ export function PlayPage() {
   useEffect(() => {
     setCurrentScene(scene);
   }, [scene, setCurrentScene]);
-
-  useEffect(() => {
-    if (!savedScene?.id || !scene?.id || savedScene.id !== scene.id) {
-      return;
-    }
-    setScene(savedScene);
-    setPendingTransition(null);
-  }, [savedScene, scene?.id]);
 
   useEffect(() => {
     if (!selectedScene?.id || selectedScene.id === scene?.id) {
@@ -382,25 +370,37 @@ export function PlayPage() {
     setCurrentSceneEditorInitialScene(null);
   }
 
-  async function handleCurrentSceneSaved(savedSceneId: number) {
+  async function handleCurrentSceneSaved(sceneId: number) {
     setError(null);
     try {
       const sceneResponse = await dbTables.Scene.listRows(
         createListRequest({
           limit: 1,
-          selected_ids: [savedSceneId],
+          selected_ids: [sceneId],
         }),
       );
-      const savedScene = sceneResponse.items[0] ?? null;
-      if (!savedScene) {
+      const reloadedScene = sceneResponse.items[0] ?? null;
+      if (!reloadedScene) {
         throw new Error('저장한 Scene을 다시 불러올 수 없습니다.');
       }
 
-      setScene(savedScene);
-      setCurrentScene(savedScene);
-      setPendingTransition(null);
-      setCurrentSceneEditorSceneId(savedSceneId);
-      setCurrentSceneEditorInitialScene(savedScene);
+      const isDuplicateSave = currentSceneEditorSceneId === null;
+      const shouldReplacePendingScene =
+        isDuplicateSave &&
+        Boolean(pendingTransition && status?.id && scene?.id === pendingTransition.targetSceneId);
+
+      if (shouldReplacePendingScene) {
+        const didReplace = await replacePendingScene(reloadedScene);
+        if (!didReplace) {
+          return;
+        }
+      } else {
+        setScene(reloadedScene);
+        setCurrentScene(reloadedScene);
+        setPendingTransition(null);
+      }
+      setCurrentSceneEditorSceneId(sceneId);
+      setCurrentSceneEditorInitialScene(reloadedScene);
     } catch (saveError) {
       setError(getErrorMessage(saveError));
     }
@@ -429,32 +429,6 @@ export function PlayPage() {
 
   function closeManualSceneExplorer() {
     setIsSceneExplorerOpen(false);
-  }
-
-  function openReplacementSceneEditor() {
-    if (!pendingTransition || isAdvancing) {
-      return;
-    }
-    setCreatedReplacementScene(null);
-    setIsSceneEditorOpen(true);
-  }
-
-  async function closeReplacementSceneEditor() {
-    const sceneToApply = createdReplacementScene;
-    setIsSceneEditorOpen(false);
-    setCreatedReplacementScene(null);
-    if (sceneToApply) {
-      await replacePendingScene(sceneToApply);
-    }
-  }
-
-  function handleReplacementSceneSaved(savedScene: SceneRecord) {
-    setCreatedReplacementScene(savedScene);
-  }
-
-  function handleReplacementSceneDeleted() {
-    setIsSceneEditorOpen(false);
-    setCreatedReplacementScene(null);
   }
 
   async function reinforcePendingTransitionIfCurrent(sceneId: number, statusId: number) {
@@ -710,13 +684,6 @@ export function PlayPage() {
                   >
                     다른 장면
                   </Button>
-                  <Button
-                    className="px-4 py-2 text-sm"
-                    onClick={openReplacementSceneEditor}
-                    disabled={isAdvancing}
-                  >
-                    새 장면
-                  </Button>
                 </>
               ) : null}
             </div>
@@ -905,15 +872,6 @@ export function PlayPage() {
           currentSceneId={scene?.id ?? null}
           onClose={closeManualSceneExplorer}
           onSelect={(sceneId) => void selectManualScene(sceneId)}
-        />
-      ) : null}
-
-      {isSceneEditorOpen ? (
-        <SceneEditorModal
-          scene={null}
-          onClose={() => void closeReplacementSceneEditor()}
-          onSaved={handleReplacementSceneSaved}
-          onDeleted={handleReplacementSceneDeleted}
         />
       ) : null}
     </div>

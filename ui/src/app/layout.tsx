@@ -2,7 +2,6 @@ import { Link, Outlet, useMatches } from 'react-router-dom';
 import { dbTables } from '../api/api';
 import { useSceneStore } from '../api/store';
 import type { GetListRequest } from '../api/type';
-import { SceneEditorModal } from '../components/SceneEditorModal';
 import { SceneExplorerModal } from '../components/SceneExplorerModal';
 import { Button, cx } from '../components/ui';
 
@@ -23,16 +22,10 @@ const FETCH_SCENE_BY_ID_REQUEST: GetListRequest = {
 
 export function AppLayout() {
   const matches = useMatches();
-  const editingScene = useSceneStore((state) => state.editingScene);
   const currentScene = useSceneStore((state) => state.currentScene);
-  const isSceneEditorOpen = useSceneStore((state) => state.isSceneEditorOpen);
   const isSceneExplorerOpen = useSceneStore((state) => state.isSceneExplorerOpen);
-  const openSceneEditor = useSceneStore((state) => state.openSceneEditor);
   const openSceneExplorer = useSceneStore((state) => state.openSceneExplorer);
-  const closeSceneEditor = useSceneStore((state) => state.closeSceneEditor);
   const closeSceneExplorer = useSceneStore((state) => state.closeSceneExplorer);
-  const handleSceneSaved = useSceneStore((state) => state.handleSceneSaved);
-  const handleSceneDeleted = useSceneStore((state) => state.handleSceneDeleted);
   const selectScene = useSceneStore((state) => state.selectScene);
   let breadcrumbs: string[] = [];
   let currentPageTitle = 'Dark Princess';
@@ -114,12 +107,6 @@ export function AppLayout() {
           >
             Scene 탐색
           </Button>
-          <Button
-            className="shrink-0 px-3 py-2 text-xs sm:px-4"
-            onClick={() => openSceneEditor()}
-          >
-            Scene 생성/편집
-          </Button>
           <p className="hidden shrink-0 text-sm font-semibold text-[var(--app-muted)] md:block">
             {currentPageTitle}
           </p>
@@ -129,15 +116,6 @@ export function AppLayout() {
       <main className="mx-auto w-[min(1480px,100%)] p-[18px]">
         <Outlet />
       </main>
-
-      {isSceneEditorOpen ? (
-        <SceneEditorModal
-          scene={editingScene}
-          onClose={closeSceneEditor}
-          onSaved={handleSceneSaved}
-          onDeleted={handleSceneDeleted}
-        />
-      ) : null}
 
       {isSceneExplorerOpen ? (
         <SceneExplorerModal

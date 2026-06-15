@@ -96,12 +96,17 @@ async def recommend_prompt(db: AsyncSession, text: str) -> list[RecommendPromptI
             continue
 
         scene_weight = 1 / (distance + RECOMMEND_PROMPT_DISTANCE_EPSILON)
-        for raw_word in scene.prompt.split(","):
-            word = raw_word.strip()
-            if not word:
+        for field in SCENE_PROMPT_FIELDS:
+            column_text = getattr(scene, field)
+            if not isinstance(column_text, str):
                 continue
-            score_sums[word] = score_sums.get(word, 0.0) + scene_weight
-            frequencies[word] = frequencies.get(word, 0) + 1
+
+            for raw_word in column_text.split(","):
+                word = raw_word.strip()
+                if not word:
+                    continue
+                score_sums[word] = score_sums.get(word, 0.0) + scene_weight
+                frequencies[word] = frequencies.get(word, 0) + 1
 
     return [
         RecommendPromptItemBase(word=word, score=score_sums[word] / frequencies[word])

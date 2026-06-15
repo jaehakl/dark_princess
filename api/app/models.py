@@ -53,7 +53,6 @@ class ImageGenerationSettingsBase(BaseModel):
 
 class GenerateSceneRequestBase(BaseModel):
     scene_id: Optional[int] = None
-    prompt: str
     script: str = ""
     status_change: Dict[str, Any] = Field(default_factory=dict)
     generate_image: bool = True
@@ -99,7 +98,6 @@ class AdjustSelectionModelRequestBase(NextSceneRequestBase):
 
 class SceneBase(BaseModel):
     id: Optional[int] = None
-    prompt: str
     image_url: Optional[str] = None
     script: str = ""
     status_change: Dict[str, Any] = Field(default_factory=dict)

@@ -79,10 +79,14 @@ async def api_get_next_scene(
     )
     return SceneBase(
         id=next_scene.id,
-        prompt=next_scene.prompt,
         image_url=next_scene.image_url,
         script=next_scene.script,
         status_change=next_scene.status_change,
+        background=next_scene.background,
+        subject=next_scene.subject,
+        object=next_scene.object,
+        action=next_scene.action,
+        detail=next_scene.detail,
     )
 
 

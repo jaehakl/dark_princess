@@ -4,14 +4,12 @@ import { API_URL, request } from './http';
 import type {
   AdjustSelectionModelRequest,
   GenerateSceneOptionRequest,
-  GenerateScenePromptResponse,
   GenerateSelectionModelRequest,
   GetListRequest,
   GetListResponse,
   ImageGenerationSettings,
   NextSceneRequest,
   RecommendPromptColumns,
-  RecommendPromptItem,
   SceneOptionRecord,
   SceneRecord,
   SelectionModelRecord,
@@ -27,7 +25,6 @@ export const dbTables = {
     label: '장면',
     columns: {
       id: { label: 'ID', type: 'id' },
-      prompt: { label: '프롬프트', type: 'text', required: true },
       image_url: { label: '이미지 URL', type: 'text' },
       script: { label: '스크립트', type: 'text' },
       status_change: { label: '상태 변화', type: 'dict-list' },
@@ -103,11 +100,7 @@ export const dbTables = {
       request<ImageGenerationSettings>('get', '/image-util/image-settings/defaults'),
     translateCommaTexts: (texts: string[]) =>
       request<string[]>('post', '/image-util/translate-comma-texts', texts),
-    recommendPrompt: (text: string) =>
-      request<RecommendPromptItem[]>('post', '/image-util/recommend-prompt', { text }),
     recommendPromptColumns: (text: string) =>
       request<RecommendPromptColumns>('post', '/image-util/recommend-prompt-columns', { text }),
-    generatePrompt: (text: string) =>
-      request<GenerateScenePromptResponse>('post', '/image-util/generate-prompt', { text }),
   },
 };

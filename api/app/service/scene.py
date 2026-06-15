@@ -89,9 +89,6 @@ async def generate_scene(
     request: GenerateSceneRequestBase,
     seed_image: bytes | None = None,
 ) -> Scene:
-    prompt = request.prompt.strip()
-    if not prompt:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scene prompt is required")
     if request.generate_image and seed_image is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="seed image is required")
 
@@ -106,18 +103,20 @@ async def generate_scene(
         old_image_url = scene.image_url
 
     script = normalize_scene_script(request.script)
-    embedding = await make_scene_embedding(prompt, script)
     column_values = {field: getattr(request, field) for field in SCENE_PROMPT_FIELDS}
+    visual_prompt = build_scene_visual_prompt(column_values)
+    if not visual_prompt:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scene prompt component is required")
+    embedding = await make_scene_embedding(visual_prompt, script)
     column_embeddings = await make_scene_column_embeddings(column_values)
     if request.generate_image:
-        image_url, image_key = await generate_scene_image(prompt, seed_image, request.image_settings)
+        image_url, image_key = await generate_scene_image(visual_prompt, seed_image, request.image_settings)
 
     try:
         if scene is None:
             scene = Scene()
             db.add(scene)
 
-        scene.prompt = prompt
         scene.script = script
         scene.status_change = request.status_change
         scene.embedding = embedding
@@ -153,10 +152,6 @@ async def upsert_scenes(db: AsyncSession, items: list[SceneBase]) -> list[Upsert
     orphan_candidates: list[str | None] = []
     try:
         for item in items:
-            prompt = item.prompt.strip()
-            if not prompt:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scene prompt is required")
-
             scene = existing_scenes.get(item.id) if item.id is not None else None
             if scene is None:
                 scene = Scene()
@@ -165,13 +160,15 @@ async def upsert_scenes(db: AsyncSession, items: list[SceneBase]) -> list[Upsert
             old_image_url = scene.image_url
             script = normalize_scene_script(item.script)
             column_values = {field: getattr(item, field) for field in SCENE_PROMPT_FIELDS}
+            visual_prompt = build_scene_visual_prompt(column_values)
+            if not visual_prompt:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scene prompt component is required")
             column_embeddings = await make_scene_column_embeddings(column_values)
 
-            scene.prompt = prompt
             scene.image_url = item.image_url
             scene.script = script
             scene.status_change = item.status_change
-            scene.embedding = await make_scene_embedding(prompt, script)
+            scene.embedding = await make_scene_embedding(visual_prompt, script)
             for field in SCENE_PROMPT_FIELDS:
                 setattr(scene, field, column_values[field])
                 setattr(scene, f"{field}_embedding", column_embeddings[field])
@@ -190,8 +187,8 @@ async def upsert_scenes(db: AsyncSession, items: list[SceneBase]) -> list[Upsert
     return [UpsertResponseBase(id=scene.id) for scene in pending_results]
 
 
-async def make_scene_embedding(prompt: str, script: str) -> list[float]:
-    embedding_input = build_scene_embedding_input(prompt, script)
+async def make_scene_embedding(visual_prompt: str, script: str) -> list[float]:
+    embedding_input = build_scene_embedding_input(visual_prompt, script)
     model_name = settings.SCENE_EMBEDDING_MODEL_NAME.strip()
     if not model_name:
         raise HTTPException(
@@ -283,12 +280,20 @@ def normalize_scene_script(script: str) -> str:
     return script.replace("\r\n", "\n").replace("\r", "\n")
 
 
-def build_scene_embedding_input(prompt: str, script: str) -> str:
-    return f"passage: {prompt}\n{script}"
+def build_scene_visual_prompt(column_values: dict[str, str | None]) -> str:
+    return ", ".join(
+        (column_values[field] or "").strip()
+        for field in SCENE_PROMPT_FIELDS
+        if (column_values[field] or "").strip()
+    )
+
+
+def build_scene_embedding_input(visual_prompt: str, script: str) -> str:
+    return f"passage: {visual_prompt}\n{script}"
 
 
 async def generate_scene_image(
-    prompt: str,
+    visual_prompt: str,
     seed_image: bytes,
     image_settings: ImageGenerationSettingsBase | None = None,
 ) -> tuple[str, str]:
@@ -328,7 +333,7 @@ async def generate_scene_image(
 
     positive_prompt_parts = [
         (resolved_settings.positive_base or "").strip().strip(","),
-        prompt.strip().strip(","),
+        visual_prompt.strip().strip(","),
     ]
     seed = random.randint(GEN_IMAGE_SEED_MIN, GEN_IMAGE_SEED_MAX)
     images, _seeds = await generate_images_batch(

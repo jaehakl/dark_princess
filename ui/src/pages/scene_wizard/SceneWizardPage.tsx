@@ -7,7 +7,6 @@ import { Button, Panel } from '../../components/ui';
 
 const EMPTY_INITIAL_SCENE: SceneRecord = {
   id: null,
-  prompt: '',
   image_url: null,
   script: '',
   status_change: { turn: 1 },
@@ -60,8 +59,8 @@ export function SceneWizardPage() {
     setIsEditorOpen(false);
   }
 
-  function handleSaved(savedSceneId: number) {
-    setSceneId(savedSceneId);
+  function handleSaved(sceneId: number) {
+    setSceneId(sceneId);
     refreshExplorer();
   }
 

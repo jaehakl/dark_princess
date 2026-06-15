@@ -64,7 +64,6 @@ class Scene(Base):
     __tablename__ = "scenes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    prompt: Mapped[str] = mapped_column(Text, nullable=False)
     image_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     embedding: Mapped[Optional[List[float]]] = mapped_column(JSON, nullable=True)
     script: Mapped[str] = mapped_column(Text, nullable=False, default="")
