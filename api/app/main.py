@@ -1,9 +1,10 @@
 from initserver import server
-from routers import scene, scene_option, selection_model, status
+from routers import image_util, scene, scene_option, selection_model, status
 
 
 app = server()
 
+app.include_router(image_util.router)
 app.include_router(scene.router)
 app.include_router(scene_option.router)
 app.include_router(selection_model.router)

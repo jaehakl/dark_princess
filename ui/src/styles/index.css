@@ -27,7 +27,7 @@
   --edit-required-color: #ff8fb2;
   --button-font-size: 0.9rem;
   --button-font-weight: 800;
-  --dp-image-aspect: 832 / 1216;
+  --dp-image-aspect: 1 / 1;
   --dp-image-bg: rgba(16, 7, 22, 0.76);
   background: #100716;
   color: var(--app-text);
@@ -411,7 +411,7 @@ select.edit-control option {
 
 .vn-scene-editor-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(16rem, 0.42fr);
+  grid-template-columns: minmax(0, 1fr) minmax(20rem, 0.36fr);
   gap: 1rem;
   align-items: start;
 }
@@ -507,7 +507,7 @@ select.edit-control option {
 }
 
 .vn-scene-explorer-modal {
-  width: min(64rem, 100%);
+  width: min(72rem, 100%);
   max-height: min(48rem, calc(100vh - 2rem));
   overflow-y: auto;
 }
@@ -543,8 +543,8 @@ select.edit-control option {
 
 .vn-scene-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 0.85rem;
 }
 
 .vn-scene-card {
@@ -580,7 +580,7 @@ select.edit-control option {
 
 .vn-scene-thumb {
   display: grid;
-  width: 5rem;
+  width: 5.75rem;
   aspect-ratio: var(--dp-image-aspect);
   flex: 0 0 auto;
   place-items: center;
@@ -655,7 +655,7 @@ select.edit-control option {
 .vn-play-layout {
   display: grid;
   min-height: calc(100vh - 9rem);
-  grid-template-columns: minmax(18rem, 0.95fr) minmax(16rem, 0.55fr);
+  grid-template-columns: minmax(24rem, 1fr) minmax(18rem, 0.42fr);
   grid-template-rows: minmax(0, 1fr) auto;
   gap: 1rem;
 }
@@ -671,8 +671,7 @@ select.edit-control option {
 }
 
 .vn-scene-image-frame {
-  width: min(100%, 34rem);
-  max-height: calc(100vh - 18rem);
+  width: min(100%, 38rem, max(22rem, calc(100vh - 15rem)));
   margin: 0 auto;
   overflow: hidden;
   border: 1px solid rgba(255, 218, 228, 0.22);
@@ -684,9 +683,8 @@ select.edit-control option {
 
 .vn-scene-editor-image-frame {
   position: relative;
-  width: min(100%, 22rem);
-  max-height: min(36rem, calc(100vh - 15rem));
-  margin: 0;
+  width: min(100%, 24rem);
+  margin: 0 auto;
   overflow: hidden;
   border: 1px solid rgba(255, 218, 228, 0.22);
   border-radius: 8px;
@@ -879,6 +877,9 @@ select.edit-control option {
 }
 
 .dp-image-frame {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
   aspect-ratio: var(--dp-image-aspect);
   background: var(--dp-image-bg);
 }
@@ -909,8 +910,7 @@ select.edit-control option {
   }
 
   .vn-scene-editor-image-frame {
-    width: min(100%, 18rem);
-    max-height: none;
+    width: min(100%, 22rem);
   }
 
   .vn-play-layout {
@@ -923,7 +923,7 @@ select.edit-control option {
   }
 
   .vn-scene-image-frame {
-    max-height: none;
+    width: min(100%, 34rem);
   }
 }
 

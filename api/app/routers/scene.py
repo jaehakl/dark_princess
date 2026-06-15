@@ -1,28 +1,20 @@
-from typing import Dict, List
+from typing import List
 
 from fastapi import APIRouter, Body, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import Scene, get_db
 from models import (
-    GenerateScenePromptRequestBase,
-    GenerateScenePromptResponseBase,
     GetListRequestBase,
     GetListResponseBase,
-    ImageGenerationSettingsBase,
-    RecommendPromptItemBase,
     SceneBase,
     StatusBase,
     UpdateSceneContextRequestBase,
     UpsertResponseBase,
 )
 from service.scene import (
-    get_default_image_generation_settings,
-    generate_prompt,
     generate_scene_from_form,
     get_similar_scenes,
-    recommend_prompt,
-    recommend_prompt_columns,
     update_scene_context,
     upsert_scenes,
 )
@@ -50,11 +42,6 @@ async def api_upsert_scene_list(
     return await upsert_scenes(db, items)
 
 
-@router.get("/image-settings/defaults", response_model=ImageGenerationSettingsBase)
-async def api_get_image_settings_defaults():
-    return get_default_image_generation_settings()
-
-
 @router.post("/generate", response_model=SceneBase)
 async def api_generate_scene(
     request: Request,
@@ -73,22 +60,6 @@ async def api_generate_scene(
         action=scene.action,
         detail=scene.detail,
     )
-
-
-@router.post("/recommend-prompt", response_model=List[RecommendPromptItemBase])
-async def api_recommend_prompt(
-    text: str = Body(..., embed=True),
-    db: AsyncSession = Depends(get_db),
-):
-    return await recommend_prompt(db, text)
-
-
-@router.post("/recommend-prompt-columns", response_model=Dict[str, List[str]])
-async def api_recommend_prompt_columns(
-    text: str = Body(..., embed=True),
-    db: AsyncSession = Depends(get_db),
-):
-    return await recommend_prompt_columns(db, text)
 
 
 @router.post("/similar", response_model=List[SceneBase])
@@ -112,19 +83,6 @@ async def api_get_similar_scenes(
         )
         for scene in scenes
     ]
-
-
-@router.post("/generate-prompt", response_model=GenerateScenePromptResponseBase)
-async def api_generate_prompt(
-    request: GenerateScenePromptRequestBase,
-):
-    return GenerateScenePromptResponseBase(
-        prompt=await generate_prompt(
-            request.text,
-            max_tokens=request.max_tokens,
-            temperature=request.temperature,
-        ),
-    )
 
 
 @router.post("/update-context", response_model=StatusBase)

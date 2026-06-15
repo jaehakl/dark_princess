@@ -131,7 +131,7 @@ export function SceneEditorModal({
 
     async function loadImageSettingsDefaults() {
       try {
-        const defaults = await dbTables.Scene.getImageSettingsDefaults();
+        const defaults = await dbTables.ImageUtil.getImageSettingsDefaults();
         if (isCancelled) {
           return;
         }
@@ -293,7 +293,7 @@ export function SceneEditorModal({
     setIsRecommendingPrompt(true);
     setError(null);
     try {
-      const recommendations = await dbTables.Scene.recommendPrompt(text);
+      const recommendations = await dbTables.ImageUtil.recommendPrompt(text);
       if (!recommendations.length) {
         setError('추천할 prompt가 없습니다.');
         return;
@@ -317,7 +317,7 @@ export function SceneEditorModal({
     setIsGeneratingPrompt(true);
     setError(null);
     try {
-      const generation = await dbTables.Scene.generatePrompt(text);
+      const generation = await dbTables.ImageUtil.generatePrompt(text);
       const generatedPrompt = generation.prompt.trim();
       if (!generatedPrompt) {
         setError('생성된 prompt가 없습니다.');

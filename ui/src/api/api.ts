@@ -37,16 +37,8 @@ export const dbTables = {
     upsertRow: (items: unknown) => request<UpsertResponse[]>('post', '/scene/upsert', items),
     generateScene: (item: FormData) =>
       request<SceneRecord>('post', '/scene/generate', item),
-    getImageSettingsDefaults: () =>
-      request<ImageGenerationSettings>('get', '/scene/image-settings/defaults'),
-    recommendPrompt: (text: string) =>
-      request<RecommendPromptItem[]>('post', '/scene/recommend-prompt', { text }),
-    recommendPromptColumns: (text: string) =>
-      request<RecommendPromptColumns>('post', '/scene/recommend-prompt-columns', { text }),
     similarScenes: (text: string) =>
       request<SceneRecord[]>('post', '/scene/similar', { text }),
-    generatePrompt: (text: string) =>
-      request<GenerateScenePromptResponse>('post', '/scene/generate-prompt', { text }),
     updateContext: (item: UpdateSceneContextRequest) =>
       request<StatusRecord>('post', '/scene/update-context', item),
     deleteRows: (ids: number[]) => request<null>('delete', '/scene/', ids).then(() => undefined),
@@ -105,5 +97,17 @@ export const dbTables = {
       request<GetListResponse<StatusRecord>>('post', '/status/list', listRequest),
     upsertRow: (items: StatusRecord[]) => request<UpsertResponse[]>('post', '/status/upsert', items),
     deleteRows: (ids: number[]) => request<null>('delete', '/status/', ids).then(() => undefined),
+  },
+  ImageUtil: {
+    getImageSettingsDefaults: () =>
+      request<ImageGenerationSettings>('get', '/image-util/image-settings/defaults'),
+    translateCommaTexts: (texts: string[]) =>
+      request<string[]>('post', '/image-util/translate-comma-texts', texts),
+    recommendPrompt: (text: string) =>
+      request<RecommendPromptItem[]>('post', '/image-util/recommend-prompt', { text }),
+    recommendPromptColumns: (text: string) =>
+      request<RecommendPromptColumns>('post', '/image-util/recommend-prompt-columns', { text }),
+    generatePrompt: (text: string) =>
+      request<GenerateScenePromptResponse>('post', '/image-util/generate-prompt', { text }),
   },
 };

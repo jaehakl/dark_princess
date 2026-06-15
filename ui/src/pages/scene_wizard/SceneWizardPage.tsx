@@ -86,10 +86,14 @@ function normalizeStatusChange(statusChange: Record<string, unknown> | undefined
 
 export function SceneWizardPage() {
   const selectedScene = useSceneStore((state) => state.selectedScene);
+  const handleSceneDeleted = useSceneStore((state) => state.handleSceneDeleted);
   const lastAppliedSelectedSceneRef = useRef<SceneRecord | null>(selectedScene);
   const [activeScene, setActiveScene] = useState<SceneRecord | null>(null);
   const [isFreshDraft, setIsFreshDraft] = useState(true);
   const [promptDraft, setPromptDraft] = useState<Record<PromptColumnName, string>>({
+    ...EMPTY_PROMPT_DRAFT,
+  });
+  const [translationDraft, setTranslationDraft] = useState<Record<PromptColumnName, string>>({
     ...EMPTY_PROMPT_DRAFT,
   });
   const [script, setScript] = useState('');
@@ -109,6 +113,8 @@ export function SceneWizardPage() {
   const [isImageSettingsOpen, setIsImageSettingsOpen] = useState(false);
   const [imageSettingsError, setImageSettingsError] = useState<string | null>(null);
   const [isRecommending, setIsRecommending] = useState(false);
+  const [isTranslatingPromptColumns, setIsTranslatingPromptColumns] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [savingMode, setSavingMode] = useState<SaveMode | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -121,14 +127,17 @@ export function SceneWizardPage() {
         .join(', '),
     [promptDraft],
   );
-  const isBusy = isRecommending || Boolean(savingMode);
+  const isBusy = isRecommending || isTranslatingPromptColumns || isDeleting || Boolean(savingMode);
   const canEdit = Boolean(activeScene || isFreshDraft);
   const canSaveText = canEdit && composedPrompt.length > 0 && !isBusy;
+  const canDelete = Boolean(activeSceneId) && !isBusy;
   const canSaveExisting = canSaveText && Boolean(activeSceneId);
   const canSaveImage = canSaveText && Boolean(seedImage) && !isPreparingSeedImage && Boolean(imageSettings);
   const canSaveExistingImage = canSaveImage && Boolean(activeSceneId);
   const canRefreshRecommendations =
-    canEdit && script.trim().length > 0 && !isRecommending && !savingMode;
+    canEdit && script.trim().length > 0 && !isRecommending && !isTranslatingPromptColumns && !savingMode;
+  const canTranslatePromptColumns =
+    canEdit && !isBusy && PROMPT_COLUMNS.some((column) => translationDraft[column.key].trim().length > 0);
   const imageWidth = imageSettings?.width;
   const imageHeight = imageSettings?.height;
   const selectedLabel = activeSceneId
@@ -149,6 +158,7 @@ export function SceneWizardPage() {
     setActiveScene(scene);
     setIsFreshDraft(false);
     setPromptDraft(sceneToPromptDraft(scene));
+    setTranslationDraft({ ...EMPTY_PROMPT_DRAFT });
     setScript(scene.script ?? '');
     setStatusChange(normalizeStatusChange(scene.status_change));
     setRecommendations({ ...EMPTY_RECOMMENDATIONS });
@@ -167,7 +177,7 @@ export function SceneWizardPage() {
 
     async function loadImageSettingsDefaults() {
       try {
-        const defaults = await dbTables.Scene.getImageSettingsDefaults();
+        const defaults = await dbTables.ImageUtil.getImageSettingsDefaults();
         if (isCancelled) {
           return;
         }
@@ -260,7 +270,7 @@ export function SceneWizardPage() {
     setIsRecommending(true);
     setError(null);
     try {
-      setRecommendations(await dbTables.Scene.recommendPromptColumns(trimmedScript));
+      setRecommendations(await dbTables.ImageUtil.recommendPromptColumns(trimmedScript));
     } catch (recommendError) {
       setRecommendations({ ...EMPTY_RECOMMENDATIONS });
       setError(getErrorMessage(recommendError));
@@ -274,6 +284,7 @@ export function SceneWizardPage() {
     setIsFreshDraft(true);
     setSeedImage(null);
     setPromptDraft({ ...EMPTY_PROMPT_DRAFT });
+    setTranslationDraft({ ...EMPTY_PROMPT_DRAFT });
     setScript('');
     setStatusChange({ ...DEFAULT_STATUS_CHANGE });
     setRecommendations({ ...EMPTY_RECOMMENDATIONS });
@@ -295,6 +306,61 @@ export function SceneWizardPage() {
         [column]: [...values, tag].join(', '),
       };
     });
+  }
+
+  async function translatePromptColumns() {
+    const targets = PROMPT_COLUMNS
+      .map((column) => ({
+        key: column.key,
+        text: translationDraft[column.key].trim(),
+      }))
+      .filter((target) => target.text.length > 0);
+
+    if (targets.length === 0) {
+      setError('번역할 한국어 텍스트를 입력해 주세요.');
+      return;
+    }
+
+    setIsTranslatingPromptColumns(true);
+    setError(null);
+    try {
+      const translatedTexts = await dbTables.ImageUtil.translateCommaTexts(
+        targets.map((target) => target.text),
+      );
+      if (translatedTexts.length !== targets.length) {
+        throw new Error('번역 결과 개수를 확인할 수 없습니다.');
+      }
+
+      const translatedByColumn = targets
+        .map((target, index) => ({
+          key: target.key,
+          text: translatedTexts[index]?.trim() ?? '',
+        }))
+        .filter((item) => item.text.length > 0);
+      if (translatedByColumn.length === 0) {
+        throw new Error('번역된 텍스트가 없습니다.');
+      }
+
+      setPromptDraft((current) => {
+        const next = { ...current };
+        for (const item of translatedByColumn) {
+          const currentText = next[item.key].trim();
+          next[item.key] = currentText ? `${currentText}, ${item.text}` : item.text;
+        }
+        return next;
+      });
+      setTranslationDraft((current) => {
+        const next = { ...current };
+        for (const item of translatedByColumn) {
+          next[item.key] = '';
+        }
+        return next;
+      });
+    } catch (translateError) {
+      setError(getErrorMessage(translateError));
+    } finally {
+      setIsTranslatingPromptColumns(false);
+    }
   }
 
   async function shuffleSeedImage() {
@@ -518,6 +584,31 @@ export function SceneWizardPage() {
     }
   }
 
+  async function deleteScene() {
+    if (!activeSceneId) {
+      return;
+    }
+
+    const shouldDelete = window.confirm(
+      `Scene #${activeSceneId}을 삭제할까요? 연결된 옵션도 함께 삭제됩니다.`,
+    );
+    if (!shouldDelete) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setError(null);
+    try {
+      await dbTables.Scene.deleteRows([activeSceneId]);
+      handleSceneDeleted(activeSceneId);
+      startFreshScene();
+    } catch (deleteError) {
+      setError(getErrorMessage(deleteError));
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   return (
     <div className="relative left-1/2 w-[min(1840px,calc(100vw-36px))] -translate-x-1/2 space-y-5">
       <div className="flex flex-col gap-2 px-1">
@@ -553,7 +644,7 @@ export function SceneWizardPage() {
 
         <div className="vn-section-body">
           <div className="space-y-4">
-                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.42fr)] xl:items-start">
+                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(21rem,0.36fr)] xl:items-start">
                   <div className="min-w-0 space-y-4">
                     <label className="block space-y-2">
                       <span className="flex flex-wrap items-center justify-between gap-2">
@@ -581,9 +672,20 @@ export function SceneWizardPage() {
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="text-sm font-semibold text-[#fff7ef]">프롬프트 항목</span>
-                        <span className="text-xs font-semibold text-[var(--app-muted)]">
-                          추천 태그는 눌러서 추가
-                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-semibold text-[var(--app-muted)]">
+                            추천 태그는 눌러서 추가
+                          </span>
+                          <button
+                            type="button"
+                            className="vn-button inline-flex items-center gap-2 px-3 py-2 text-xs"
+                            onClick={() => void translatePromptColumns()}
+                            disabled={!canTranslatePromptColumns}
+                          >
+                            {isTranslatingPromptColumns ? <span className="vn-spinner" aria-hidden="true" /> : null}
+                            {isTranslatingPromptColumns ? '번역 중' : '번역하여 추가'}
+                          </button>
+                        </div>
                       </div>
                       <div className="overflow-hidden rounded-[8px] border border-[rgba(255,208,222,0.24)] bg-[rgba(12,5,18,0.46)]">
                         {PROMPT_COLUMNS.map((column) => (
@@ -596,21 +698,39 @@ export function SceneWizardPage() {
                                 <span className="edit-label__text">{column.label}</span>
                               </span>
                             </div>
-                            <label className="block min-w-0">
-                              <span className="sr-only">{column.label}</span>
-                              <textarea
-                                rows={1}
-                                value={promptDraft[column.key]}
-                                onChange={(event) =>
-                                  setPromptDraft((current) => ({
-                                    ...current,
-                                    [column.key]: event.target.value,
-                                  }))
-                                }
-                                className="edit-control min-h-10 w-full resize-y px-3 py-2 text-sm"
-                                disabled={Boolean(savingMode)}
-                              />
-                            </label>
+                            <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+                              <label className="block min-w-0">
+                                <span className="sr-only">{column.label}</span>
+                                <textarea
+                                  rows={1}
+                                  value={promptDraft[column.key]}
+                                  onChange={(event) =>
+                                    setPromptDraft((current) => ({
+                                      ...current,
+                                      [column.key]: event.target.value,
+                                    }))
+                                  }
+                                  className="edit-control min-h-10 w-full resize-y px-3 py-2 text-sm"
+                                  disabled={Boolean(savingMode) || isTranslatingPromptColumns}
+                                />
+                              </label>
+                              <label className="block min-w-0">
+                                <span className="sr-only">{column.label} 한국어 번역 입력</span>
+                                <textarea
+                                  rows={1}
+                                  value={translationDraft[column.key]}
+                                  onChange={(event) =>
+                                    setTranslationDraft((current) => ({
+                                      ...current,
+                                      [column.key]: event.target.value,
+                                    }))
+                                  }
+                                  className="edit-control min-h-10 w-full resize-y px-3 py-2 text-sm"
+                                  placeholder="한국어, 콤마 구분"
+                                  disabled={Boolean(savingMode) || isTranslatingPromptColumns}
+                                />
+                              </label>
+                            </div>
                             <div className="flex min-w-0 flex-wrap gap-1.5 md:col-start-2">
                               {recommendations[column.key].slice(0, 12).map((tag) => (
                                 <button
@@ -618,7 +738,7 @@ export function SceneWizardPage() {
                                   type="button"
                                   className="vn-button px-2 py-1 text-xs"
                                   onClick={() => appendRecommendation(column.key, tag)}
-                                  disabled={Boolean(savingMode)}
+                                  disabled={Boolean(savingMode) || isTranslatingPromptColumns}
                                 >
                                   {tag}
                                 </button>
@@ -715,6 +835,17 @@ export function SceneWizardPage() {
 
                 <div className="vn-modal-footer">
                   <div className="flex flex-wrap gap-2">
+                    {activeSceneId ? (
+                      <button
+                        type="button"
+                        className="vn-danger-button inline-flex items-center gap-2 px-3 py-2 text-xs"
+                        onClick={() => void deleteScene()}
+                        disabled={!canDelete}
+                      >
+                        {isDeleting ? <span className="vn-spinner" aria-hidden="true" /> : null}
+                        {isDeleting ? '삭제 중' : 'Scene 삭제'}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       className="vn-button inline-flex items-center gap-2 px-3 py-2 text-xs"
