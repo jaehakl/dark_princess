@@ -644,7 +644,7 @@ export function SceneWizardPage() {
 
         <div className="vn-section-body">
           <div className="space-y-4">
-                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(21rem,0.36fr)] xl:items-start">
+                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(28rem,0.44fr)] xl:items-start">
                   <div className="min-w-0 space-y-4">
                     <label className="block space-y-2">
                       <span className="flex flex-wrap items-center justify-between gap-2">
@@ -793,7 +793,7 @@ export function SceneWizardPage() {
                           />
                         </label>
 
-                        <div className="dp-image-frame vn-scene-editor-image-frame">
+                        <div className="dp-image-frame vn-scene-editor-image-frame vn-scene-wizard-image-frame">
                           {seedImage ? (
                             <img src={seedImage.previewUrl} alt={composedPrompt || 'Seed image'} className="dp-image-media" />
                           ) : isPreparingSeedImage ? (

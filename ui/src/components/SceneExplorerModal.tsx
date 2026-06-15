@@ -222,6 +222,8 @@ export function SceneExplorerModal({
             <div className="vn-scene-grid">
               {visibleScenes.map((scene) => {
                 const isCurrentScene = scene.id && scene.id === currentScene?.id;
+                const scriptSummary = getScriptSummary(scene);
+                const sceneLabel = `Scene #${scene.id ?? '-'}`;
                 return (
                   <button
                     key={scene.id}
@@ -231,30 +233,19 @@ export function SceneExplorerModal({
                       isCurrentScene ? 'vn-scene-card-current' : '',
                     ].join(' ')}
                     onClick={() => onSelect(scene)}
+                    title={`${sceneLabel}\n${scriptSummary}`}
+                    aria-label={`${sceneLabel}: ${scriptSummary}`}
                   >
                     <div className="vn-scene-thumb">
                       {scene.image_url ? (
                         <img
                           src={scene.image_url}
-                          alt=""
+                          alt={sceneLabel}
                           className="dp-image-media"
                         />
                       ) : (
-                        <span>이미지 없음</span>
+                        null
                       )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="mb-2 flex items-center justify-between gap-2">
-                        <span className="text-xs font-semibold text-[var(--app-accent)]">
-                          Scene #{scene.id ?? '-'}
-                        </span>
-                        {isCurrentScene ? (
-                          <span className="text-xs font-semibold text-[#fff7ef]">
-                            현재
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className="vn-scene-script-summary">{getScriptSummary(scene)}</p>
                     </div>
                   </button>
                 );

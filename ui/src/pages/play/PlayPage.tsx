@@ -634,13 +634,13 @@ export function PlayPage() {
               </div>
             ) : null}
           </div>
-          <div className="vn-section-body">
+          <div className="vn-section-body vn-scene-image-body">
             <div className="dp-image-frame vn-scene-image-frame">
               {scene?.image_url ? (
                 <img
                   src={scene.image_url}
                   alt={scene.prompt}
-                  className="dp-image-media"
+                  className="dp-image-media vn-scene-image-media"
                 />
               ) : (
                 <div className="vn-scene-empty">
