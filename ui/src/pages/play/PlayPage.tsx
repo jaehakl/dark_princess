@@ -20,16 +20,24 @@ import {
   cx,
 } from '../../components/ui';
 
-const STATUS_FIELDS = [
+const HEADER_STATUS_FIELDS = [
   { key: 'turn', label: '턴' },
   { key: 'cash', label: '현금' },
+  { key: 'stress', label: '스트레스' },
+] as const;
+
+const CORE_STATUS_FIELDS = [
   { key: 'strength', label: '힘' },
   { key: 'agility', label: '민첩' },
   { key: 'intelligence', label: '지력' },
   { key: 'sense', label: '센스' },
   { key: 'attractiveness', label: '매력' },
   { key: 'toughness', label: '근성' },
-  { key: 'stress', label: '스트레스' },
+] as const;
+
+const STATUS_FIELDS = [
+  ...HEADER_STATUS_FIELDS,
+  ...CORE_STATUS_FIELDS,
 ] as const;
 
 type StatusNumberKey = (typeof STATUS_FIELDS)[number]['key'];
@@ -47,6 +55,10 @@ type ScriptLineState = {
 };
 
 const FEEDBACK_LEARN_RATE = 0.1;
+const STATUS_CHART_CENTER = 110;
+const STATUS_CHART_RADIUS = 68;
+const STATUS_CHART_LABEL_RADIUS = 95;
+const STATUS_CHART_LEVELS = [25, 50, 75, 100];
 
 function createListRequest(overrides: Partial<GetListRequest> = {}): GetListRequest {
   return {
@@ -73,6 +85,26 @@ function toScriptLines(script: string): string[] {
     .split(/\r\n|\r|\n/)
     .map((line) => line.trim())
     .filter(Boolean);
+}
+
+function clampStatusValue(value: number): number {
+  return Math.min(100, Math.max(0, value));
+}
+
+function getHexPoint(index: number, radius: number) {
+  const angle = -Math.PI / 2 + (index * 2 * Math.PI) / CORE_STATUS_FIELDS.length;
+  return {
+    x: STATUS_CHART_CENTER + Math.cos(angle) * radius,
+    y: STATUS_CHART_CENTER + Math.sin(angle) * radius,
+  };
+}
+
+function pointList(points: Array<{ x: number; y: number }>): string {
+  return points.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ');
+}
+
+function formatDelta(delta: number): string {
+  return delta > 0 ? `+${delta}` : String(delta);
 }
 
 function applyStatusChange(
@@ -149,6 +181,12 @@ export function PlayPage() {
   const canShowOptions = scriptLines.length === 0 || !canAdvanceScript;
   const canRerollScene =
     Boolean(pendingTransition && scene?.id === pendingTransition.targetSceneId && status?.id);
+  const coreStatusChartPoints = status
+    ? CORE_STATUS_FIELDS.map((field, index) =>
+        getHexPoint(index, STATUS_CHART_RADIUS * (clampStatusValue(status[field.key]) / 100)),
+      )
+    : [];
+  const coreStatusPolygon = pointList(coreStatusChartPoints);
 
   useEffect(() => {
     setCurrentScene(scene);
@@ -706,52 +744,168 @@ export function PlayPage() {
         </Panel>
 
         <Panel className="min-w-0 self-stretch">
-          <PanelHeader>
+          <PanelHeader className="flex-col items-stretch">
             <div className="min-w-0">
               <p className="text-[0.85rem] tracking-[0.16em] text-[var(--app-muted)] uppercase">Status</p>
               <h2 className="truncate text-lg font-semibold text-[#fff7ef]">
                 {status?.name ?? 'Status'}
               </h2>
             </div>
-            {status?.id ? (
-              <span className="text-xs font-semibold text-[var(--app-accent)]">
-                #{status.id}
-              </span>
-            ) : null}
-          </PanelHeader>
-          <SectionBody>
-            {isLoading ? (
-              <p className="text-sm text-[var(--app-muted)]">불러오는 중</p>
-            ) : status ? (
-              <div className="grid grid-cols-2 gap-3 max-[640px]:grid-cols-1">
-                {STATUS_FIELDS.map((field) => {
+            {status ? (
+              <div className="grid grid-cols-3 gap-2 max-[640px]:grid-cols-1">
+                {HEADER_STATUS_FIELDS.map((field) => {
                   const delta = deltas[field.key];
                   const hasDelta = typeof delta === 'number' && delta !== 0;
                   return (
                     <div
                       key={field.key}
                       className={cx(
-                        'relative min-h-[4.75rem] overflow-hidden rounded-[8px] border border-[rgba(255,208,222,0.24)] bg-[linear-gradient(135deg,rgba(255,229,238,0.1),transparent_58%),rgba(12,5,18,0.58)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]',
-                        hasDelta && 'animate-[status-pulse_1200ms_ease] border-[rgba(255,232,183,0.82)] shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_0_28px_rgba(240,179,95,0.28)]',
+                        'relative min-h-[4.5rem] overflow-hidden rounded-[8px] border p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]',
+                        field.key === 'stress'
+                          ? 'border-[rgba(255,133,165,0.48)] bg-[linear-gradient(145deg,rgba(232,90,135,0.25),transparent_58%),rgba(54,10,34,0.78)]'
+                          : field.key === 'cash'
+                            ? 'border-[rgba(255,224,170,0.5)] bg-[linear-gradient(145deg,rgba(240,179,95,0.28),transparent_56%),rgba(50,28,16,0.68)]'
+                            : 'border-[rgba(255,218,228,0.42)] bg-[linear-gradient(145deg,rgba(255,229,238,0.18),transparent_56%),rgba(34,12,44,0.72)]',
+                        hasDelta && 'animate-[status-pulse_1200ms_ease] border-[rgba(255,232,183,0.82)]',
                       )}
                     >
-                      <span className="block text-xs font-extrabold tracking-[0.08em] text-[#f1c4d0] uppercase">{field.label}</span>
-                      <span className="mt-1.5 block text-[1.45rem] leading-none font-extrabold text-[#fff7ef] [text-shadow:0_0_14px_rgba(255,196,214,0.28)]">{status[field.key]}</span>
+                      <span className="block text-[0.68rem] font-extrabold tracking-[0.12em] text-[#f1c4d0] uppercase">{field.label}</span>
+                      <span className="mt-1.5 block text-[1.55rem] leading-none font-black text-[#fff7ef] [text-shadow:0_0_14px_rgba(255,196,214,0.28)]">
+                        {status[field.key]}
+                      </span>
                       {hasDelta ? (
                         <span
                           className={cx(
-                            'absolute right-2.5 bottom-2.5 rounded-full px-2 py-0.5 text-[0.78rem] leading-tight font-black',
+                            'absolute right-2.5 bottom-2.5 rounded-full px-2 py-0.5 text-[0.72rem] leading-tight font-black',
                             delta > 0
                               ? 'bg-[rgba(126,231,172,0.16)] text-[#a9f5c6]'
                               : 'bg-[rgba(255,133,165,0.16)] text-[#ff9ab8]',
                           )}
                         >
-                          {delta > 0 ? `+${delta}` : delta}
+                          {formatDelta(delta)}
                         </span>
                       ) : null}
                     </div>
                   );
                 })}
+              </div>
+            ) : null}
+          </PanelHeader>
+          <SectionBody>
+            {isLoading ? (
+              <p className="text-sm text-[var(--app-muted)]">불러오는 중</p>
+            ) : status ? (
+              <div className="grid gap-4">
+                <div className="relative mx-auto w-full max-w-[24rem]">
+                  <svg
+                    viewBox="0 0 220 220"
+                    role="img"
+                    aria-label="핵심 상태 육각형 차트"
+                    className="block h-auto w-full overflow-visible"
+                  >
+                    <defs>
+                      <radialGradient id="status-chart-fill" cx="50%" cy="50%" r="58%">
+                        <stop offset="0%" stopColor="rgba(255,232,183,0.62)" />
+                        <stop offset="100%" stopColor="rgba(232,90,135,0.34)" />
+                      </radialGradient>
+                    </defs>
+                    {STATUS_CHART_LEVELS.map((level) => (
+                      <polygon
+                        key={level}
+                        points={pointList(
+                          CORE_STATUS_FIELDS.map((_field, index) =>
+                            getHexPoint(index, STATUS_CHART_RADIUS * (level / 100)),
+                          ),
+                        )}
+                        fill="none"
+                        stroke={level === 100 ? 'rgba(255,222,187,0.46)' : 'rgba(255,196,214,0.2)'}
+                        strokeWidth={level === 100 ? 1.2 : 0.8}
+                      />
+                    ))}
+                    {CORE_STATUS_FIELDS.map((field, index) => {
+                      const edgePoint = getHexPoint(index, STATUS_CHART_RADIUS);
+                      return (
+                        <line
+                          key={field.key}
+                          x1={STATUS_CHART_CENTER}
+                          y1={STATUS_CHART_CENTER}
+                          x2={edgePoint.x}
+                          y2={edgePoint.y}
+                          stroke="rgba(255,196,214,0.18)"
+                          strokeWidth="0.8"
+                        />
+                      );
+                    })}
+                    <polygon
+                      points={coreStatusPolygon}
+                      fill="url(#status-chart-fill)"
+                      stroke="rgba(255,239,214,0.92)"
+                      strokeWidth="2"
+                      strokeLinejoin="round"
+                    />
+                    {coreStatusChartPoints.map((point, index) => (
+                      <circle
+                        key={CORE_STATUS_FIELDS[index].key}
+                        cx={point.x}
+                        cy={point.y}
+                        r="3"
+                        fill="#fff7ef"
+                        stroke="rgba(232,90,135,0.82)"
+                        strokeWidth="1.5"
+                      />
+                    ))}
+                    {CORE_STATUS_FIELDS.map((field, index) => {
+                      const labelPoint = getHexPoint(index, STATUS_CHART_LABEL_RADIUS);
+                      const delta = deltas[field.key];
+                      const hasDelta = typeof delta === 'number' && delta !== 0;
+                      const textAnchor =
+                        labelPoint.x < STATUS_CHART_CENTER - 8
+                          ? 'end'
+                          : labelPoint.x > STATUS_CHART_CENTER + 8
+                            ? 'start'
+                            : 'middle';
+                      const labelY =
+                        labelPoint.y > STATUS_CHART_CENTER + 8
+                          ? labelPoint.y - 10
+                          : labelPoint.y < STATUS_CHART_CENTER - 8
+                            ? labelPoint.y + 2
+                            : labelPoint.y;
+                      return (
+                        <g key={field.key}>
+                          <text
+                            x={labelPoint.x}
+                            y={labelY}
+                            textAnchor={textAnchor}
+                            className="fill-[#f1c4d0] text-[8px] font-black tracking-[0.08em]"
+                          >
+                            {field.label}
+                          </text>
+                          <text
+                            x={labelPoint.x}
+                            y={labelY + 11}
+                            textAnchor={textAnchor}
+                            className="fill-[#fff7ef] text-[10px] font-black"
+                          >
+                            {status[field.key]}
+                          </text>
+                          {hasDelta ? (
+                            <text
+                              x={labelPoint.x}
+                              y={labelY + 22}
+                              textAnchor={textAnchor}
+                              className={cx(
+                                'text-[7px] font-black',
+                                delta > 0 ? 'fill-[#a9f5c6]' : 'fill-[#ff9ab8]',
+                              )}
+                            >
+                              {formatDelta(delta)}
+                            </text>
+                          ) : null}
+                        </g>
+                      );
+                    })}
+                  </svg>
+                </div>
               </div>
             ) : (
               <p className="text-sm text-[#ff9ab8]">Status를 표시할 수 없습니다.</p>
