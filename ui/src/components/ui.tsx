@@ -6,6 +6,7 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from 'react';
+import { createPortal } from 'react-dom';
 
 export function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
@@ -86,19 +87,33 @@ export function SectionBody({ className, ...props }: HTMLAttributes<HTMLDivEleme
 
 type ModalBackdropProps = HTMLAttributes<HTMLDivElement> & {
   nested?: boolean;
+  topAligned?: boolean;
+  blurred?: boolean;
 };
 
-export function ModalBackdrop({ className, nested = false, ...props }: ModalBackdropProps) {
-  return (
+export function ModalBackdrop({
+  className,
+  nested = false,
+  topAligned,
+  blurred = true,
+  ...props
+}: ModalBackdropProps) {
+  const shouldTopAlign = topAligned ?? nested;
+
+  const backdrop = (
     <div
       className={cx(
-        'fixed inset-0 grid place-items-center p-4 backdrop-blur-[10px]',
+        'fixed inset-0 grid max-h-[100dvh] min-h-[100dvh] overflow-y-auto overscroll-contain px-4 py-6',
+        shouldTopAlign ? 'items-start justify-items-center' : 'place-items-center',
+        blurred && 'backdrop-blur-[10px]',
         nested ? 'z-[70] bg-[rgba(5,0,10,0.62)]' : 'z-50 bg-[rgba(5,0,10,0.72)]',
         className,
       )}
       {...props}
     />
   );
+
+  return createPortal(backdrop, document.body);
 }
 
 type FieldLabelProps = LabelHTMLAttributes<HTMLLabelElement> & {

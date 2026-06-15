@@ -20,7 +20,7 @@ export function SceneExplorerModal({
   return (
     <ModalBackdrop role="presentation">
       <Panel
-        className="max-h-[min(48rem,calc(100vh-2rem))] w-[min(96rem,calc(100vw-2rem))] overflow-y-auto"
+        className="max-h-[min(48rem,calc(100dvh-3rem))] w-[min(96rem,calc(100vw-2rem))] overflow-y-auto"
         role="dialog"
         aria-modal="true"
         aria-labelledby="scene-explorer-title"

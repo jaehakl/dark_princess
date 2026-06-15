@@ -28,6 +28,7 @@ import {
   PanelHeader,
   SectionBody,
   Spinner,
+  cx,
 } from './ui';
 
 const PROMPT_COLUMNS = [
@@ -67,15 +68,17 @@ const FETCH_SCENE_BY_ID_REQUEST: GetListRequest = {
 };
 
 type SaveMode =
-  | 'existing-text'
-  | 'existing-image'
-  | 'new-image';
+  | 'text'
+  | 'image';
 
 type SceneEditComponentProps = {
   sceneId: number | null;
   initialScene: SceneRecord;
   onSaved: (sceneId: number) => void;
   onDeleted?: (sceneId: number) => void;
+  onClose?: () => void;
+  onDuplicate?: (scene: SceneRecord) => void;
+  modalLayout?: boolean;
 };
 
 function getErrorMessage(error: unknown) {
@@ -101,11 +104,20 @@ function normalizeStatusChange(statusChange: Record<string, unknown> | undefined
     : { ...DEFAULT_STATUS_CHANGE };
 }
 
+function confirmAction(message: string, action: () => void) {
+  if (window.confirm(message)) {
+    action();
+  }
+}
+
 export function SceneEditComponent({
   sceneId,
   initialScene,
   onSaved,
   onDeleted,
+  onClose,
+  onDuplicate,
+  modalLayout = false,
 }: SceneEditComponentProps) {
   const [activeScene, setActiveScene] = useState<SceneRecord | null>(initialScene);
   const [isLoadingScene, setIsLoadingScene] = useState(false);
@@ -149,13 +161,12 @@ export function SceneEditComponent({
   const canEdit = Boolean(activeScene);
   const canSaveText = canEdit && composedPrompt.length > 0 && !isBusy;
   const canDelete = sceneId !== null && !isBusy;
-  const canSaveExisting = canSaveText && sceneId !== null;
   const canSaveImage = canSaveText && Boolean(seedImage) && !isPreparingSeedImage && Boolean(imageSettings);
-  const canSaveExistingImage = canSaveImage && sceneId !== null;
   const canRefreshRecommendations =
     canEdit && script.trim().length > 0 && !isRecommending && !isTranslatingPromptColumns && !savingMode;
   const canTranslatePromptColumns =
     canEdit && !isBusy && PROMPT_COLUMNS.some((column) => translationDraft[column.key].trim().length > 0);
+  const canDuplicate = Boolean(modalLayout && onDuplicate && sceneId !== null && canEdit && !isBusy);
   const imageWidth = imageSettings?.width;
   const imageHeight = imageSettings?.height;
   const selectedLabel = sceneId === null
@@ -548,17 +559,12 @@ export function SceneEditComponent({
   }
 
   async function saveScene(mode: SaveMode) {
-    const isNewSave = mode.startsWith('new');
-    const isImageSave = mode.endsWith('image');
-    const targetSceneId = isNewSave ? null : sceneId;
+    const isImageSave = mode === 'image';
+    const targetSceneId = sceneId ?? null;
     const trimmedPrompt = composedPrompt.trim();
 
     if (!trimmedPrompt) {
       setError('프롬프트 항목을 하나 이상 입력해 주세요.');
-      return;
-    }
-    if (!isNewSave && targetSceneId === null) {
-      setError('기존 데이터에 저장할 Scene ID가 없습니다.');
       return;
     }
 
@@ -573,53 +579,35 @@ export function SceneEditComponent({
         detail: promptDraft.detail.trim() || null,
       };
 
+      const payload: GenerateSceneRequest = {
+        scene_id: targetSceneId,
+        prompt: trimmedPrompt,
+        script,
+        status_change: statusChange,
+        generate_image: isImageSave,
+        ...sceneColumns,
+      };
+      const formData = new FormData();
+      formData.append('payload', JSON.stringify(
+        isImageSave
+          ? { ...payload, image_settings: imageSettings }
+          : payload,
+      ));
+
       if (isImageSave) {
         if (!seedImage) {
           throw new Error(seedImageError ?? 'seed image를 준비해 주세요.');
         }
 
-        const payload: GenerateSceneRequest = {
-          scene_id: targetSceneId,
-          prompt: trimmedPrompt,
-          script,
-          status_change: statusChange,
-          generate_image: true,
-          image_settings: imageSettings,
-          ...sceneColumns,
-        };
-        const formData = new FormData();
-        formData.append('payload', JSON.stringify(payload));
         formData.append('seed_image', seedImage.blob, `scene-wizard-seed-${seedImage.source}.png`);
-        const savedScene = await dbTables.Scene.generateScene(formData);
-        const savedSceneId = savedScene.id;
-        if (!savedSceneId) {
-          throw new Error('Scene 저장 결과를 확인할 수 없습니다.');
-        }
-
-        applySceneDraft(savedScene);
-        onSaved(savedSceneId);
-        return;
       }
 
-      const row: SceneRecord = {
-        ...(targetSceneId ? { id: targetSceneId } : {}),
-        prompt: trimmedPrompt,
-        image_url: activeScene?.image_url ?? null,
-        script,
-        status_change: statusChange,
-        ...sceneColumns,
-      };
-      const response = await dbTables.Scene.upsertRow([row]);
-      const savedSceneId = response[0]?.id;
+      const savedScene = await dbTables.Scene.generateScene(formData);
+      const savedSceneId = savedScene.id;
       if (!savedSceneId) {
         throw new Error('Scene 저장 결과를 확인할 수 없습니다.');
       }
 
-      const sceneResponse = await dbTables.Scene.listRows({
-        ...FETCH_SCENE_BY_ID_REQUEST,
-        selected_ids: [savedSceneId],
-      });
-      const savedScene = sceneResponse.items[0] ?? { ...row, id: savedSceneId };
       applySceneDraft(savedScene);
       onSaved(savedSceneId);
     } catch (saveError) {
@@ -654,17 +642,110 @@ export function SceneEditComponent({
     }
   }
 
+  function duplicateScene() {
+    if (!onDuplicate || !activeScene) {
+      return;
+    }
+
+    onDuplicate({
+      id: null,
+      prompt: composedPrompt,
+      image_url: activeScene.image_url ?? null,
+      script,
+      status_change: { ...statusChange },
+      background: promptDraft.background,
+      subject: promptDraft.subject,
+      object: promptDraft.object,
+      action: promptDraft.action,
+      detail: promptDraft.detail,
+    });
+  }
+
   return (
     <>
-      <Panel className="min-h-[calc(100vh-10rem)]">
-        <PanelHeader>
+      <Panel
+        className={cx(
+          modalLayout
+            ? 'max-h-[calc(100dvh-3rem)] w-[min(96rem,calc(100vw-2rem))] overflow-y-auto'
+            : 'min-h-[calc(100vh-10rem)]',
+        )}
+        role={modalLayout ? 'dialog' : undefined}
+        aria-modal={modalLayout ? true : undefined}
+        aria-labelledby={modalLayout ? 'scene-edit-modal-title' : undefined}
+      >
+        <PanelHeader className="flex-wrap items-start">
           <div className="min-w-0">
             <p className="text-[0.85rem] tracking-[0.16em] text-[var(--app-muted)] uppercase">Scene edit</p>
-            <h2 className="truncate text-base font-semibold text-[#fff7ef]">{selectedLabel}</h2>
+            <h2
+              id={modalLayout ? 'scene-edit-modal-title' : undefined}
+              className="truncate text-base font-semibold text-[#fff7ef]"
+            >
+              {selectedLabel}
+            </h2>
           </div>
-          <Button className="px-3 py-2 text-xs" onClick={openImageSettings} disabled={!imageSettings || isBusy}>
-            이미지 설정
-          </Button>
+          <div className="flex min-w-0 flex-1 flex-wrap justify-end gap-2">
+            {sceneId !== null ? (
+              <Button
+                variant="danger"
+                className="inline-flex items-center gap-2 !border-red-400 !bg-red-700 px-3 py-2 text-xs !text-white hover:enabled:!border-red-300 hover:enabled:!bg-red-600"
+                onClick={() => void deleteScene()}
+                disabled={!canDelete}
+              >
+                {isDeleting ? <Spinner aria-hidden="true" /> : null}
+                {isDeleting ? '삭제 중' : '삭제'}
+              </Button>
+            ) : null}
+            {modalLayout && onDuplicate && sceneId !== null ? (
+              <Button
+                className="inline-flex items-center gap-2 px-3 py-2 text-xs"
+                onClick={() => confirmAction('현재 입력값으로 새 장면 편집을 세팅할까요?', duplicateScene)}
+                disabled={!canDuplicate}
+              >
+                장면 복제
+              </Button>
+            ) : null}
+            <Button
+              className="inline-flex items-center gap-2 px-3 py-2 text-xs"
+              onClick={() =>
+                confirmAction('텍스트만 저장할까요?', () => {
+                  void saveScene('text');
+                })}
+              disabled={!canSaveText}
+            >
+              {savingMode === 'text' ? <Spinner aria-hidden="true" /> : null}
+              텍스트만 저장
+            </Button>
+            <Button
+              className="inline-flex items-center gap-2 px-3 py-2 text-xs"
+              onClick={() =>
+                confirmAction('이미지 생성 결과를 저장할까요?', () => {
+                  void saveScene('image');
+                })}
+              disabled={!canSaveImage}
+            >
+              {savingMode === 'image' ? <Spinner aria-hidden="true" /> : null}
+              이미지 생성 저장
+            </Button>
+            <Button
+              className="px-3 py-2 text-base leading-none"
+              onClick={openImageSettings}
+              disabled={!imageSettings || isBusy}
+              aria-label="이미지 설정"
+              title="이미지 설정"
+            >
+              ⚙️
+            </Button>
+            {modalLayout && onClose ? (
+              <Button
+                variant="danger"
+                className="px-3 py-2 text-xs"
+                onClick={onClose}
+                disabled={isBusy}
+              >
+                닫기
+              </Button>
+            ) : null}
+          </div>
         </PanelHeader>
 
         <SectionBody>
@@ -854,57 +935,14 @@ export function SceneEditComponent({
             {error ? (
               <p className="text-sm font-semibold text-[#ff9ab8]">{error}</p>
             ) : null}
-
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--app-border)] pt-4">
-              <div className="flex flex-wrap gap-2">
-                {sceneId !== null ? (
-                  <Button
-                    variant="danger"
-                    className="inline-flex items-center gap-2 px-3 py-2 text-xs"
-                    onClick={() => void deleteScene()}
-                    disabled={!canDelete}
-                  >
-                    {isDeleting ? <Spinner aria-hidden="true" /> : null}
-                    {isDeleting ? '삭제 중' : 'Scene 삭제'}
-                  </Button>
-                ) : null}
-                <Button
-                  className="inline-flex items-center gap-2 px-3 py-2 text-xs"
-                  onClick={() => void saveScene('existing-text')}
-                  disabled={!canSaveExisting}
-                >
-                  {savingMode === 'existing-text' ? <Spinner aria-hidden="true" /> : null}
-                  기존 데이터에 텍스트 저장
-                </Button>
-                <Button
-                  className="inline-flex items-center gap-2 px-3 py-2 text-xs"
-                  onClick={() => void saveScene('existing-image')}
-                  disabled={!canSaveExistingImage}
-                >
-                  {savingMode === 'existing-image' ? <Spinner aria-hidden="true" /> : null}
-                  기존 데이터 이미지 생성 저장
-                </Button>
-              </div>
-              <div className="ml-auto flex flex-wrap justify-end gap-2">
-                <Button
-                  variant="primary"
-                  className="inline-flex items-center gap-2 px-3 py-2 text-xs"
-                  onClick={() => void saveScene('new-image')}
-                  disabled={!canSaveImage}
-                >
-                  {savingMode === 'new-image' ? <Spinner aria-hidden="true" /> : null}
-                  새 데이터 이미지 생성 저장
-                </Button>
-              </div>
-            </div>
           </div>
         </SectionBody>
       </Panel>
 
       {isImageSettingsOpen && imageSettingsDraft ? (
-        <ModalBackdrop role="presentation">
+        <ModalBackdrop nested={modalLayout} role="presentation">
           <Panel
-            className="max-h-[min(46rem,calc(100vh-2rem))] w-[min(48rem,100%)] overflow-y-auto"
+            className="max-h-[min(46rem,calc(100dvh-3rem))] w-[min(48rem,100%)] overflow-y-auto"
             role="dialog"
             aria-modal="true"
             aria-labelledby="wizard-image-settings-title"

@@ -92,11 +92,6 @@ async def generate_scene(
     prompt = request.prompt.strip()
     if not prompt:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scene prompt is required")
-    if request.scene_id is None and not request.generate_image:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="new scene requires image generation",
-        )
     if request.generate_image and seed_image is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="seed image is required")
 

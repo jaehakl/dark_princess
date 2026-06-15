@@ -519,7 +519,7 @@ export function SceneEditorModal({
   return (
     <ModalBackdrop role="presentation">
       <Panel
-        className="max-h-[calc(100vh-1.5rem)] w-[min(76rem,100%)] overflow-y-auto"
+        className="max-h-[calc(100dvh-3rem)] w-[min(76rem,100%)] overflow-y-auto"
         role="dialog"
         aria-modal="true"
         aria-labelledby="scene-editor-title"
@@ -779,7 +779,7 @@ export function SceneEditorModal({
       {isImageSettingsOpen && imageSettingsDraft ? (
         <ModalBackdrop nested role="presentation">
           <Panel
-            className="max-h-[min(46rem,calc(100vh-2rem))] w-[min(48rem,100%)] overflow-y-auto"
+            className="max-h-[min(46rem,calc(100dvh-3rem))] w-[min(48rem,100%)] overflow-y-auto"
             role="dialog"
             aria-modal="true"
             aria-labelledby="image-settings-title"

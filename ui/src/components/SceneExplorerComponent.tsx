@@ -144,17 +144,19 @@ export function SceneExplorerComponent({
   return (
     <SectionBody className="space-y-4">
       <form
-        className="flex flex-col gap-2 sm:flex-row sm:items-center"
+        className="flex flex-col gap-3"
         onSubmit={(event) => {
           event.preventDefault();
           void searchSimilarScenes();
         }}
       >
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="mx-auto flex w-full max-w-2xl min-w-0 flex-col gap-1">
           <FormControl
+            as="textarea"
+            rows={5}
             value={searchText}
             onChange={(event) => setSearchText(event.target.value)}
-            className="h-11 min-w-0 px-3"
+            className="min-h-[8.75rem] w-full min-w-0 resize-y rounded-none px-3 py-2 text-sm leading-5"
             placeholder="시멘틱 검색할 장면 텍스트"
           />
           {isSemanticSearch ? (
@@ -163,7 +165,7 @@ export function SceneExplorerComponent({
             </span>
           ) : null}
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center justify-center gap-2">
           <Button
             type="submit"
             variant="primary"
@@ -181,10 +183,10 @@ export function SceneExplorerComponent({
               목록으로
             </Button>
           ) : null}
+          <span className="text-xs font-semibold text-[var(--app-muted)]">
+            {visibleScenes.length} / {totalRows}
+          </span>
         </div>
-        <span className="shrink-0 text-xs font-semibold text-[var(--app-muted)]">
-          {visibleScenes.length} / {totalRows}
-        </span>
       </form>
 
       {isLoading ? (

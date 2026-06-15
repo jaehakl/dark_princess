@@ -106,7 +106,7 @@ export function SceneOptionEditorModal({
   return (
     <ModalBackdrop role="presentation">
       <Panel
-        className="max-h-[min(34rem,calc(100vh-2rem))] w-[min(34rem,100%)] overflow-y-auto"
+        className="max-h-[min(34rem,calc(100dvh-3rem))] w-[min(34rem,100%)] overflow-y-auto"
         role="dialog"
         aria-modal="true"
         aria-labelledby="scene-option-editor-title"

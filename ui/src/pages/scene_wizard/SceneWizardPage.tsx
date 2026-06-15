@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useState } from 'react';
 import { useSceneStore } from '../../api/store';
 import type { SceneRecord } from '../../api/type';
-import { SceneEditComponent } from '../../components/SceneEditComponent';
-import { Button } from '../../components/ui';
+import { SceneEditModal } from '../../components/SceneEditModal';
+import { SceneExplorerComponent } from '../../components/SceneExplorerComponent';
+import { Button, Panel } from '../../components/ui';
 
 const EMPTY_INITIAL_SCENE: SceneRecord = {
   id: null,
@@ -17,63 +18,93 @@ const EMPTY_INITIAL_SCENE: SceneRecord = {
   detail: null,
 };
 
+function createEmptyInitialScene(): SceneRecord {
+  return {
+    ...EMPTY_INITIAL_SCENE,
+    status_change: { ...EMPTY_INITIAL_SCENE.status_change },
+  };
+}
+
+function createDuplicateInitialScene(scene: SceneRecord): SceneRecord {
+  return {
+    ...scene,
+    id: null,
+    status_change: { ...scene.status_change },
+  };
+}
+
 export function SceneWizardPage() {
-  const selectedScene = useSceneStore((state) => state.selectedScene);
   const handleSceneDeleted = useSceneStore((state) => state.handleSceneDeleted);
-  const lastAppliedSelectedSceneRef = useRef<SceneRecord | null>(selectedScene);
-  const [sceneId, setSceneId] = useState<number | null>(selectedScene?.id ?? null);
-  const initialScene = useMemo(
-    () => ({
-      ...EMPTY_INITIAL_SCENE,
-      status_change: { ...EMPTY_INITIAL_SCENE.status_change },
-    }),
-    [],
-  );
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [sceneId, setSceneId] = useState<number | null>(null);
+  const [initialScene, setInitialScene] = useState<SceneRecord>(() => createEmptyInitialScene());
+  const [explorerReloadKey, setExplorerReloadKey] = useState(0);
 
-  useEffect(() => {
-    if (
-      !selectedScene?.id ||
-      selectedScene === lastAppliedSelectedSceneRef.current ||
-      selectedScene.id === sceneId
-    ) {
-      return;
-    }
+  function refreshExplorer() {
+    setExplorerReloadKey((current) => current + 1);
+  }
 
-    lastAppliedSelectedSceneRef.current = selectedScene;
-    setSceneId(selectedScene.id);
-  }, [sceneId, selectedScene]);
-
-  function startFreshScene() {
+  function openNewScene() {
     setSceneId(null);
+    setInitialScene(createEmptyInitialScene());
+    setIsEditorOpen(true);
+  }
+
+  function openExistingScene(selectedSceneId: number) {
+    setSceneId(selectedSceneId);
+    setInitialScene(createEmptyInitialScene());
+    setIsEditorOpen(true);
+  }
+
+  function closeEditor() {
+    setIsEditorOpen(false);
   }
 
   function handleSaved(savedSceneId: number) {
     setSceneId(savedSceneId);
+    refreshExplorer();
   }
 
   function handleDeleted(deletedSceneId: number) {
     handleSceneDeleted(deletedSceneId);
     setSceneId(null);
+    setInitialScene(createEmptyInitialScene());
+    setIsEditorOpen(false);
+    refreshExplorer();
+  }
+
+  function handleDuplicate(scene: SceneRecord) {
+    setSceneId(null);
+    setInitialScene(createDuplicateInitialScene(scene));
+    setIsEditorOpen(true);
   }
 
   return (
-    <div className="relative left-1/2 w-[min(1840px,calc(100vw-36px))] -translate-x-1/2 space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3 px-1">
-        <div className="min-w-0">
-          <p className="text-[0.85rem] tracking-[0.16em] text-[var(--app-muted)] uppercase">Scene wizard</p>
-          <h1 className="text-[clamp(1.25rem,2vw,2.2rem)] leading-[1.05] font-extrabold tracking-[0.02em] text-[#fff7ef] [text-shadow:0_0_22px_rgba(255,194,211,0.42),0_2px_12px_rgba(0,0,0,0.58)]">Scene Wizard</h1>
-        </div>
-        <Button className="px-3 py-2 text-xs" onClick={startFreshScene}>
+    <div className="relative left-1/2 w-[min(1840px,calc(100vw-36px))] -translate-x-1/2 space-y-4">
+      <div className="flex justify-end px-1">
+        <Button className="px-4 py-2 text-xs" onClick={openNewScene}>
           새 Scene 생성
         </Button>
       </div>
 
-      <SceneEditComponent
-        sceneId={sceneId}
-        initialScene={initialScene}
-        onSaved={handleSaved}
-        onDeleted={handleDeleted}
-      />
+      <Panel className="min-h-[calc(100vh-10rem)]">
+        <SceneExplorerComponent
+          key={explorerReloadKey}
+          currentSceneId={isEditorOpen ? sceneId : null}
+          onSelect={openExistingScene}
+        />
+      </Panel>
+
+      {isEditorOpen ? (
+        <SceneEditModal
+          sceneId={sceneId}
+          initialScene={initialScene}
+          onClose={closeEditor}
+          onSaved={handleSaved}
+          onDeleted={handleDeleted}
+          onDuplicate={handleDuplicate}
+        />
+      ) : null}
     </div>
   );
 }
