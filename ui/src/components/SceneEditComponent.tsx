@@ -718,7 +718,7 @@ export function SceneEditComponent({
             <Button
               className="inline-flex items-center gap-2 px-3 py-2 text-xs"
               onClick={() =>
-                confirmAction('이미지 생성 결과를 저장할까요?', () => {
+                confirmAction('저장하고 이미지를 새로 생성할까요?', () => {
                   void saveScene('image');
                 })}
               disabled={!canSaveImage}

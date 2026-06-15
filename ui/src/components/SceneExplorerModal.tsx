@@ -20,7 +20,7 @@ export function SceneExplorerModal({
   return (
     <ModalBackdrop role="presentation">
       <Panel
-        className="max-h-[min(48rem,calc(100dvh-3rem))] w-[min(96rem,calc(100vw-2rem))] overflow-y-auto"
+        className="flex h-[calc(100dvh-3rem)] w-[min(96rem,calc(100vw-2rem))] flex-col overflow-hidden"
         role="dialog"
         aria-modal="true"
         aria-labelledby="scene-explorer-title"
@@ -44,10 +44,12 @@ export function SceneExplorerModal({
           </Button>
         </PanelHeader>
 
-        <SceneExplorerComponent
-          currentSceneId={currentSceneId}
-          onSelect={onSelect}
-        />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <SceneExplorerComponent
+            currentSceneId={currentSceneId}
+            onSelect={onSelect}
+          />
+        </div>
       </Panel>
     </ModalBackdrop>
   );

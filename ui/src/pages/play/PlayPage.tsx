@@ -119,7 +119,8 @@ export function PlayPage() {
   const [pendingTransition, setPendingTransition] = useState<PendingTransition | null>(null);
   const [editingOption, setEditingOption] = useState<SceneOptionRecord | null>(null);
   const [isOptionEditorOpen, setIsOptionEditorOpen] = useState(false);
-  const [isCurrentSceneEditorOpen, setIsCurrentSceneEditorOpen] = useState(false);
+  const [currentSceneEditorSceneId, setCurrentSceneEditorSceneId] = useState<number | null>(null);
+  const [currentSceneEditorInitialScene, setCurrentSceneEditorInitialScene] = useState<SceneRecord | null>(null);
   const [isSceneExplorerOpen, setIsSceneExplorerOpen] = useState(false);
   const [isSceneEditorOpen, setIsSceneEditorOpen] = useState(false);
   const [createdReplacementScene, setCreatedReplacementScene] = useState<SceneRecord | null>(null);
@@ -369,14 +370,16 @@ export function PlayPage() {
   }
 
   function openCurrentSceneEditor() {
-    if (!currentSceneId || isAdvancing) {
+    if (!scene || !currentSceneId || isAdvancing) {
       return;
     }
-    setIsCurrentSceneEditorOpen(true);
+    setCurrentSceneEditorSceneId(currentSceneId);
+    setCurrentSceneEditorInitialScene(scene);
   }
 
   function closeCurrentSceneEditor() {
-    setIsCurrentSceneEditorOpen(false);
+    setCurrentSceneEditorSceneId(null);
+    setCurrentSceneEditorInitialScene(null);
   }
 
   async function handleCurrentSceneSaved(savedSceneId: number) {
@@ -396,13 +399,24 @@ export function PlayPage() {
       setScene(savedScene);
       setCurrentScene(savedScene);
       setPendingTransition(null);
+      setCurrentSceneEditorSceneId(savedSceneId);
+      setCurrentSceneEditorInitialScene(savedScene);
     } catch (saveError) {
       setError(getErrorMessage(saveError));
     }
   }
 
+  function handleCurrentSceneDuplicate(sceneDraft: SceneRecord) {
+    setCurrentSceneEditorSceneId(null);
+    setCurrentSceneEditorInitialScene({
+      ...sceneDraft,
+      id: null,
+      status_change: { ...sceneDraft.status_change },
+    });
+  }
+
   function handleCurrentSceneDeleted(deletedSceneId: number) {
-    setIsCurrentSceneEditorOpen(false);
+    closeCurrentSceneEditor();
     handleSceneDeleted(deletedSceneId);
   }
 
@@ -865,13 +879,14 @@ export function PlayPage() {
         </Panel>
       </div>
 
-      {isCurrentSceneEditorOpen && scene ? (
+      {currentSceneEditorInitialScene ? (
         <SceneEditModal
-          sceneId={currentSceneId}
-          initialScene={scene}
+          sceneId={currentSceneEditorSceneId}
+          initialScene={currentSceneEditorInitialScene}
           onClose={closeCurrentSceneEditor}
           onSaved={(sceneId) => void handleCurrentSceneSaved(sceneId)}
           onDeleted={handleCurrentSceneDeleted}
+          onDuplicate={handleCurrentSceneDuplicate}
         />
       ) : null}
 
