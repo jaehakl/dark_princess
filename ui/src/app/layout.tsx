@@ -1,5 +1,7 @@
 import { Link, Outlet, useMatches } from 'react-router-dom';
+import { dbTables } from '../api/api';
 import { useSceneStore } from '../api/store';
+import type { GetListRequest } from '../api/type';
 import { SceneEditorModal } from '../components/SceneEditorModal';
 import { SceneExplorerModal } from '../components/SceneExplorerModal';
 import { Button, cx } from '../components/ui';
@@ -7,6 +9,16 @@ import { Button, cx } from '../components/ui';
 type RouteHandle = {
   breadcrumb?: string;
   pageTitle?: string;
+};
+
+const FETCH_SCENE_BY_ID_REQUEST: GetListRequest = {
+  offset: 0,
+  limit: 1,
+  selected_ids: [],
+  search_text: null,
+  text_filter: {},
+  filter: {},
+  sort: null,
 };
 
 export function AppLayout() {
@@ -39,6 +51,21 @@ export function AppLayout() {
 
   if (!breadcrumbs.length) {
     breadcrumbs = [currentPageTitle];
+  }
+
+  async function handleSceneExplorerSelect(sceneId: number) {
+    try {
+      const sceneResponse = await dbTables.Scene.listRows({
+        ...FETCH_SCENE_BY_ID_REQUEST,
+        selected_ids: [sceneId],
+      });
+      const scene = sceneResponse.items[0];
+      if (scene) {
+        selectScene(scene);
+      }
+    } catch (error) {
+      console.error('Failed to select scene from explorer.', error);
+    }
   }
 
   return (
@@ -114,9 +141,9 @@ export function AppLayout() {
 
       {isSceneExplorerOpen ? (
         <SceneExplorerModal
-          currentScene={currentScene}
+          currentSceneId={currentScene?.id ?? null}
           onClose={closeSceneExplorer}
-          onSelect={selectScene}
+          onSelect={(sceneId) => void handleSceneExplorerSelect(sceneId)}
         />
       ) : null}
     </div>
