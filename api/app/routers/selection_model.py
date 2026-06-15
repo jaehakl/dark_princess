@@ -75,7 +75,7 @@ async def api_get_next_scene(
         db,
         scene_id=request.scene_id,
         status_id=request.status_id,
-        scene_option_id=request.scene_option_id,
+        option_text=request.option_text,
     )
     return SceneBase(
         id=next_scene.id,

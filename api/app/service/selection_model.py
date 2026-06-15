@@ -10,8 +10,9 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db import Scene, SceneOption, SelectionModel, Status
+from db import Scene, SelectionModel, Status
 from models import AdjustSelectionModelRequestBase, GenerateSelectionModelRequestBase
+from service.scene_option import make_scene_option_embedding
 from utils.local_storage import build_object_key, delete_object, get_object_path, object_key_from_public_url, public_file_url, upload_fileobj
 from utils.model_runtime import predict_target_scene_embedding as predict_target_scene_embedding_cached
 from utils.model_runtime import update_selection_model
@@ -119,11 +120,7 @@ async def adjust_selection_model(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="target scene not found")
 
     scene_embedding = await load_optional_scene_embedding(db, request.scene_id)
-    option_embedding = await load_optional_scene_option_embedding(
-        db,
-        request.scene_option_id,
-        request.scene_id,
-    )
+    option_embedding = await make_optional_option_text_embedding(request.option_text)
     context_embedding = (
         validate_embedding(current_status.context_embedding, "status.context_embedding")
         if current_status.context_embedding is not None
@@ -166,7 +163,7 @@ async def get_next_scene(
     db: AsyncSession,
     scene_id: int | None,
     status_id: int,
-    scene_option_id: int | None,
+    option_text: str,
 ) -> Scene:
     current_status = await db.get(Status, status_id)
     if current_status is None:
@@ -185,7 +182,7 @@ async def get_next_scene(
         )
 
     scene_embedding = await load_optional_scene_embedding(db, scene_id)
-    option_embedding = await load_optional_scene_option_embedding(db, scene_option_id, scene_id)
+    option_embedding = await make_optional_option_text_embedding(option_text)
     context_embedding = (
         validate_embedding(current_status.context_embedding, "status.context_embedding")
         if current_status.context_embedding is not None
@@ -237,23 +234,11 @@ async def load_optional_scene_embedding(db: AsyncSession, scene_id: int | None) 
     return validate_embedding(scene.embedding, "scene.embedding")
 
 
-async def load_optional_scene_option_embedding(
-    db: AsyncSession,
-    scene_option_id: int | None,
-    scene_id: int | None,
-) -> list[float]:
-    if scene_option_id is None:
+async def make_optional_option_text_embedding(option_text: str) -> list[float]:
+    normalized_option_text = option_text.strip()
+    if not normalized_option_text:
         return zero_embedding()
-
-    scene_option = await db.get(SceneOption, scene_option_id)
-    if scene_option is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="scene_option not found")
-    if scene_id is not None and scene_option.scene_id != scene_id:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="scene_option does not belong to scene",
-        )
-    return validate_embedding(scene_option.embedding, "scene_option.embedding")
+    return await make_scene_option_embedding(normalized_option_text)
 
 
 async def make_target_scene_embedding(

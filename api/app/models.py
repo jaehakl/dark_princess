@@ -30,7 +30,7 @@ class UpsertResponseBase(BaseModel):
 class NextSceneRequestBase(BaseModel):
     scene_id: Optional[int] = None
     status_id: int
-    scene_option_id: Optional[int] = None
+    option_text: str
 
 
 class UpdateSceneContextRequestBase(BaseModel):

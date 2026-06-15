@@ -1,18 +1,19 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { WheelEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { dbTables } from '../../api/api';
 import type {
   GetListRequest,
-  SceneOptionRecord,
   SceneRecord,
   StatusRecord,
 } from '../../api/type';
 import { useSceneStore } from '../../api/store';
 import { SceneEditModal } from '../../components/SceneEditModal';
 import { SceneExplorerModal } from '../../components/SceneExplorerModal';
-import { SceneOptionEditorModal } from '../../components/SceneOptionEditorModal';
 import {
   Button,
+  FieldLabel,
+  FormControl,
   ImageFrame,
   Panel,
   PanelHeader,
@@ -43,8 +44,9 @@ const STATUS_FIELDS = [
 type StatusNumberKey = (typeof STATUS_FIELDS)[number]['key'];
 type StatusDeltas = Partial<Record<StatusNumberKey, number>>;
 type PendingTransition = {
+  sourceScene: SceneRecord;
   sourceSceneId: number;
-  sceneOptionId: number | null;
+  optionText: string;
   targetSceneId: number;
   statusBeforeTarget: StatusRecord;
 };
@@ -53,8 +55,11 @@ type ScriptLineState = {
   script: string;
   index: number;
 };
+type SceneEditorMode = 'edit' | 'replace' | 'next';
 
 const FEEDBACK_LEARN_RATE = 0.1;
+const AUTO_PLAY_INTERVAL_MS = 2000;
+const SCRIPT_WHEEL_THRESHOLD = 20;
 const STATUS_CHART_CENTER = 110;
 const STATUS_CHART_RADIUS = 68;
 const STATUS_CHART_LABEL_RADIUS = 95;
@@ -134,6 +139,14 @@ function isValidId(value: string | undefined) {
   return Number.isInteger(parsed) && parsed > 0;
 }
 
+function createNextSceneDraft(scene: SceneRecord): SceneRecord {
+  return {
+    ...scene,
+    id: null,
+    status_change: { ...scene.status_change },
+  };
+}
+
 export function PlayPage() {
   const { statusId } = useParams();
   const parsedStatusId = isValidId(statusId) ? Number(statusId) : null;
@@ -144,19 +157,19 @@ export function PlayPage() {
   const clearDeletedScene = useSceneStore((state) => state.clearDeletedScene);
   const [status, setStatus] = useState<StatusRecord | null>(null);
   const [scene, setScene] = useState<SceneRecord | null>(null);
-  const [options, setOptions] = useState<SceneOptionRecord[]>([]);
   const [deltas, setDeltas] = useState<StatusDeltas>({});
   const [pendingTransition, setPendingTransition] = useState<PendingTransition | null>(null);
-  const [editingOption, setEditingOption] = useState<SceneOptionRecord | null>(null);
-  const [isOptionEditorOpen, setIsOptionEditorOpen] = useState(false);
+  const [contextSyncedSceneId, setContextSyncedSceneId] = useState<number | null>(null);
+  const [optionText, setOptionText] = useState('');
   const [currentSceneEditorSceneId, setCurrentSceneEditorSceneId] = useState<number | null>(null);
   const [currentSceneEditorInitialScene, setCurrentSceneEditorInitialScene] = useState<SceneRecord | null>(null);
+  const [currentSceneEditorMode, setCurrentSceneEditorMode] = useState<SceneEditorMode>('edit');
   const [isSceneExplorerOpen, setIsSceneExplorerOpen] = useState(false);
-  const [optionReloadKey, setOptionReloadKey] = useState(0);
+  const [isAutoPlaying, setIsAutoPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingOptions, setIsLoadingOptions] = useState(false);
   const [isAdvancing, setIsAdvancing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const optionTextRef = useRef('');
   const [scriptLineState, setScriptLineState] = useState<ScriptLineState>({
     sceneId: null,
     script: '',
@@ -177,10 +190,25 @@ export function PlayPage() {
   const lastScriptLineIndex = Math.max(scriptLines.length - 1, 0);
   const visibleScriptLineIndex = Math.min(scriptLineIndex, lastScriptLineIndex);
   const currentScriptLine = scriptLines[visibleScriptLineIndex] ?? null;
+  const canReverseScript = visibleScriptLineIndex > 0;
   const canAdvanceScript = visibleScriptLineIndex < scriptLines.length - 1;
-  const canShowOptions = scriptLines.length === 0 || !canAdvanceScript;
+  const canNavigateScript = canReverseScript || canAdvanceScript;
+  const canEditNextScene = Boolean(scene?.id && status?.id && !isAdvancing);
+  const canStartAutoPlay = Boolean(
+    scene?.id &&
+    status?.id &&
+    !isLoading &&
+    !error &&
+    !currentSceneEditorInitialScene &&
+    !isSceneExplorerOpen,
+  );
   const canRerollScene =
     Boolean(pendingTransition && scene?.id === pendingTransition.targetSceneId && status?.id);
+  const canGoBackScene = canRerollScene;
+  const previousOptionText =
+    pendingTransition && scene?.id === pendingTransition.targetSceneId
+      ? pendingTransition.optionText
+      : null;
   const coreStatusChartPoints = status
     ? CORE_STATUS_FIELDS.map((field, index) =>
         getHexPoint(index, STATUS_CHART_RADIUS * (clampStatusValue(status[field.key]) / 100)),
@@ -193,12 +221,19 @@ export function PlayPage() {
   }, [scene, setCurrentScene]);
 
   useEffect(() => {
+    optionTextRef.current = optionText;
+  }, [optionText]);
+
+  useEffect(() => {
     if (!selectedScene?.id || selectedScene.id === scene?.id) {
       return;
     }
     setScene(selectedScene);
     setDeltas({});
     setPendingTransition(null);
+    setContextSyncedSceneId(null);
+    setOptionText('');
+    setIsAutoPlaying(false);
     setError(null);
   }, [selectedScene, scene?.id]);
 
@@ -217,7 +252,7 @@ export function PlayPage() {
     async function loadFallbackScene() {
       setIsLoading(true);
       setError(null);
-      setOptions([]);
+      setOptionText('');
       try {
         const sceneResponse = await dbTables.Scene.listRows(
           createListRequest({
@@ -233,6 +268,9 @@ export function PlayPage() {
         setScene(fallbackScene);
         setDeltas({});
         setPendingTransition(null);
+        setContextSyncedSceneId(null);
+        setOptionText('');
+        setIsAutoPlaying(false);
         if (!fallbackScene) {
           setError('시작할 Scene이 없습니다.');
         }
@@ -290,7 +328,7 @@ export function PlayPage() {
         const initialScene = await dbTables.SelectionModel.nextScene({
           scene_id: null,
           status_id: loadedStatus.id,
-          scene_option_id: null,
+          option_text: '',
         });
         if (!isActive) {
           return;
@@ -312,6 +350,9 @@ export function PlayPage() {
         setDeltas(nextDeltas);
         setScene(initialScene);
         setPendingTransition(null);
+        setContextSyncedSceneId(null);
+        setOptionText('');
+        setIsAutoPlaying(false);
       } catch (loadError) {
         if (isActive) {
           setError(getErrorMessage(loadError));
@@ -330,82 +371,31 @@ export function PlayPage() {
     };
   }, [parsedStatusId]);
 
-  useEffect(() => {
-    let isActive = true;
-
-    async function loadOptions() {
-      if (!scene?.id) {
-        setOptions([]);
-        return;
-      }
-
-      setIsLoadingOptions(true);
-      setError(null);
-      try {
-        const optionResponse = await dbTables.SceneOption.listRows(
-          createListRequest({
-            filter: {
-              scene_id: [scene.id, scene.id],
-            },
-            sort: ['id', 'asc'],
-          }),
-        );
-        if (isActive) {
-          setOptions(optionResponse.items);
-        }
-      } catch (optionError) {
-        if (isActive) {
-          setError(getErrorMessage(optionError));
-        }
-      } finally {
-        if (isActive) {
-          setIsLoadingOptions(false);
-        }
-      }
-    }
-
-    void loadOptions();
-
-    return () => {
-      isActive = false;
-    };
-  }, [scene?.id, optionReloadKey]);
-
-  function openOptionEditor(option: SceneOptionRecord | null) {
-    if (!scene?.id) {
-      setError('Scene을 먼저 불러와 주세요.');
-      return;
-    }
-    setEditingOption(option);
-    setIsOptionEditorOpen(true);
-  }
-
-  function closeOptionEditor() {
-    setIsOptionEditorOpen(false);
-    setEditingOption(null);
-  }
-
-  function handleOptionSaved() {
-    closeOptionEditor();
-    setOptionReloadKey((current) => current + 1);
-  }
-
-  function handleOptionDeleted() {
-    closeOptionEditor();
-    setOptionReloadKey((current) => current + 1);
-  }
-
   function openCurrentSceneEditor() {
     if (!scene || !currentSceneId || isAdvancing) {
       return;
     }
+    setIsAutoPlaying(false);
+    setCurrentSceneEditorMode('edit');
     setCurrentSceneEditorSceneId(currentSceneId);
     setCurrentSceneEditorInitialScene(scene);
+  }
+
+  function openNextSceneEditor() {
+    if (!scene?.id || !status?.id || isAdvancing) {
+      return;
+    }
+    setIsAutoPlaying(false);
+    setError(null);
+    setCurrentSceneEditorMode('next');
+    setCurrentSceneEditorSceneId(null);
+    setCurrentSceneEditorInitialScene(createNextSceneDraft(scene));
   }
 
   function closeCurrentSceneEditor() {
     setCurrentSceneEditorSceneId(null);
     setCurrentSceneEditorInitialScene(null);
+    setCurrentSceneEditorMode('edit');
   }
 
   async function handleCurrentSceneSaved(sceneId: number) {
@@ -423,11 +413,18 @@ export function PlayPage() {
       }
 
       const isDuplicateSave = currentSceneEditorSceneId === null;
+      const shouldCreateNextScene = isDuplicateSave && currentSceneEditorMode === 'next';
       const shouldReplacePendingScene =
         isDuplicateSave &&
+        currentSceneEditorMode === 'replace' &&
         Boolean(pendingTransition && status?.id && scene?.id === pendingTransition.targetSceneId);
 
-      if (shouldReplacePendingScene) {
+      if (shouldCreateNextScene) {
+        const didAdvance = await advanceToCreatedScene(reloadedScene);
+        if (!didAdvance) {
+          return;
+        }
+      } else if (shouldReplacePendingScene) {
         const didReplace = await replacePendingScene(reloadedScene);
         if (!didReplace) {
           return;
@@ -436,15 +433,19 @@ export function PlayPage() {
         setScene(reloadedScene);
         setCurrentScene(reloadedScene);
         setPendingTransition(null);
+        setContextSyncedSceneId(null);
+        setIsAutoPlaying(false);
       }
       setCurrentSceneEditorSceneId(sceneId);
       setCurrentSceneEditorInitialScene(reloadedScene);
+      setCurrentSceneEditorMode('edit');
     } catch (saveError) {
       setError(getErrorMessage(saveError));
     }
   }
 
   function handleCurrentSceneDuplicate(sceneDraft: SceneRecord) {
+    setCurrentSceneEditorMode('replace');
     setCurrentSceneEditorSceneId(null);
     setCurrentSceneEditorInitialScene({
       ...sceneDraft,
@@ -462,11 +463,70 @@ export function PlayPage() {
     if (!pendingTransition || isAdvancing) {
       return;
     }
+    setIsAutoPlaying(false);
     setIsSceneExplorerOpen(true);
   }
 
   function closeManualSceneExplorer() {
     setIsSceneExplorerOpen(false);
+  }
+
+  async function advanceToCreatedScene(nextScene: SceneRecord): Promise<boolean> {
+    if (!scene?.id || !status?.id) {
+      setError('현재 Scene 또는 Status를 확인할 수 없습니다.');
+      return false;
+    }
+    if (!nextScene.id) {
+      setError('Scene ID를 확인할 수 없습니다.');
+      return false;
+    }
+
+    const sourceSceneId = scene.id;
+    const sourceScene = scene;
+    const statusBeforeTarget = { ...status };
+    setIsAdvancing(true);
+    setError(null);
+    try {
+      await reinforcePendingTransitionIfCurrent(sourceSceneId, status.id);
+      await syncSceneContextOnce(status.id, sourceSceneId);
+
+      const { nextStatus, deltas: nextDeltas } = applyStatusChange(
+        statusBeforeTarget,
+        nextScene.status_change,
+      );
+
+      await dbTables.Status.upsertRow([nextStatus]);
+      setStatus(nextStatus);
+      setDeltas(nextDeltas);
+      setScene(nextScene);
+      setCurrentScene(nextScene);
+      setPendingTransition({
+        sourceScene,
+        sourceSceneId,
+        optionText: '',
+        targetSceneId: nextScene.id,
+        statusBeforeTarget,
+      });
+      setOptionText('');
+      return true;
+    } catch (advanceError) {
+      setError(getErrorMessage(advanceError));
+      return false;
+    } finally {
+      setIsAdvancing(false);
+    }
+  }
+
+  async function syncSceneContextOnce(statusId: number, sceneId: number) {
+    if (contextSyncedSceneId === sceneId) {
+      return;
+    }
+
+    await dbTables.Scene.updateContext({
+      status_id: statusId,
+      scene_id: sceneId,
+    });
+    setContextSyncedSceneId(sceneId);
   }
 
   async function reinforcePendingTransitionIfCurrent(sceneId: number, statusId: number) {
@@ -477,31 +537,29 @@ export function PlayPage() {
     await dbTables.SelectionModel.adjustModel({
       scene_id: pendingTransition.sourceSceneId,
       status_id: statusId,
-      scene_option_id: pendingTransition.sceneOptionId,
+      option_text: pendingTransition.optionText,
       target_scene_id: pendingTransition.targetSceneId,
       learn_rate: FEEDBACK_LEARN_RATE,
     });
   }
 
-  async function advanceToNextScene(sourceSceneId: number, sceneOptionId: number | null) {
-    if (!status?.id) {
-      return;
+  async function advanceToNextScene(sourceScene: SceneRecord, submittedOptionText: string): Promise<boolean> {
+    if (!status?.id || !sourceScene.id) {
+      return false;
     }
 
+    const sourceSceneId = sourceScene.id;
     setIsAdvancing(true);
     setError(null);
     try {
       await reinforcePendingTransitionIfCurrent(sourceSceneId, status.id);
-      await dbTables.Scene.updateContext({
-        status_id: status.id,
-        scene_id: sourceSceneId,
-      });
+      await syncSceneContextOnce(status.id, sourceSceneId);
       setPendingTransition(null);
 
       const nextScene = await dbTables.SelectionModel.nextScene({
         scene_id: sourceSceneId,
         status_id: status.id,
-        scene_option_id: sceneOptionId,
+        option_text: submittedOptionText,
       });
       if (!nextScene.id) {
         throw new Error('다음 Scene ID를 확인할 수 없습니다.');
@@ -518,32 +576,52 @@ export function PlayPage() {
       setScene(nextScene);
       setCurrentScene(nextScene);
       setPendingTransition({
+        sourceScene,
         sourceSceneId,
-        sceneOptionId,
+        optionText: submittedOptionText,
         targetSceneId: nextScene.id,
         statusBeforeTarget: { ...status },
       });
+      setOptionText('');
+      return true;
     } catch (advanceError) {
       setError(getErrorMessage(advanceError));
+      return false;
     } finally {
       setIsAdvancing(false);
     }
   }
 
-  async function chooseOption(option: SceneOptionRecord) {
-    if (!scene?.id || !option.id) {
-      return;
-    }
-
-    await advanceToNextScene(scene.id, option.id);
-  }
-
-  async function advanceWithoutOption() {
+  async function submitOptionText() {
     if (!scene?.id) {
       return;
     }
 
-    await advanceToNextScene(scene.id, null);
+    await advanceToNextScene(scene, optionText.trim());
+  }
+
+  async function goBackToPreviousScene() {
+    if (!pendingTransition || !status?.id || scene?.id !== pendingTransition.targetSceneId) {
+      return;
+    }
+
+    setIsAutoPlaying(false);
+    setIsAdvancing(true);
+    setError(null);
+    try {
+      const restoredStatus = { ...pendingTransition.statusBeforeTarget };
+      await dbTables.Status.upsertRow([restoredStatus]);
+      setStatus(restoredStatus);
+      setDeltas({});
+      setScene(pendingTransition.sourceScene);
+      setCurrentScene(pendingTransition.sourceScene);
+      setOptionText(pendingTransition.optionText);
+      setPendingTransition(null);
+    } catch (backError) {
+      setError(getErrorMessage(backError));
+    } finally {
+      setIsAdvancing(false);
+    }
   }
 
   async function rerollScene() {
@@ -551,6 +629,7 @@ export function PlayPage() {
       return;
     }
 
+    setIsAutoPlaying(false);
     setIsAdvancing(true);
     setError(null);
     try {
@@ -562,7 +641,7 @@ export function PlayPage() {
       await dbTables.SelectionModel.adjustModel({
         scene_id: pendingTransition.sourceSceneId,
         status_id: status.id,
-        scene_option_id: pendingTransition.sceneOptionId,
+        option_text: pendingTransition.optionText,
         target_scene_id: pendingTransition.targetSceneId,
         learn_rate: -FEEDBACK_LEARN_RATE,
       });
@@ -570,7 +649,7 @@ export function PlayPage() {
       const nextScene = await dbTables.SelectionModel.nextScene({
         scene_id: pendingTransition.sourceSceneId,
         status_id: status.id,
-        scene_option_id: pendingTransition.sceneOptionId,
+        option_text: pendingTransition.optionText,
       });
       if (!nextScene.id) {
         throw new Error('다음 Scene ID를 확인할 수 없습니다.');
@@ -591,6 +670,7 @@ export function PlayPage() {
         targetSceneId: nextScene.id,
         statusBeforeTarget: restoredStatus,
       });
+      setOptionText('');
     } catch (rerollError) {
       setError(getErrorMessage(rerollError));
     } finally {
@@ -618,7 +698,7 @@ export function PlayPage() {
       await dbTables.SelectionModel.adjustModel({
         scene_id: pendingTransition.sourceSceneId,
         status_id: status.id,
-        scene_option_id: pendingTransition.sceneOptionId,
+        option_text: pendingTransition.optionText,
         target_scene_id: pendingTransition.targetSceneId,
         learn_rate: -FEEDBACK_LEARN_RATE,
       });
@@ -638,6 +718,7 @@ export function PlayPage() {
         targetSceneId: replacementScene.id,
         statusBeforeTarget: restoredStatus,
       });
+      setOptionText('');
       return true;
     } catch (replaceError) {
       setError(getErrorMessage(replaceError));
@@ -648,6 +729,7 @@ export function PlayPage() {
   }
 
   async function selectManualScene(sceneId: number) {
+    setIsAutoPlaying(false);
     if (sceneId === scene?.id) {
       setIsSceneExplorerOpen(false);
       return;
@@ -676,20 +758,98 @@ export function PlayPage() {
     }
   }
 
-  function advanceScriptLine() {
-    if (!canAdvanceScript) {
-      return;
+  function moveScriptLine(direction: -1 | 1): boolean {
+    const nextIndex = Math.min(
+      lastScriptLineIndex,
+      Math.max(0, visibleScriptLineIndex + direction),
+    );
+    if (nextIndex === visibleScriptLineIndex) {
+      return false;
     }
+
     setScriptLineState({
       sceneId: currentSceneId,
       script: currentScript,
-      index: Math.min(visibleScriptLineIndex + 1, lastScriptLineIndex),
+      index: nextIndex,
     });
+    return true;
   }
 
+  function advanceScriptLine() {
+    moveScriptLine(1);
+  }
+
+  function toggleAutoPlay() {
+    setIsAutoPlaying((current) => !current);
+  }
+
+  function handleScriptWheel(event: WheelEvent<HTMLElement>) {
+    if (Math.abs(event.deltaY) < SCRIPT_WHEEL_THRESHOLD) {
+      return;
+    }
+
+    const direction = event.deltaY > 0 ? 1 : -1;
+    const canMove = direction > 0 ? canAdvanceScript : canReverseScript;
+    if (!canMove) {
+      return;
+    }
+
+    event.preventDefault();
+    moveScriptLine(direction);
+  }
+
+  useEffect(() => {
+    if (!isAutoPlaying) {
+      return undefined;
+    }
+    if (error) {
+      setIsAutoPlaying(false);
+      return undefined;
+    }
+    if (
+      isLoading ||
+      isAdvancing ||
+      currentSceneEditorInitialScene ||
+      isSceneExplorerOpen ||
+      !scene?.id
+    ) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      if (canAdvanceScript) {
+        moveScriptLine(1);
+        return;
+      }
+
+      void (async () => {
+        const didAdvance = await advanceToNextScene(scene, optionTextRef.current.trim());
+        if (!didAdvance) {
+          setIsAutoPlaying(false);
+        }
+      })();
+    }, AUTO_PLAY_INTERVAL_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    isAutoPlaying,
+    isLoading,
+    isAdvancing,
+    error,
+    currentSceneEditorInitialScene,
+    isSceneExplorerOpen,
+    scene,
+    canAdvanceScript,
+    visibleScriptLineIndex,
+    moveScriptLine,
+    advanceToNextScene,
+  ]);
+
   return (
-    <div className="mx-auto min-h-[calc(100vh-7rem)] max-w-[1280px] rounded-[8px] border border-[rgba(255,204,220,0.28)] bg-[linear-gradient(180deg,rgba(255,238,247,0.05),rgba(14,4,18,0.62)),rgba(13,5,18,0.52)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),var(--app-shadow)] backdrop-blur-[14px] max-[640px]:p-[0.65rem]">
-      <div className="grid min-h-[calc(100vh-9rem)] grid-cols-[minmax(24rem,1fr)_minmax(18rem,0.42fr)] grid-rows-[minmax(0,1fr)_auto] gap-4 max-[960px]:grid-cols-1 max-[960px]:grid-rows-[auto_auto_auto]">
+    <div className="mx-auto min-h-[calc(100vh-7rem)] max-w-[1024px] rounded-[8px] border border-[rgba(255,204,220,0.28)] bg-[linear-gradient(180deg,rgba(255,238,247,0.05),rgba(14,4,18,0.62)),rgba(13,5,18,0.52)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),var(--app-shadow)] backdrop-blur-[14px] max-[640px]:p-[0.65rem]">
+      <div className="grid min-h-[calc(100vh-20rem)] grid-cols-[minmax(24rem,1fr)_minmax(18rem,0.42fr)] grid-rows-[minmax(0,1fr)_auto] gap-4 max-[960px]:grid-cols-1 max-[960px]:grid-rows-[auto_auto_auto]">
         <Panel className="min-h-0 min-w-0">
           <PanelHeader>
             <div className="min-w-0">
@@ -698,36 +858,25 @@ export function PlayPage() {
                 {currentSceneLabel}
               </h1>
             </div>
-            <div className="flex shrink-0 flex-wrap justify-end gap-2">
-              <Button
-                className="px-4 py-2 text-sm"
-                onClick={openCurrentSceneEditor}
-                disabled={!currentSceneId || isAdvancing}
-              >
-                현재 장면 편집
-              </Button>
-              {canRerollScene ? (
-                <>
-                  <Button
-                    className="px-4 py-2 text-sm"
-                    onClick={() => void rerollScene()}
-                    disabled={isAdvancing}
-                  >
-                    다시 뽑기
-                  </Button>
-                  <Button
-                    className="px-4 py-2 text-sm"
-                    onClick={openManualSceneExplorer}
-                    disabled={isAdvancing}
-                  >
-                    다른 장면
-                  </Button>
-                </>
-              ) : null}
-            </div>
           </PanelHeader>
           <SectionBody className="grid place-items-center p-0">
-            <ImageFrame className="mx-auto w-[min(100%,max(28rem,calc(100vh-10rem)))] rounded-[8px] border border-[rgba(255,218,228,0.22)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_24px_80px_rgba(5,0,10,0.46)] max-[960px]:w-[min(100%,34rem)]">
+            <ImageFrame
+              className={cx(
+                'mx-auto w-[min(100%,max(28rem,calc(100vh-10rem)))] rounded-[8px] border border-[rgba(255,218,228,0.22)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_24px_80px_rgba(5,0,10,0.46)] max-[960px]:w-[min(100%,34rem)]',
+                canNavigateScript && 'cursor-pointer',
+              )}
+              role={canAdvanceScript ? 'button' : undefined}
+              tabIndex={canAdvanceScript ? 0 : undefined}
+              aria-label={canAdvanceScript ? '다음 대사' : undefined}
+              onClick={advanceScriptLine}
+              onWheel={handleScriptWheel}
+              onKeyDown={(event) => {
+                if (canAdvanceScript && (event.key === 'Enter' || event.key === ' ')) {
+                  event.preventDefault();
+                  advanceScriptLine();
+                }
+              }}
+            >
               {scene?.image_url ? (
                 <img
                   src={scene.image_url}
@@ -906,6 +1055,54 @@ export function PlayPage() {
                     })}
                   </svg>
                 </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    className="min-h-11 w-full px-3 py-2 text-sm leading-tight"
+                    onClick={openCurrentSceneEditor}
+                    disabled={!currentSceneId || isAdvancing}
+                  >
+                    현재 장면 편집
+                  </Button>
+                  <Button
+                    className="min-h-11 w-full px-3 py-2 text-sm leading-tight"
+                    onClick={openNextSceneEditor}
+                    disabled={!canEditNextScene}
+                  >
+                    다음장면 편집
+                  </Button>
+                  <Button
+                    className="min-h-11 w-full px-3 py-2 text-sm leading-tight"
+                    onClick={toggleAutoPlay}
+                    disabled={!isAutoPlaying && !canStartAutoPlay}
+                  >
+                    {isAutoPlaying ? '자동 정지' : '자동플레이'}
+                  </Button>
+                  {canRerollScene ? (
+                    <>
+                      <Button
+                        className="min-h-11 w-full px-3 py-2 text-sm leading-tight"
+                        onClick={() => void goBackToPreviousScene()}
+                        disabled={!canGoBackScene || isAdvancing}
+                      >
+                        이전 장면
+                      </Button>
+                      <Button
+                        className="min-h-11 w-full px-3 py-2 text-sm leading-tight"
+                        onClick={() => void rerollScene()}
+                        disabled={isAdvancing}
+                      >
+                        다시 뽑기
+                      </Button>
+                      <Button
+                        className="min-h-11 w-full px-3 py-2 text-sm leading-tight"
+                        onClick={openManualSceneExplorer}
+                        disabled={isAdvancing}
+                      >
+                        다른 장면
+                      </Button>
+                    </>
+                  ) : null}
+                </div>
               </div>
             ) : (
               <p className="text-sm text-[#ff9ab8]">Status를 표시할 수 없습니다.</p>
@@ -914,16 +1111,26 @@ export function PlayPage() {
         </Panel>
 
         <Panel className="col-span-full min-w-0 p-4 max-[960px]:col-auto">
+          {!isLoading && !error && previousOptionText !== null ? (
+            <div className="mb-4 rounded-[8px] border border-[rgba(255,208,222,0.25)] bg-[rgba(12,5,18,0.52)] px-4 py-3">
+              <FieldLabel>이전 Option</FieldLabel>
+              <p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-[#fff7ef]">
+                {previousOptionText || '(빈 선택)'}
+              </p>
+            </div>
+          ) : null}
+
           {isLoading || error || scriptLines.length > 0 ? (
             <div
               className={cx(
                 'relative flex min-h-28 w-full items-center justify-start rounded-[8px] border border-[rgba(255,218,228,0.36)] bg-[linear-gradient(135deg,rgba(255,245,232,0.12),transparent_55%),rgba(12,4,17,0.74)] px-5 py-[1.15rem] text-left text-[1.05rem] leading-[1.65] font-bold text-[#fff7ef] shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_18px_45px_rgba(5,0,10,0.34)] max-[640px]:min-h-32 max-[640px]:p-4',
-                canAdvanceScript && 'cursor-pointer',
+                canNavigateScript && 'cursor-pointer',
               )}
               role={error ? 'alert' : canAdvanceScript ? 'button' : undefined}
               tabIndex={canAdvanceScript ? 0 : undefined}
               aria-label={canAdvanceScript ? '다음 대사' : undefined}
               onClick={advanceScriptLine}
+              onWheel={handleScriptWheel}
               onKeyDown={(event) => {
                 if (canAdvanceScript && (event.key === 'Enter' || event.key === ' ')) {
                   event.preventDefault();
@@ -943,59 +1150,34 @@ export function PlayPage() {
             </div>
           ) : null}
 
-          {!isLoading && !error && canShowOptions ? (
-            <div className="mt-4 grid gap-3">
-              {isLoadingOptions ? (
-                <p className="text-sm text-[var(--app-muted)]">선택지를 불러오는 중</p>
-              ) : options.length > 0 ? (
-                <>
-                  {options.map((option) => (
-                    <div key={option.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-stretch gap-2 max-[640px]:grid-cols-1">
-                      <Button
-                        className="w-full px-5 py-3 text-left"
-                        onClick={() => void chooseOption(option)}
-                        disabled={isAdvancing}
-                      >
-                        {option.option_text}
-                      </Button>
-                      <Button
-                        className="self-stretch px-3 py-2 text-[0.78rem]"
-                        onClick={() => openOptionEditor(option)}
-                        disabled={isAdvancing}
-                      >
-                        편집
-                      </Button>
-                    </div>
-                  ))}
-                  <div className="flex items-center justify-end gap-3 pt-1 max-[640px]:flex-col max-[640px]:items-stretch">
-                    <Button
-                      className="px-3 py-2 text-xs"
-                      onClick={() => openOptionEditor(null)}
-                      disabled={isAdvancing || !scene?.id}
-                    >
-                      새 옵션 추가
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <div className="flex items-center justify-end gap-3 pt-1 max-[640px]:flex-col max-[640px]:items-stretch">
-                  <Button
-                    className="w-full px-5 py-3 text-left"
-                    onClick={() => void advanceWithoutOption()}
+          {!isLoading && !error ? (
+            <form
+              className="mt-4 grid gap-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submitOptionText();
+              }}
+            >
+              <div className="grid items-end gap-3 min-[760px]:grid-cols-[minmax(0,1fr)_auto]">
+                <div className="grid gap-1">
+                  <FieldLabel htmlFor="next-option-text">Option</FieldLabel>
+                  <FormControl
+                    id="next-option-text"
+                    value={optionText}
+                    onChange={(event) => setOptionText(event.target.value)}
+                    className="h-12 w-full px-3"
                     disabled={isAdvancing || !scene?.id}
-                  >
-                    {isAdvancing ? '다음 장면을 찾는 중' : '다음 장면'}
-                  </Button>
-                  <Button
-                    className="px-3 py-2 text-xs"
-                    onClick={() => openOptionEditor(null)}
-                    disabled={isAdvancing || !scene?.id}
-                  >
-                    새 옵션 추가
-                  </Button>
+                  />
                 </div>
-              )}
-            </div>
+                <Button
+                  type="submit"
+                  className="h-12 px-5 py-3"
+                  disabled={isAdvancing || !scene?.id}
+                >
+                  {isAdvancing ? '다음장면 찾는 중' : '다음장면'}
+                </Button>
+              </div>
+            </form>
           ) : null}
         </Panel>
       </div>
@@ -1008,16 +1190,6 @@ export function PlayPage() {
           onSaved={(sceneId) => void handleCurrentSceneSaved(sceneId)}
           onDeleted={handleCurrentSceneDeleted}
           onDuplicate={handleCurrentSceneDuplicate}
-        />
-      ) : null}
-
-      {isOptionEditorOpen && scene ? (
-        <SceneOptionEditorModal
-          scene={scene}
-          option={editingOption}
-          onClose={closeOptionEditor}
-          onSaved={handleOptionSaved}
-          onDeleted={handleOptionDeleted}
         />
       ) : null}
 

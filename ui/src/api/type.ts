@@ -81,7 +81,7 @@ export type SceneOptionRecord = {
 export type NextSceneRequest = {
   scene_id: number | null;
   status_id: number;
-  scene_option_id: number | null;
+  option_text: string;
 };
 
 export type AdjustSelectionModelRequest = NextSceneRequest & {
