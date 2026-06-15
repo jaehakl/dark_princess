@@ -19,6 +19,17 @@ import {
   readSessionImageSettings,
 } from '../../lib/scene-image';
 import type { ImageGenerationSettingsDraft, SeedImageSource, SeedImageState } from '../../lib/scene-image';
+import {
+  Button,
+  FieldLabel,
+  FormControl,
+  ImageFrame,
+  ModalBackdrop,
+  Panel,
+  PanelHeader,
+  SectionBody,
+  Spinner,
+} from '../../components/ui';
 
 const PROMPT_COLUMNS = [
   { key: 'background', label: '배경' },
@@ -612,286 +623,264 @@ export function SceneWizardPage() {
   return (
     <div className="relative left-1/2 w-[min(1840px,calc(100vw-36px))] -translate-x-1/2 space-y-5">
       <div className="flex flex-col gap-2 px-1">
-        <p className="vn-subtitle">Scene wizard</p>
-        <h1 className="vn-title">Scene Wizard</h1>
+        <p className="text-[0.85rem] tracking-[0.16em] text-[var(--app-muted)] uppercase">Scene wizard</p>
+        <h1 className="text-[clamp(1.25rem,2vw,2.2rem)] leading-[1.05] font-extrabold tracking-[0.02em] text-[#fff7ef] [text-shadow:0_0_22px_rgba(255,194,211,0.42),0_2px_12px_rgba(0,0,0,0.58)]">Scene Wizard</h1>
       </div>
 
-      <section className="vn-panel min-h-[calc(100vh-10rem)]">
-        <div className="vn-panel-header">
+      <Panel className="min-h-[calc(100vh-10rem)]">
+        <PanelHeader>
           <div className="min-w-0">
-            <p className="vn-subtitle">Scene edit</p>
+            <p className="text-[0.85rem] tracking-[0.16em] text-[var(--app-muted)] uppercase">Scene edit</p>
             <h2 className="truncate text-base font-semibold text-[#fff7ef]">{selectedLabel}</h2>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className="vn-button px-3 py-2 text-xs"
-              onClick={startFreshScene}
-              disabled={isBusy}
-            >
+            <Button className="px-3 py-2 text-xs" onClick={startFreshScene} disabled={isBusy}>
               새 Scene 생성
-            </button>
-            <button
-              type="button"
-              className="vn-button px-3 py-2 text-xs"
-              onClick={openImageSettings}
-              disabled={!imageSettings || isBusy}
-            >
+            </Button>
+            <Button className="px-3 py-2 text-xs" onClick={openImageSettings} disabled={!imageSettings || isBusy}>
               이미지 설정
-            </button>
+            </Button>
           </div>
-        </div>
+        </PanelHeader>
 
-        <div className="vn-section-body">
+        <SectionBody>
           <div className="space-y-4">
-                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(28rem,0.44fr)] xl:items-start">
-                  <div className="min-w-0 space-y-4">
-                    <label className="block space-y-2">
-                      <span className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="edit-label">
-                          <span className="edit-label__text">장면 스크립트</span>
-                        </span>
-                        <button
-                          type="button"
-                          className="vn-button inline-flex items-center gap-2 px-3 py-2 text-xs"
-                          onClick={() => void refreshRecommendationsFromScript()}
-                          disabled={!canRefreshRecommendations}
-                        >
-                          {isRecommending ? <span className="vn-spinner" aria-hidden="true" /> : null}
-                          {isRecommending ? '추천 갱신 중' : '스크립트 기반 추천 갱신'}
-                        </button>
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(28rem,0.44fr)] xl:items-start">
+              <div className="min-w-0 space-y-4">
+                <div className="block space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <FieldLabel>장면 스크립트</FieldLabel>
+                    <Button
+                      className="inline-flex items-center gap-2 px-3 py-2 text-xs"
+                      onClick={() => void refreshRecommendationsFromScript()}
+                      disabled={!canRefreshRecommendations}
+                    >
+                      {isRecommending ? <Spinner aria-hidden="true" /> : null}
+                      {isRecommending ? '추천 갱신 중' : '스크립트 기반 추천 갱신'}
+                    </Button>
+                  </div>
+                  <FormControl
+                    as="textarea"
+                    value={script}
+                    onChange={(event) => setScript(event.target.value)}
+                    className="min-h-44 w-full resize-y px-3 py-2 text-sm leading-6"
+                    disabled={Boolean(savingMode)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-[#fff7ef]">프롬프트 항목</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-semibold text-[var(--app-muted)]">
+                        추천 태그는 눌러서 추가
                       </span>
-                      <textarea
-                        value={script}
-                        onChange={(event) => setScript(event.target.value)}
-                        className="edit-control min-h-44 w-full resize-y px-3 py-2 text-sm leading-6"
-                        disabled={Boolean(savingMode)}
+                      <Button
+                        className="inline-flex items-center gap-2 px-3 py-2 text-xs"
+                        onClick={() => void translatePromptColumns()}
+                        disabled={!canTranslatePromptColumns}
+                      >
+                        {isTranslatingPromptColumns ? <Spinner aria-hidden="true" /> : null}
+                        {isTranslatingPromptColumns ? '번역 중' : '번역하여 추가'}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="overflow-hidden rounded-[8px] border border-[rgba(255,208,222,0.24)] bg-[rgba(12,5,18,0.46)]">
+                    {PROMPT_COLUMNS.map((column) => (
+                      <div
+                        key={column.key}
+                        className="grid gap-2 border-b border-[rgba(255,208,222,0.16)] p-2 last:border-b-0 md:grid-cols-[5.5rem_minmax(0,1fr)] md:items-start"
+                      >
+                        <div className="pt-2">
+                          <FieldLabel>{column.label}</FieldLabel>
+                        </div>
+                        <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+                          <label className="block min-w-0">
+                            <span className="sr-only">{column.label}</span>
+                            <FormControl
+                              as="textarea"
+                              rows={1}
+                              value={promptDraft[column.key]}
+                              onChange={(event) =>
+                                setPromptDraft((current) => ({
+                                  ...current,
+                                  [column.key]: event.target.value,
+                                }))
+                              }
+                              className="min-h-10 w-full resize-y px-3 py-2 text-sm"
+                              disabled={Boolean(savingMode) || isTranslatingPromptColumns}
+                            />
+                          </label>
+                          <label className="block min-w-0">
+                            <span className="sr-only">{column.label} 한국어 번역 입력</span>
+                            <FormControl
+                              as="textarea"
+                              rows={1}
+                              value={translationDraft[column.key]}
+                              onChange={(event) =>
+                                setTranslationDraft((current) => ({
+                                  ...current,
+                                  [column.key]: event.target.value,
+                                }))
+                              }
+                              className="min-h-10 w-full resize-y px-3 py-2 text-sm"
+                              placeholder="한국어, 콤마 구분"
+                              disabled={Boolean(savingMode) || isTranslatingPromptColumns}
+                            />
+                          </label>
+                        </div>
+                        <div className="flex min-w-0 flex-wrap gap-1.5 md:col-start-2">
+                          {recommendations[column.key].slice(0, 12).map((tag) => (
+                            <Button
+                              key={`${column.key}-${tag}`}
+                              className="px-2 py-1 text-xs"
+                              onClick={() => appendRecommendation(column.key, tag)}
+                              disabled={Boolean(savingMode) || isTranslatingPromptColumns}
+                            >
+                              {tag}
+                            </Button>
+                          ))}
+                          {recommendations[column.key].length === 0 ? (
+                            <span className="px-1 py-2 text-xs font-semibold text-[var(--app-muted)]">
+                              추천 없음
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <aside className="min-w-0 space-y-3">
+                <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                  <FieldLabel>SEED 이미지</FieldLabel>
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    {seedImage ? (
+                      <span className="truncate text-xs font-semibold text-[var(--app-muted)]">
+                        {seedImage.source === 'existing' ? 'existing seed' : 'noise seed'}
+                      </span>
+                    ) : null}
+                    <Button
+                      className="px-2.5 py-1 text-xs"
+                      onClick={() => void shuffleSeedImage()}
+                      disabled={Boolean(savingMode) || isPreparingSeedImage || !imageSettings}
+                    >
+                      shuffle
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <label className="flex items-center justify-between gap-2 text-xs font-semibold text-[var(--app-muted)]">
+                      <span>strength</span>
+                      <FormControl
+                        type="number"
+                        min="0.01"
+                        max="1"
+                        step="0.01"
+                        value={strengthControlValue}
+                        onChange={(event) => updateImageStrength(event.target.value)}
+                        className="h-8 w-24 px-2 text-right text-xs"
+                        disabled={Boolean(savingMode) || !imageSettings}
                       />
                     </label>
 
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-sm font-semibold text-[#fff7ef]">프롬프트 항목</span>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-xs font-semibold text-[var(--app-muted)]">
-                            추천 태그는 눌러서 추가
-                          </span>
-                          <button
-                            type="button"
-                            className="vn-button inline-flex items-center gap-2 px-3 py-2 text-xs"
-                            onClick={() => void translatePromptColumns()}
-                            disabled={!canTranslatePromptColumns}
-                          >
-                            {isTranslatingPromptColumns ? <span className="vn-spinner" aria-hidden="true" /> : null}
-                            {isTranslatingPromptColumns ? '번역 중' : '번역하여 추가'}
-                          </button>
+                    <ImageFrame className="relative mx-auto w-[min(100%,32rem)] rounded-[8px] border border-[rgba(255,218,228,0.22)] max-[960px]:w-[min(100%,28rem)]">
+                      {seedImage ? (
+                        <img src={seedImage.previewUrl} alt={composedPrompt || 'Seed image'} className="block h-full w-full object-cover" />
+                      ) : isPreparingSeedImage ? (
+                        <div className="grid h-full min-h-72 w-full place-items-center gap-3 bg-[linear-gradient(145deg,rgba(255,231,238,0.1),transparent_42%),rgba(15,5,20,0.78)] p-6 text-center text-[0.95rem] text-[var(--app-muted)]">
+                          <Spinner aria-hidden="true" />
+                          <span>seed 준비 중</span>
                         </div>
-                      </div>
-                      <div className="overflow-hidden rounded-[8px] border border-[rgba(255,208,222,0.24)] bg-[rgba(12,5,18,0.46)]">
-                        {PROMPT_COLUMNS.map((column) => (
-                          <div
-                            key={column.key}
-                            className="grid gap-2 border-b border-[rgba(255,208,222,0.16)] p-2 last:border-b-0 md:grid-cols-[5.5rem_minmax(0,1fr)] md:items-start"
-                          >
-                            <div className="pt-2">
-                              <span className="edit-label">
-                                <span className="edit-label__text">{column.label}</span>
-                              </span>
-                            </div>
-                            <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-                              <label className="block min-w-0">
-                                <span className="sr-only">{column.label}</span>
-                                <textarea
-                                  rows={1}
-                                  value={promptDraft[column.key]}
-                                  onChange={(event) =>
-                                    setPromptDraft((current) => ({
-                                      ...current,
-                                      [column.key]: event.target.value,
-                                    }))
-                                  }
-                                  className="edit-control min-h-10 w-full resize-y px-3 py-2 text-sm"
-                                  disabled={Boolean(savingMode) || isTranslatingPromptColumns}
-                                />
-                              </label>
-                              <label className="block min-w-0">
-                                <span className="sr-only">{column.label} 한국어 번역 입력</span>
-                                <textarea
-                                  rows={1}
-                                  value={translationDraft[column.key]}
-                                  onChange={(event) =>
-                                    setTranslationDraft((current) => ({
-                                      ...current,
-                                      [column.key]: event.target.value,
-                                    }))
-                                  }
-                                  className="edit-control min-h-10 w-full resize-y px-3 py-2 text-sm"
-                                  placeholder="한국어, 콤마 구분"
-                                  disabled={Boolean(savingMode) || isTranslatingPromptColumns}
-                                />
-                              </label>
-                            </div>
-                            <div className="flex min-w-0 flex-wrap gap-1.5 md:col-start-2">
-                              {recommendations[column.key].slice(0, 12).map((tag) => (
-                                <button
-                                  key={`${column.key}-${tag}`}
-                                  type="button"
-                                  className="vn-button px-2 py-1 text-xs"
-                                  onClick={() => appendRecommendation(column.key, tag)}
-                                  disabled={Boolean(savingMode) || isTranslatingPromptColumns}
-                                >
-                                  {tag}
-                                </button>
-                              ))}
-                              {recommendations[column.key].length === 0 ? (
-                                <span className="px-1 py-2 text-xs font-semibold text-[var(--app-muted)]">
-                                  추천 없음
-                                </span>
-                              ) : null}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <aside className="min-w-0 space-y-3">
-                    <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                      <span className="edit-label">
-                        <span className="edit-label__text">SEED 이미지</span>
-                      </span>
-                      <div className="flex min-w-0 flex-wrap items-center gap-2">
-                        {seedImage ? (
-                          <span className="truncate text-xs font-semibold text-[var(--app-muted)]">
-                            {seedImage.source === 'existing' ? 'existing seed' : 'noise seed'}
-                          </span>
-                        ) : null}
-                        <button
-                          type="button"
-                          className="vn-button px-2.5 py-1 text-xs"
-                          onClick={() => void shuffleSeedImage()}
-                          disabled={Boolean(savingMode) || isPreparingSeedImage || !imageSettings}
-                        >
-                          shuffle
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      <div className="space-y-2">
-                        <label className="flex items-center justify-between gap-2 text-xs font-semibold text-[var(--app-muted)]">
-                          <span>strength</span>
-                          <input
-                            type="number"
-                            min="0.01"
-                            max="1"
-                            step="0.01"
-                            value={strengthControlValue}
-                            onChange={(event) => updateImageStrength(event.target.value)}
-                            className="edit-control h-8 w-24 px-2 text-right text-xs"
-                            disabled={Boolean(savingMode) || !imageSettings}
-                          />
-                        </label>
-
-                        <div className="dp-image-frame vn-scene-editor-image-frame vn-scene-wizard-image-frame">
-                          {seedImage ? (
-                            <img src={seedImage.previewUrl} alt={composedPrompt || 'Seed image'} className="dp-image-media" />
-                          ) : isPreparingSeedImage ? (
-                            <div className="vn-scene-empty">
-                              <span className="vn-spinner" aria-hidden="true" />
-                              <span>seed 준비 중</span>
-                            </div>
-                          ) : (
-                            <div className="vn-scene-empty">seed image가 없습니다.</div>
-                          )}
-                          {isPreparingSeedImage && seedImage ? (
-                            <div className="vn-scene-seed-overlay">
-                              <span className="vn-spinner" aria-hidden="true" />
-                              <span>seed 준비 중</span>
-                            </div>
-                          ) : null}
-                          {savingMode?.endsWith('image') && seedImage ? (
-                            <div className="vn-scene-seed-overlay">
-                              <span className="vn-spinner" aria-hidden="true" />
-                              <span>이미지 생성 중</span>
-                            </div>
-                          ) : null}
+                      ) : (
+                        <div className="grid h-full min-h-72 w-full place-items-center bg-[linear-gradient(145deg,rgba(255,231,238,0.1),transparent_42%),rgba(15,5,20,0.78)] p-6 text-center text-[0.95rem] text-[var(--app-muted)]">seed image가 없습니다.</div>
+                      )}
+                      {isPreparingSeedImage && seedImage ? (
+                        <div className="absolute inset-0 grid place-items-center gap-3 bg-[rgba(7,1,12,0.54)] text-center text-[0.95rem] font-extrabold text-[#fff7ef]">
+                          <Spinner aria-hidden="true" />
+                          <span>seed 준비 중</span>
                         </div>
+                      ) : null}
+                      {savingMode?.endsWith('image') && seedImage ? (
+                        <div className="absolute inset-0 grid place-items-center gap-3 bg-[rgba(7,1,12,0.54)] text-center text-[0.95rem] font-extrabold text-[#fff7ef]">
+                          <Spinner aria-hidden="true" />
+                          <span>이미지 생성 중</span>
+                        </div>
+                      ) : null}
+                    </ImageFrame>
 
-                        {seedImageError ? (
-                          <p className="text-sm font-semibold text-[#ff9ab8]">{seedImageError}</p>
-                        ) : null}
-                      </div>
-                    </div>
-                  </aside>
-                </div>
-                {/*
-                  Keep the save buttons below both columns so narrow screens preserve
-                  script -> prompt -> seed -> save order.
-                */}
-                {error ? (
-                  <p className="text-sm font-semibold text-[#ff9ab8]">{error}</p>
-                ) : null}
-
-                <div className="vn-modal-footer">
-                  <div className="flex flex-wrap gap-2">
-                    {activeSceneId ? (
-                      <button
-                        type="button"
-                        className="vn-danger-button inline-flex items-center gap-2 px-3 py-2 text-xs"
-                        onClick={() => void deleteScene()}
-                        disabled={!canDelete}
-                      >
-                        {isDeleting ? <span className="vn-spinner" aria-hidden="true" /> : null}
-                        {isDeleting ? '삭제 중' : 'Scene 삭제'}
-                      </button>
+                    {seedImageError ? (
+                      <p className="text-sm font-semibold text-[#ff9ab8]">{seedImageError}</p>
                     ) : null}
-                    <button
-                      type="button"
-                      className="vn-button inline-flex items-center gap-2 px-3 py-2 text-xs"
-                      onClick={() => void saveScene('existing-text')}
-                      disabled={!canSaveExisting}
-                    >
-                      {savingMode === 'existing-text' ? <span className="vn-spinner" aria-hidden="true" /> : null}
-                      기존 데이터에 텍스트 저장
-                    </button>
-                    <button
-                      type="button"
-                      className="vn-button inline-flex items-center gap-2 px-3 py-2 text-xs"
-                      onClick={() => void saveScene('existing-image')}
-                      disabled={!canSaveExistingImage}
-                    >
-                      {savingMode === 'existing-image' ? <span className="vn-spinner" aria-hidden="true" /> : null}
-                      기존 데이터 이미지 생성 저장
-                    </button>
-                  </div>
-                  <div className="vn-modal-footer-actions">
-                    <button
-                      type="button"
-                      className="vn-button vn-button-primary inline-flex items-center gap-2 px-3 py-2 text-xs"
-                      onClick={() => void saveScene('new-image')}
-                      disabled={!canSaveImage}
-                    >
-                      {savingMode === 'new-image' ? <span className="vn-spinner" aria-hidden="true" /> : null}
-                      새 데이터 이미지 생성 저장
-                    </button>
                   </div>
                 </div>
+              </aside>
+            </div>
+
+            {error ? (
+              <p className="text-sm font-semibold text-[#ff9ab8]">{error}</p>
+            ) : null}
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--app-border)] pt-4">
+              <div className="flex flex-wrap gap-2">
+                {activeSceneId ? (
+                  <Button
+                    variant="danger"
+                    className="inline-flex items-center gap-2 px-3 py-2 text-xs"
+                    onClick={() => void deleteScene()}
+                    disabled={!canDelete}
+                  >
+                    {isDeleting ? <Spinner aria-hidden="true" /> : null}
+                    {isDeleting ? '삭제 중' : 'Scene 삭제'}
+                  </Button>
+                ) : null}
+                <Button
+                  className="inline-flex items-center gap-2 px-3 py-2 text-xs"
+                  onClick={() => void saveScene('existing-text')}
+                  disabled={!canSaveExisting}
+                >
+                  {savingMode === 'existing-text' ? <Spinner aria-hidden="true" /> : null}
+                  기존 데이터에 텍스트 저장
+                </Button>
+                <Button
+                  className="inline-flex items-center gap-2 px-3 py-2 text-xs"
+                  onClick={() => void saveScene('existing-image')}
+                  disabled={!canSaveExistingImage}
+                >
+                  {savingMode === 'existing-image' ? <Spinner aria-hidden="true" /> : null}
+                  기존 데이터 이미지 생성 저장
+                </Button>
+              </div>
+              <div className="ml-auto flex flex-wrap justify-end gap-2">
+                <Button
+                  variant="primary"
+                  className="inline-flex items-center gap-2 px-3 py-2 text-xs"
+                  onClick={() => void saveScene('new-image')}
+                  disabled={!canSaveImage}
+                >
+                  {savingMode === 'new-image' ? <Spinner aria-hidden="true" /> : null}
+                  새 데이터 이미지 생성 저장
+                </Button>
+              </div>
+            </div>
           </div>
-        </div>
-      </section>
+        </SectionBody>
+      </Panel>
 
       {isImageSettingsOpen && imageSettingsDraft ? (
-        <div className="vn-modal-backdrop" role="presentation">
-          <section
-            className="vn-panel vn-image-settings-modal"
+        <ModalBackdrop role="presentation">
+          <Panel
+            className="max-h-[min(46rem,calc(100vh-2rem))] w-[min(48rem,100%)] overflow-y-auto"
             role="dialog"
             aria-modal="true"
             aria-labelledby="wizard-image-settings-title"
           >
-            <div className="vn-panel-header">
+            <PanelHeader>
               <div className="min-w-0">
-                <p className="vn-subtitle">Image generation</p>
+                <p className="text-[0.85rem] tracking-[0.16em] text-[var(--app-muted)] uppercase">Image generation</p>
                 <h3
                   id="wizard-image-settings-title"
                   className="truncate text-base font-semibold text-[#fff7ef]"
@@ -899,174 +888,130 @@ export function SceneWizardPage() {
                   이미지 설정
                 </h3>
               </div>
-              <button
-                type="button"
-                className="vn-danger-button px-3 py-2 text-xs"
+              <Button
+                variant="danger"
+                className="px-3 py-2 text-xs"
                 onClick={() => setIsImageSettingsOpen(false)}
               >
                 닫기
-              </button>
-            </div>
+              </Button>
+            </PanelHeader>
 
-            <div className="vn-section-body vn-image-settings-body">
-              <label className="vn-image-settings-field vn-image-settings-wide">
-                <span className="edit-label">
-                  <span className="edit-label__text">positive base</span>
-                </span>
-                <textarea
+            <SectionBody className="flex flex-col gap-3">
+              <div className="flex min-w-0 flex-col gap-1">
+                <FieldLabel>positive base</FieldLabel>
+                <FormControl
+                  as="textarea"
                   value={imageSettingsDraft.positive_base}
                   onChange={(event) => updateImageSettingsDraft('positive_base', event.target.value)}
-                  className="edit-control min-h-20 w-full resize-y px-3 py-2 text-sm"
+                  className="min-h-20 w-full resize-y px-3 py-2 text-sm"
                 />
-              </label>
+              </div>
 
-              <label className="vn-image-settings-field vn-image-settings-wide">
-                <span className="edit-label">
-                  <span className="edit-label__text">negative prompt</span>
-                </span>
-                <textarea
+              <div className="flex min-w-0 flex-col gap-1">
+                <FieldLabel>negative prompt</FieldLabel>
+                <FormControl
+                  as="textarea"
                   value={imageSettingsDraft.negative_prompt}
                   onChange={(event) => updateImageSettingsDraft('negative_prompt', event.target.value)}
-                  className="edit-control min-h-24 w-full resize-y px-3 py-2 text-sm"
+                  className="min-h-24 w-full resize-y px-3 py-2 text-sm"
                 />
-              </label>
+              </div>
 
-              <div className="vn-image-settings-grid">
-                <label className="vn-image-settings-field">
-                  <span className="edit-label">
-                    <span className="edit-label__text">steps</span>
-                  </span>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={imageSettingsDraft.steps}
-                    onChange={(event) => updateImageSettingsDraft('steps', event.target.value)}
-                    className="edit-control h-10 w-full px-3 text-right text-sm"
-                  />
-                </label>
-
-                <label className="vn-image-settings-field">
-                  <span className="edit-label">
-                    <span className="edit-label__text">cfg</span>
-                  </span>
-                  <input
-                    type="number"
-                    min="0.1"
-                    step="0.1"
-                    value={imageSettingsDraft.cfg}
-                    onChange={(event) => updateImageSettingsDraft('cfg', event.target.value)}
-                    className="edit-control h-10 w-full px-3 text-right text-sm"
-                  />
-                </label>
-
-                <label className="vn-image-settings-field">
-                  <span className="edit-label">
-                    <span className="edit-label__text">sampler</span>
-                  </span>
-                  <select
+              <div className="grid grid-cols-3 gap-3 max-[960px]:grid-cols-2 max-[640px]:grid-cols-1">
+                <WizardSettingsInput label="steps" value={imageSettingsDraft.steps} onChange={(value) => updateImageSettingsDraft('steps', value)} min="1" step="1" />
+                <WizardSettingsInput label="cfg" value={imageSettingsDraft.cfg} onChange={(value) => updateImageSettingsDraft('cfg', value)} min="0.1" step="0.1" />
+                <div className="flex min-w-0 flex-col gap-1">
+                  <FieldLabel>sampler</FieldLabel>
+                  <FormControl
+                    as="select"
                     value={imageSettingsDraft.sampler}
                     onChange={(event) => updateImageSettingsDraft('sampler', event.target.value)}
-                    className="edit-control h-10 w-full px-3 text-sm"
+                    className="h-10 w-full px-3 text-sm"
                   >
                     <option value="">default</option>
                     <option value="euler">euler</option>
                     <option value="euler_a">euler_a</option>
                     <option value="dpmpp_2m">dpmpp_2m</option>
                     <option value="unipc">unipc</option>
-                  </select>
-                </label>
-
-                <label className="vn-image-settings-field">
-                  <span className="edit-label">
-                    <span className="edit-label__text">scheduler</span>
-                  </span>
-                  <select
+                  </FormControl>
+                </div>
+                <div className="flex min-w-0 flex-col gap-1">
+                  <FieldLabel>scheduler</FieldLabel>
+                  <FormControl
+                    as="select"
                     value={imageSettingsDraft.scheduler}
                     onChange={(event) => updateImageSettingsDraft('scheduler', event.target.value)}
-                    className="edit-control h-10 w-full px-3 text-sm"
+                    className="h-10 w-full px-3 text-sm"
                   >
                     <option value="">default</option>
                     <option value="karras">karras</option>
-                  </select>
-                </label>
-
-                <label className="vn-image-settings-field">
-                  <span className="edit-label">
-                    <span className="edit-label__text">clip skip</span>
-                  </span>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={imageSettingsDraft.clip_skip}
-                    onChange={(event) => updateImageSettingsDraft('clip_skip', event.target.value)}
-                    className="edit-control h-10 w-full px-3 text-right text-sm"
-                  />
-                </label>
-
-                <label className="vn-image-settings-field">
-                  <span className="edit-label">
-                    <span className="edit-label__text">height</span>
-                  </span>
-                  <input
-                    type="number"
-                    min="8"
-                    step="8"
-                    value={imageSettingsDraft.height}
-                    onChange={(event) => updateImageSettingsDraft('height', event.target.value)}
-                    className="edit-control h-10 w-full px-3 text-right text-sm"
-                  />
-                </label>
-
-                <label className="vn-image-settings-field">
-                  <span className="edit-label">
-                    <span className="edit-label__text">width</span>
-                  </span>
-                  <input
-                    type="number"
-                    min="8"
-                    step="8"
-                    value={imageSettingsDraft.width}
-                    onChange={(event) => updateImageSettingsDraft('width', event.target.value)}
-                    className="edit-control h-10 w-full px-3 text-right text-sm"
-                  />
-                </label>
+                  </FormControl>
+                </div>
+                <WizardSettingsInput label="clip skip" value={imageSettingsDraft.clip_skip} onChange={(value) => updateImageSettingsDraft('clip_skip', value)} min="1" step="1" />
+                <WizardSettingsInput label="height" value={imageSettingsDraft.height} onChange={(value) => updateImageSettingsDraft('height', value)} min="8" step="8" />
+                <WizardSettingsInput label="width" value={imageSettingsDraft.width} onChange={(value) => updateImageSettingsDraft('width', value)} min="8" step="8" />
               </div>
 
               {imageSettingsError ? (
                 <p className="text-sm font-semibold text-[#ff9ab8]">{imageSettingsError}</p>
               ) : null}
 
-              <div className="vn-modal-footer">
-                <button
-                  type="button"
-                  className="vn-button px-4 py-2 text-sm"
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--app-border)] pt-4">
+                <Button
+                  className="px-4 py-2 text-sm"
                   onClick={resetImageSettingsToDefaults}
                 >
                   기본값으로 초기화
-                </button>
-                <div className="vn-modal-footer-actions">
-                  <button
-                    type="button"
-                    className="vn-button px-4 py-2 text-sm"
+                </Button>
+                <div className="ml-auto flex flex-wrap justify-end gap-2">
+                  <Button
+                    className="px-4 py-2 text-sm"
                     onClick={() => setIsImageSettingsOpen(false)}
                   >
                     취소
-                  </button>
-                  <button
-                    type="button"
-                    className="vn-button vn-button-primary px-4 py-2 text-sm"
+                  </Button>
+                  <Button
+                    variant="primary"
+                    className="px-4 py-2 text-sm"
                     onClick={applyImageSettings}
                   >
                     적용
-                  </button>
+                  </Button>
                 </div>
               </div>
-            </div>
-          </section>
-        </div>
+            </SectionBody>
+          </Panel>
+        </ModalBackdrop>
       ) : null}
+    </div>
+  );
+}
+
+function WizardSettingsInput({
+  label,
+  value,
+  onChange,
+  min,
+  step,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  min: string;
+  step: string;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <FieldLabel>{label}</FieldLabel>
+      <FormControl
+        type="number"
+        min={min}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-10 w-full px-3 text-right text-sm"
+      />
     </div>
   );
 }

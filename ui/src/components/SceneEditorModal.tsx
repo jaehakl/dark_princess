@@ -16,6 +16,17 @@ import type {
   SeedImageSource,
   SeedImageState,
 } from '../lib/scene-image';
+import {
+  Button,
+  FieldLabel,
+  FormControl,
+  ImageFrame,
+  ModalBackdrop,
+  Panel,
+  PanelHeader,
+  SectionBody,
+  Spinner,
+} from './ui';
 
 const STATUS_CHANGE_FIELDS = [
   { key: 'cash', label: '현금' },
@@ -506,16 +517,16 @@ export function SceneEditorModal({
   }
 
   return (
-    <div className="vn-modal-backdrop" role="presentation">
-      <section
-        className="vn-panel vn-scene-editor-modal"
+    <ModalBackdrop role="presentation">
+      <Panel
+        className="max-h-[calc(100vh-1.5rem)] w-[min(76rem,100%)] overflow-y-auto"
         role="dialog"
         aria-modal="true"
         aria-labelledby="scene-editor-title"
       >
-        <div className="vn-panel-header">
+        <PanelHeader>
           <div className="min-w-0">
-            <p className="vn-subtitle">Scene generation</p>
+            <p className="text-[0.85rem] tracking-[0.16em] text-[var(--app-muted)] uppercase">Scene generation</p>
             <h2
               id="scene-editor-title"
               className="truncate text-lg font-semibold text-[#fff7ef]"
@@ -523,73 +534,68 @@ export function SceneEditorModal({
               {modalTitle}
             </h2>
           </div>
-          <button
-            type="button"
-            className="vn-danger-button px-3 py-2 text-xs"
+          <Button
+            variant="danger"
+            className="px-3 py-2 text-xs"
             onClick={onClose}
             disabled={isInputDisabled}
           >
             닫기
-          </button>
-        </div>
+          </Button>
+        </PanelHeader>
 
-        <div className="vn-section-body vn-scene-editor-body">
-          <div className="vn-scene-editor-meta">
-            <button
-              type="button"
-              className="vn-button px-3 py-1.5 text-xs"
+        <SectionBody className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3 rounded-[8px] border border-[rgba(255,208,222,0.24)] bg-[rgba(12,5,18,0.56)] px-3 py-2.5">
+            <Button
+              className="px-3 py-1.5 text-xs"
               onClick={openImageSettings}
               disabled={isInputDisabled}
             >
               이미지 설정
-            </button>
+            </Button>
             <span className="ml-auto text-xs text-[var(--app-muted)]">
               {editedSceneId ? `scene_id ${editedSceneId}` : 'scene_id null'}
             </span>
           </div>
 
-          <div className="vn-scene-editor-grid">
-            <div className="vn-scene-editor-fields">
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(20rem,0.36fr)] items-start gap-4 max-[960px]:grid-cols-1">
+            <div className="flex min-w-0 flex-col gap-3">
               <div className="block space-y-1">
                 <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                  <label htmlFor="scene-editor-prompt" className="edit-label edit-label--required">
-                    <span className="edit-label__text">prompt</span>
-                  </label>
+                  <FieldLabel htmlFor="scene-editor-prompt" required>prompt</FieldLabel>
                   <div className="flex flex-wrap justify-end gap-2">
-                    <button
-                      type="button"
-                      className="vn-button inline-flex items-center gap-2 px-3 py-1.5 text-xs"
+                    <Button
+                      className="inline-flex items-center gap-2 px-3 py-1.5 text-xs"
                       onClick={() => void recommendPromptFromScript()}
                       disabled={!canRecommendPrompt}
                     >
-                      {isRecommendingPrompt ? <span className="vn-spinner" aria-hidden="true" /> : null}
+                      {isRecommendingPrompt ? <Spinner aria-hidden="true" /> : null}
                       {isRecommendingPrompt ? '추천 중' : 'prompt 추천'}
-                    </button>
-                    <button
-                      type="button"
-                      className="vn-button inline-flex items-center gap-2 px-3 py-1.5 text-xs"
+                    </Button>
+                    <Button
+                      className="inline-flex items-center gap-2 px-3 py-1.5 text-xs"
                       onClick={() => void generatePromptFromScript()}
                       disabled={!canGeneratePrompt}
                     >
-                      {isGeneratingPrompt ? <span className="vn-spinner" aria-hidden="true" /> : null}
+                      {isGeneratingPrompt ? <Spinner aria-hidden="true" /> : null}
                       {isGeneratingPrompt ? '생성 중' : 'prompt 생성'}
-                    </button>
+                    </Button>
                   </div>
                 </div>
-                <textarea
+                <FormControl
+                  as="textarea"
                   id="scene-editor-prompt"
                   value={prompt}
                   onChange={(event) => setPrompt(event.target.value)}
-                  className="edit-control min-h-20 w-full resize-y px-3 py-2 text-sm"
+                  className="min-h-20 w-full resize-y px-3 py-2 text-sm"
                   disabled={isInputDisabled}
                 />
                 {promptRecommendations.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {promptRecommendations.slice(0, 16).map((item) => (
-                      <button
+                      <Button
                         key={item.word}
-                        type="button"
-                        className="vn-button px-2.5 py-1 text-xs"
+                        className="px-2.5 py-1 text-xs"
                         onClick={() =>
                           setPrompt((currentPrompt) => {
                             const currentWords = currentPrompt
@@ -604,33 +610,33 @@ export function SceneEditorModal({
                         title={`score ${item.score.toFixed(3)}`}
                       >
                         {item.word}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 ) : null}
               </div>
 
-              <label className="block space-y-1">
-                <span className="edit-label">
-                  <span className="edit-label__text">script</span>
-                </span>
-                <textarea
+              <div className="block space-y-1">
+                <FieldLabel>script</FieldLabel>
+                <FormControl
+                  as="textarea"
                   value={script}
                   onChange={(event) => setScript(event.target.value)}
-                  className="edit-control min-h-40 w-full resize-y px-3 py-2 text-sm"
+                  className="min-h-40 w-full resize-y px-3 py-2 text-sm"
                   disabled={isInputDisabled}
                 />
-              </label>
+              </div>
 
               <div className="space-y-2">
-                <span className="edit-label">
-                  <span className="edit-label__text">status_change</span>
-                </span>
-                <div className="vn-status-change-grid">
+                <FieldLabel>status_change</FieldLabel>
+                <div className="grid grid-cols-3 gap-2 max-[640px]:grid-cols-1">
                   {STATUS_CHANGE_FIELDS.map((field) => (
-                    <label key={field.key} className="vn-status-change-field">
+                    <label
+                      key={field.key}
+                      className="grid grid-cols-[minmax(3.5rem,0.8fr)_minmax(0,1fr)] items-center gap-2 text-[0.82rem] font-extrabold text-[#fff1f5] max-[640px]:grid-cols-[minmax(4.5rem,0.5fr)_minmax(0,1fr)]"
+                    >
                       <span>{field.label}</span>
-                      <input
+                      <FormControl
                         type="number"
                         step="1"
                         value={statusChangeValues[field.key]}
@@ -640,7 +646,7 @@ export function SceneEditorModal({
                             [field.key]: event.target.value,
                           }))
                         }
-                        className="edit-control h-9 w-full px-2 text-right text-sm"
+                        className="h-9 w-full px-2 text-right text-sm"
                         disabled={isInputDisabled}
                       />
                     </label>
@@ -649,11 +655,9 @@ export function SceneEditorModal({
               </div>
             </div>
 
-            <div className="vn-scene-editor-preview">
+            <div className="flex min-w-0 flex-col gap-2">
               <div className="flex min-w-0 items-center justify-between gap-2">
-                <span className="edit-label">
-                  <span className="edit-label__text">image</span>
-                </span>
+                <FieldLabel>image</FieldLabel>
                 <div className="flex min-w-0 items-center gap-2">
                   {seedImage ? (
                     <span className="truncate text-xs font-semibold text-[var(--app-muted)]">
@@ -666,51 +670,50 @@ export function SceneEditorModal({
                   ) : null}
                   <label className="flex shrink-0 items-center gap-1 text-xs font-semibold text-[var(--app-muted)]">
                     <span>strength</span>
-                    <input
+                    <FormControl
                       type="number"
                       min="0.01"
                       max="1"
                       step="0.01"
                       value={strengthControlValue}
                       onChange={(event) => updateImageStrength(event.target.value)}
-                      className="edit-control h-8 w-20 px-2 text-right text-xs"
+                      className="h-8 w-20 px-2 text-right text-xs"
                       disabled={isInputDisabled || !imageSettings}
                     />
                   </label>
-                  <button
-                    type="button"
-                    className="vn-button px-2.5 py-1 text-xs"
+                  <Button
+                    className="px-2.5 py-1 text-xs"
                     onClick={() => void shuffleSeedImage()}
                     disabled={isInputDisabled || isPreparingSeedImage || !imageSettings}
                   >
                     shuffle
-                  </button>
+                  </Button>
                 </div>
               </div>
-              <div className="dp-image-frame vn-scene-editor-image-frame">
+              <ImageFrame className="relative mx-auto w-[min(100%,24rem)] rounded-[8px] border border-[rgba(255,218,228,0.22)] max-[960px]:w-[min(100%,22rem)]">
                 {seedImage ? (
-                  <img src={seedImage.previewUrl} alt={prompt || 'Seed image'} className="dp-image-media" />
+                  <img src={seedImage.previewUrl} alt={prompt || 'Seed image'} className="block h-full w-full object-contain" />
                 ) : isPreparingSeedImage ? (
-                  <div className="vn-scene-empty">
-                    <span className="vn-spinner" aria-hidden="true" />
+                  <div className="grid h-full min-h-72 w-full place-items-center gap-3 bg-[linear-gradient(145deg,rgba(255,231,238,0.1),transparent_42%),rgba(15,5,20,0.78)] p-6 text-center text-[0.95rem] text-[var(--app-muted)]">
+                    <Spinner aria-hidden="true" />
                     <span>seed 준비 중</span>
                   </div>
                 ) : (
-                  <div className="vn-scene-empty">seed image가 없습니다.</div>
+                  <div className="grid h-full min-h-72 w-full place-items-center bg-[linear-gradient(145deg,rgba(255,231,238,0.1),transparent_42%),rgba(15,5,20,0.78)] p-6 text-center text-[0.95rem] text-[var(--app-muted)]">seed image가 없습니다.</div>
                 )}
                 {isGeneratingImage && seedImage ? (
-                  <div className="vn-scene-seed-overlay">
-                    <span className="vn-spinner" aria-hidden="true" />
+                  <div className="absolute inset-0 grid place-items-center gap-3 bg-[rgba(7,1,12,0.54)] text-center text-[0.95rem] font-extrabold text-[#fff7ef]">
+                    <Spinner aria-hidden="true" />
                     <span>이미지 생성 중</span>
                   </div>
                 ) : null}
                 {isPreparingSeedImage && seedImage ? (
-                  <div className="vn-scene-seed-overlay">
-                    <span className="vn-spinner" aria-hidden="true" />
+                  <div className="absolute inset-0 grid place-items-center gap-3 bg-[rgba(7,1,12,0.54)] text-center text-[0.95rem] font-extrabold text-[#fff7ef]">
+                    <Spinner aria-hidden="true" />
                     <span>seed 준비 중</span>
                   </div>
                 ) : null}
-              </div>
+              </ImageFrame>
               {seedImageError ? (
                 <p className="text-sm font-semibold text-[#ff9ab8]">{seedImageError}</p>
               ) : null}
@@ -721,72 +724,69 @@ export function SceneEditorModal({
             <p className="text-sm font-semibold text-[#ff9ab8]">{error}</p>
           ) : null}
 
-          <div className="vn-modal-footer">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--app-border)] pt-4">
             <div>
               {editedSceneId ? (
-                <button
-                  type="button"
-                  className="vn-danger-button inline-flex items-center gap-2 px-4 py-2 text-sm"
+                <Button
+                  variant="danger"
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm"
                   onClick={() => void deleteScene()}
                   disabled={!canDelete}
                 >
-                  {isDeleting ? <span className="vn-spinner" aria-hidden="true" /> : null}
+                  {isDeleting ? <Spinner aria-hidden="true" /> : null}
                   {isDeleting ? '삭제 중' : 'Scene 삭제'}
-                </button>
+                </Button>
               ) : null}
             </div>
-            <div className="vn-modal-footer-actions">
-              <button
-                type="button"
-                className="vn-button px-4 py-2 text-sm"
+            <div className="ml-auto flex flex-wrap justify-end gap-2">
+              <Button
+                className="px-4 py-2 text-sm"
                 onClick={onClose}
                 disabled={isInputDisabled}
               >
                 취소
-              </button>
-              <button
-                type="button"
-                className="vn-button inline-flex items-center gap-2 px-4 py-2 text-sm"
+              </Button>
+              <Button
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm"
                 onClick={() => void saveScene('text')}
                 disabled={!canSave || !canSaveWithoutCreate}
               >
-                {savingMode === 'text' ? <span className="vn-spinner" aria-hidden="true" /> : null}
+                {savingMode === 'text' ? <Spinner aria-hidden="true" /> : null}
                 {savingMode === 'text' ? '텍스트 저장 중' : '텍스트 저장'}
-              </button>
-              <button
-                type="button"
-                className="vn-button inline-flex items-center gap-2 px-4 py-2 text-sm"
+              </Button>
+              <Button
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm"
                 onClick={() => void saveScene('image')}
                 disabled={!canGenerateImage || !canSaveWithoutCreate}
               >
-                {savingMode === 'image' ? <span className="vn-spinner" aria-hidden="true" /> : null}
+                {savingMode === 'image' ? <Spinner aria-hidden="true" /> : null}
                 {savingMode === 'image' ? '이미지 업데이트 중' : '이미지 업데이트'}
-              </button>
-              <button
-                type="button"
-                className="vn-button vn-button-primary inline-flex items-center gap-2 px-4 py-2 text-sm"
+              </Button>
+              <Button
+                variant="primary"
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm"
                 onClick={() => void saveScene('create')}
                 disabled={!canGenerateImage}
               >
-                {savingMode === 'create' ? <span className="vn-spinner" aria-hidden="true" /> : null}
+                {savingMode === 'create' ? <Spinner aria-hidden="true" /> : null}
                 {savingMode === 'create' ? 'Scene 생성 중' : '새 Scene 생성'}
-              </button>
+              </Button>
             </div>
           </div>
-        </div>
-      </section>
+        </SectionBody>
+      </Panel>
 
       {isImageSettingsOpen && imageSettingsDraft ? (
-        <div className="vn-nested-modal-backdrop" role="presentation">
-          <section
-            className="vn-panel vn-image-settings-modal"
+        <ModalBackdrop nested role="presentation">
+          <Panel
+            className="max-h-[min(46rem,calc(100vh-2rem))] w-[min(48rem,100%)] overflow-y-auto"
             role="dialog"
             aria-modal="true"
             aria-labelledby="image-settings-title"
           >
-            <div className="vn-panel-header">
+            <PanelHeader>
               <div className="min-w-0">
-                <p className="vn-subtitle">Image generation</p>
+                <p className="text-[0.85rem] tracking-[0.16em] text-[var(--app-muted)] uppercase">Image generation</p>
                 <h3
                   id="image-settings-title"
                   className="truncate text-base font-semibold text-[#fff7ef]"
@@ -794,174 +794,130 @@ export function SceneEditorModal({
                   이미지 설정
                 </h3>
               </div>
-              <button
-                type="button"
-                className="vn-danger-button px-3 py-2 text-xs"
+              <Button
+                variant="danger"
+                className="px-3 py-2 text-xs"
                 onClick={() => setIsImageSettingsOpen(false)}
               >
                 닫기
-              </button>
-            </div>
+              </Button>
+            </PanelHeader>
 
-            <div className="vn-section-body vn-image-settings-body">
-              <label className="vn-image-settings-field vn-image-settings-wide">
-                <span className="edit-label">
-                  <span className="edit-label__text">positive base</span>
-                </span>
-                <textarea
+            <SectionBody className="flex flex-col gap-3">
+              <div className="flex min-w-0 flex-col gap-1">
+                <FieldLabel>positive base</FieldLabel>
+                <FormControl
+                  as="textarea"
                   value={imageSettingsDraft.positive_base}
                   onChange={(event) => updateImageSettingsDraft('positive_base', event.target.value)}
-                  className="edit-control min-h-20 w-full resize-y px-3 py-2 text-sm"
+                  className="min-h-20 w-full resize-y px-3 py-2 text-sm"
                 />
-              </label>
+              </div>
 
-              <label className="vn-image-settings-field vn-image-settings-wide">
-                <span className="edit-label">
-                  <span className="edit-label__text">negative prompt</span>
-                </span>
-                <textarea
+              <div className="flex min-w-0 flex-col gap-1">
+                <FieldLabel>negative prompt</FieldLabel>
+                <FormControl
+                  as="textarea"
                   value={imageSettingsDraft.negative_prompt}
                   onChange={(event) => updateImageSettingsDraft('negative_prompt', event.target.value)}
-                  className="edit-control min-h-24 w-full resize-y px-3 py-2 text-sm"
+                  className="min-h-24 w-full resize-y px-3 py-2 text-sm"
                 />
-              </label>
+              </div>
 
-              <div className="vn-image-settings-grid">
-                <label className="vn-image-settings-field">
-                  <span className="edit-label">
-                    <span className="edit-label__text">steps</span>
-                  </span>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={imageSettingsDraft.steps}
-                    onChange={(event) => updateImageSettingsDraft('steps', event.target.value)}
-                    className="edit-control h-10 w-full px-3 text-right text-sm"
-                  />
-                </label>
-
-                <label className="vn-image-settings-field">
-                  <span className="edit-label">
-                    <span className="edit-label__text">cfg</span>
-                  </span>
-                  <input
-                    type="number"
-                    min="0.1"
-                    step="0.1"
-                    value={imageSettingsDraft.cfg}
-                    onChange={(event) => updateImageSettingsDraft('cfg', event.target.value)}
-                    className="edit-control h-10 w-full px-3 text-right text-sm"
-                  />
-                </label>
-
-                <label className="vn-image-settings-field">
-                  <span className="edit-label">
-                    <span className="edit-label__text">sampler</span>
-                  </span>
-                  <select
+              <div className="grid grid-cols-3 gap-3 max-[960px]:grid-cols-2 max-[640px]:grid-cols-1">
+                <SettingsInput label="steps" value={imageSettingsDraft.steps} onChange={(value) => updateImageSettingsDraft('steps', value)} min="1" step="1" />
+                <SettingsInput label="cfg" value={imageSettingsDraft.cfg} onChange={(value) => updateImageSettingsDraft('cfg', value)} min="0.1" step="0.1" />
+                <div className="flex min-w-0 flex-col gap-1">
+                  <FieldLabel>sampler</FieldLabel>
+                  <FormControl
+                    as="select"
                     value={imageSettingsDraft.sampler}
                     onChange={(event) => updateImageSettingsDraft('sampler', event.target.value)}
-                    className="edit-control h-10 w-full px-3 text-sm"
+                    className="h-10 w-full px-3 text-sm"
                   >
                     <option value="">default</option>
                     <option value="euler">euler</option>
                     <option value="euler_a">euler_a</option>
                     <option value="dpmpp_2m">dpmpp_2m</option>
                     <option value="unipc">unipc</option>
-                  </select>
-                </label>
-
-                <label className="vn-image-settings-field">
-                  <span className="edit-label">
-                    <span className="edit-label__text">scheduler</span>
-                  </span>
-                  <select
+                  </FormControl>
+                </div>
+                <div className="flex min-w-0 flex-col gap-1">
+                  <FieldLabel>scheduler</FieldLabel>
+                  <FormControl
+                    as="select"
                     value={imageSettingsDraft.scheduler}
                     onChange={(event) => updateImageSettingsDraft('scheduler', event.target.value)}
-                    className="edit-control h-10 w-full px-3 text-sm"
+                    className="h-10 w-full px-3 text-sm"
                   >
                     <option value="">default</option>
                     <option value="karras">karras</option>
-                  </select>
-                </label>
-
-                <label className="vn-image-settings-field">
-                  <span className="edit-label">
-                    <span className="edit-label__text">clip skip</span>
-                  </span>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={imageSettingsDraft.clip_skip}
-                    onChange={(event) => updateImageSettingsDraft('clip_skip', event.target.value)}
-                    className="edit-control h-10 w-full px-3 text-right text-sm"
-                  />
-                </label>
-
-                <label className="vn-image-settings-field">
-                  <span className="edit-label">
-                    <span className="edit-label__text">height</span>
-                  </span>
-                  <input
-                    type="number"
-                    min="8"
-                    step="8"
-                    value={imageSettingsDraft.height}
-                    onChange={(event) => updateImageSettingsDraft('height', event.target.value)}
-                    className="edit-control h-10 w-full px-3 text-right text-sm"
-                  />
-                </label>
-
-                <label className="vn-image-settings-field">
-                  <span className="edit-label">
-                    <span className="edit-label__text">width</span>
-                  </span>
-                  <input
-                    type="number"
-                    min="8"
-                    step="8"
-                    value={imageSettingsDraft.width}
-                    onChange={(event) => updateImageSettingsDraft('width', event.target.value)}
-                    className="edit-control h-10 w-full px-3 text-right text-sm"
-                  />
-                </label>
+                  </FormControl>
+                </div>
+                <SettingsInput label="clip skip" value={imageSettingsDraft.clip_skip} onChange={(value) => updateImageSettingsDraft('clip_skip', value)} min="1" step="1" />
+                <SettingsInput label="height" value={imageSettingsDraft.height} onChange={(value) => updateImageSettingsDraft('height', value)} min="8" step="8" />
+                <SettingsInput label="width" value={imageSettingsDraft.width} onChange={(value) => updateImageSettingsDraft('width', value)} min="8" step="8" />
               </div>
 
               {imageSettingsError ? (
                 <p className="text-sm font-semibold text-[#ff9ab8]">{imageSettingsError}</p>
               ) : null}
 
-              <div className="vn-modal-footer">
-                <button
-                  type="button"
-                  className="vn-button px-4 py-2 text-sm"
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--app-border)] pt-4">
+                <Button
+                  className="px-4 py-2 text-sm"
                   onClick={resetImageSettingsToDefaults}
                 >
                   기본값으로 초기화
-                </button>
-                <div className="vn-modal-footer-actions">
-                  <button
-                    type="button"
-                    className="vn-button px-4 py-2 text-sm"
+                </Button>
+                <div className="ml-auto flex flex-wrap justify-end gap-2">
+                  <Button
+                    className="px-4 py-2 text-sm"
                     onClick={() => setIsImageSettingsOpen(false)}
                   >
                     취소
-                  </button>
-                  <button
-                    type="button"
-                    className="vn-button vn-button-primary px-4 py-2 text-sm"
+                  </Button>
+                  <Button
+                    variant="primary"
+                    className="px-4 py-2 text-sm"
                     onClick={applyImageSettings}
                   >
                     적용
-                  </button>
+                  </Button>
                 </div>
               </div>
-            </div>
-          </section>
-        </div>
+            </SectionBody>
+          </Panel>
+        </ModalBackdrop>
       ) : null}
+    </ModalBackdrop>
+  );
+}
+
+function SettingsInput({
+  label,
+  value,
+  onChange,
+  min,
+  step,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  min: string;
+  step: string;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <FieldLabel>{label}</FieldLabel>
+      <FormControl
+        type="number"
+        min={min}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-10 w-full px-3 text-right text-sm"
+      />
     </div>
   );
 }

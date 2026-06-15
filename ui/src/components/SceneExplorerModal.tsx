@@ -1,6 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { dbTables } from '../api/api';
 import type { GetListRequest, SceneRecord } from '../api/type';
+import {
+  Button,
+  FormControl,
+  ImageFrame,
+  ModalBackdrop,
+  Panel,
+  PanelHeader,
+  SectionBody,
+  Spinner,
+  cx,
+} from './ui';
 
 const PAGE_SIZE = 100;
 
@@ -136,16 +147,16 @@ export function SceneExplorerModal({
   }
 
   return (
-    <div className="vn-modal-backdrop" role="presentation">
-      <section
-        className="vn-panel vn-scene-explorer-modal"
+    <ModalBackdrop role="presentation">
+      <Panel
+        className="max-h-[min(48rem,calc(100vh-2rem))] w-[min(96rem,calc(100vw-2rem))] overflow-y-auto"
         role="dialog"
         aria-modal="true"
         aria-labelledby="scene-explorer-title"
       >
-        <div className="vn-panel-header">
+        <PanelHeader>
           <div className="min-w-0">
-            <p className="vn-subtitle">Scene archive</p>
+            <p className="text-[0.85rem] tracking-[0.16em] text-[var(--app-muted)] uppercase">Scene archive</p>
             <h2
               id="scene-explorer-title"
               className="truncate text-lg font-semibold text-[#fff7ef]"
@@ -153,16 +164,16 @@ export function SceneExplorerModal({
               Scene 탐색
             </h2>
           </div>
-          <button
-            type="button"
-            className="vn-danger-button px-3 py-2 text-xs"
+          <Button
+            variant="danger"
+            className="px-3 py-2 text-xs"
             onClick={onClose}
           >
             닫기
-          </button>
-        </div>
+          </Button>
+        </PanelHeader>
 
-        <div className="vn-section-body space-y-4">
+        <SectionBody className="space-y-4">
           <form
             className="flex flex-col gap-2 sm:flex-row sm:items-center"
             onSubmit={(event) => {
@@ -171,10 +182,10 @@ export function SceneExplorerModal({
             }}
           >
             <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <input
+              <FormControl
                 value={searchText}
                 onChange={(event) => setSearchText(event.target.value)}
-                className="edit-control h-11 min-w-0 px-3"
+                className="h-11 min-w-0 px-3"
                 placeholder="시멘틱 검색할 장면 텍스트"
               />
               {isSemanticSearch ? (
@@ -184,22 +195,22 @@ export function SceneExplorerModal({
               ) : null}
             </div>
             <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <button
+              <Button
                 type="submit"
-                className="vn-button vn-button-primary px-4 py-2 text-xs"
+                variant="primary"
+                className="px-4 py-2 text-xs"
                 disabled={isLoading || searchText.trim().length === 0}
               >
                 시멘틱 검색
-              </button>
+              </Button>
               {isSemanticSearch ? (
-                <button
-                  type="button"
-                  className="vn-button px-4 py-2 text-xs"
+                <Button
+                  className="px-4 py-2 text-xs"
                   onClick={clearSemanticSearch}
                   disabled={isLoading}
                 >
                   목록으로
-                </button>
+                </Button>
               ) : null}
             </div>
             <span className="shrink-0 text-xs font-semibold text-[var(--app-muted)]">
@@ -208,45 +219,45 @@ export function SceneExplorerModal({
           </form>
 
           {isLoading ? (
-            <div className="vn-scene-explorer-state">
-              <span className="vn-spinner" aria-hidden="true" />
+            <div className="flex min-h-56 items-center justify-center gap-3 text-[0.95rem] font-bold text-[var(--app-muted)]">
+              <Spinner aria-hidden="true" />
               <span>{isSemanticSearch ? '유사 Scene을 찾는 중' : 'Scene을 불러오는 중'}</span>
             </div>
           ) : error ? (
-            <div className="vn-scene-explorer-state text-[#ff9ab8]">{error}</div>
+            <div className="flex min-h-56 items-center justify-center gap-3 text-[0.95rem] font-bold text-[#ff9ab8]">{error}</div>
           ) : visibleScenes.length === 0 ? (
-            <div className="vn-scene-explorer-state">
+            <div className="flex min-h-56 items-center justify-center gap-3 text-[0.95rem] font-bold text-[var(--app-muted)]">
               {isSemanticSearch ? '시멘틱 검색 결과 없음' : 'Scene 없음'}
             </div>
           ) : (
-            <div className="vn-scene-grid">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
               {visibleScenes.map((scene) => {
-                const isCurrentScene = scene.id && scene.id === currentScene?.id;
+                const isCurrentScene = scene.id != null && scene.id === currentScene?.id;
                 const scriptSummary = getScriptSummary(scene);
                 const sceneLabel = `Scene #${scene.id ?? '-'}`;
                 return (
                   <button
                     key={scene.id}
                     type="button"
-                    className={[
-                      'vn-scene-card',
-                      isCurrentScene ? 'vn-scene-card-current' : '',
-                    ].join(' ')}
+                    className={cx(
+                      'grid aspect-square min-w-0 place-items-stretch rounded-[8px] border border-[rgba(255,208,222,0.24)] bg-[linear-gradient(135deg,rgba(255,229,238,0.1),transparent_58%),rgba(12,5,18,0.58)] p-1 text-left transition-[transform,border-color,background] hover:-translate-y-px hover:border-[rgba(255,224,180,0.84)] hover:bg-[linear-gradient(135deg,rgba(255,225,191,0.16),transparent_58%),rgba(50,15,47,0.82)]',
+                      isCurrentScene && 'border-[rgba(255,232,183,0.82)] shadow-[0_0_26px_rgba(240,179,95,0.16)]',
+                    )}
                     onClick={() => onSelect(scene)}
                     title={`${sceneLabel}\n${scriptSummary}`}
                     aria-label={`${sceneLabel}: ${scriptSummary}`}
                   >
-                    <div className="vn-scene-thumb">
+                    <ImageFrame className="h-full w-full rounded-[6px] border border-[rgba(255,218,228,0.22)] bg-[linear-gradient(135deg,rgba(255,224,235,0.12),transparent_46%),rgba(12,5,18,0.82)]">
                       {scene.image_url ? (
                         <img
                           src={scene.image_url}
                           alt={sceneLabel}
-                          className="dp-image-media"
+                          className="block h-full w-full object-cover"
                         />
                       ) : (
                         null
                       )}
-                    </div>
+                    </ImageFrame>
                   </button>
                 );
               })}
@@ -258,26 +269,24 @@ export function SceneExplorerModal({
               {page} / {totalPages}
             </span>
             <div className="flex gap-2">
-              <button
-                type="button"
-                className="vn-button px-4 py-2 text-xs"
+              <Button
+                className="px-4 py-2 text-xs"
                 onClick={() => setPage((current) => Math.max(1, current - 1))}
                 disabled={page <= 1 || isLoading}
               >
                 이전
-              </button>
-              <button
-                type="button"
-                className="vn-button px-4 py-2 text-xs"
+              </Button>
+              <Button
+                className="px-4 py-2 text-xs"
                 onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
                 disabled={page >= totalPages || isLoading}
               >
                 다음
-              </button>
+              </Button>
             </div>
           </div>
-        </div>
-      </section>
-    </div>
+        </SectionBody>
+      </Panel>
+    </ModalBackdrop>
   );
 }

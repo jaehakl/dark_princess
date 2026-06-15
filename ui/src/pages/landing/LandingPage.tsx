@@ -8,6 +8,14 @@ import type {
   StatusRecord,
 } from '../../api/type';
 import { useSceneStore } from '../../api/store';
+import {
+  Button,
+  FieldLabel,
+  FormControl,
+  Panel,
+  PanelHeader,
+  SectionBody,
+} from '../../components/ui';
 
 const LIST_REQUEST: GetListRequest = {
   offset: 0,
@@ -297,25 +305,24 @@ export function LandingPage() {
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-2 px-1">
-        <p className="vn-subtitle">A moonlit beginning</p>
-        <h1 className="vn-title">Create/Select Status</h1>
+        <p className="text-[0.85rem] tracking-[0.16em] text-[var(--app-muted)] uppercase">A moonlit beginning</p>
+        <h1 className="text-[clamp(1.25rem,2vw,2.2rem)] leading-[1.05] font-extrabold tracking-[0.02em] text-[#fff7ef] [text-shadow:0_0_22px_rgba(255,194,211,0.42),0_2px_12px_rgba(0,0,0,0.58)]">Create/Select Status</h1>
       </div>
 
       <div className="grid min-h-[calc(100vh-10rem)] gap-5 lg:grid-cols-[minmax(18rem,0.85fr)_minmax(30rem,1.15fr)]">
-      <section className="vn-panel min-h-0">
-        <div className="vn-panel-header">
+      <Panel className="min-h-0">
+        <PanelHeader>
           <h2 className="text-base font-semibold text-[#fff7ef]">기록 선택</h2>
-          <button
-            type="button"
-            className="vn-button px-4 py-2 text-sm"
+          <Button
+            className="px-4 py-2 text-sm"
             onClick={() => void loadData()}
             disabled={isLoading}
           >
             새로고침
-          </button>
-        </div>
+          </Button>
+        </PanelHeader>
 
-        <div className="vn-section-body vn-list">
+        <SectionBody className="max-h-[calc(100vh-12rem)] overflow-y-auto pr-1">
           {isLoading ? (
             <p className="px-2 py-6 text-sm text-[var(--app-muted)]">
               불러오는 중
@@ -331,7 +338,7 @@ export function LandingPage() {
                   key={status.id}
                   role="button"
                   tabIndex={0}
-                  className="vn-status-card px-4 py-4"
+                  className="relative w-full rounded-[8px] border border-[rgba(255,208,222,0.28)] bg-[linear-gradient(135deg,rgba(255,231,237,0.12),transparent_42%),rgba(19,7,27,0.66)] px-4 py-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] transition-[transform,border-color,background] hover:-translate-y-px hover:border-[rgba(255,224,180,0.84)] hover:bg-[linear-gradient(135deg,rgba(255,225,191,0.18),transparent_48%),rgba(50,15,47,0.84)]"
                   onClick={() => status.id && navigate(`/play/${status.id}`)}
                   onKeyDown={(event) => {
                     if ((event.key === 'Enter' || event.key === ' ') && status.id) {
@@ -354,9 +361,9 @@ export function LandingPage() {
                     <span>스트레스 {status.stress}</span>
                   </span>
                   <span className="mt-3 flex justify-end">
-                    <button
-                      type="button"
-                      className="vn-danger-button px-3 py-1.5 text-xs"
+                    <Button
+                      variant="danger"
+                      className="px-3 py-1.5 text-xs"
                       onClick={(event) => {
                         event.stopPropagation();
                         void deleteStatus(status);
@@ -364,30 +371,29 @@ export function LandingPage() {
                       disabled={deletingStatusId === status.id}
                     >
                       {deletingStatusId === status.id ? '삭제 중' : '삭제'}
-                    </button>
+                    </Button>
                   </span>
                 </div>
               ))}
             </div>
           )}
-        </div>
-      </section>
+        </SectionBody>
+      </Panel>
 
-      <section className="vn-panel min-h-0">
-        <div className="vn-panel-header">
+      <Panel className="min-h-0">
+        <PanelHeader>
           <h2 className="text-base font-semibold text-[#fff7ef]">Status 생성</h2>
           <p className="hidden text-xs font-semibold text-[var(--app-muted)] sm:block">
             fate tuning
           </p>
-        </div>
+        </PanelHeader>
 
-        <div className="vn-section-body grid gap-5 xl:grid-cols-[minmax(20rem,1fr)_minmax(20rem,1fr)]">
+        <SectionBody className="grid gap-5 xl:grid-cols-[minmax(20rem,1fr)_minmax(20rem,1fr)]">
           <div className="space-y-4">
-            <label className="block space-y-1">
-              <span className="edit-label">
-                <span className="edit-label__text">이름</span>
-              </span>
-              <input
+            <div className="block space-y-1">
+              <FieldLabel htmlFor="status-name">이름</FieldLabel>
+              <FormControl
+                id="status-name"
                 value={draftStatus.name}
                 onChange={(event) =>
                   setDraftStatus((current) => ({
@@ -395,9 +401,9 @@ export function LandingPage() {
                     name: event.target.value,
                   }))
                 }
-                className="edit-control h-12 w-full px-3"
+                className="h-12 w-full px-3"
               />
-            </label>
+            </div>
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <NumberField
@@ -416,38 +422,32 @@ export function LandingPage() {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                className="vn-button px-5 py-2"
+              <Button
+                className="px-5 py-2"
                 onClick={shuffleStatus}
               >
                 Shuffle
-              </button>
-              <button
-                type="button"
-                className={[
-                  'vn-button px-5 py-2',
-                  canCreateStatus
-                    ? 'vn-button-primary'
-                    : '',
-                ].join(' ')}
+              </Button>
+              <Button
+                variant={canCreateStatus ? 'primary' : 'default'}
+                className="px-5 py-2"
                 onClick={() => void createStatus()}
                 disabled={!canCreateStatus}
               >
                 {isCreatingStatus ? '생성 중' : 'Status 생성'}
-              </button>
+              </Button>
             </div>
           </div>
 
           <div className="space-y-4">
-            <label className="block space-y-1">
-              <span className="edit-label">
-                <span className="edit-label__text">선택 모델</span>
-              </span>
-              <select
+            <div className="block space-y-1">
+              <FieldLabel htmlFor="selection-model">선택 모델</FieldLabel>
+              <FormControl
+                as="select"
+                id="selection-model"
                 value={selectedModelId ?? ''}
                 onChange={(event) => selectModel(event.target.value)}
-                className="edit-control h-12 w-full px-3"
+                className="h-12 w-full px-3"
               >
                 <option value="">선택 안 함</option>
                 {models.map((model) => (
@@ -455,66 +455,64 @@ export function LandingPage() {
                     {model.name}
                   </option>
                 ))}
-              </select>
-            </label>
+              </FormControl>
+            </div>
 
-            <div className="vn-model-card px-4 py-4">
+            <div className="rounded-[8px] border border-[rgba(255,208,222,0.25)] bg-[linear-gradient(135deg,rgba(255,229,238,0.12),transparent),rgba(12,5,18,0.64)] px-4 py-4">
               <p className="truncate text-sm font-semibold text-[#fff7ef]">
                 {selectedModel?.name ?? '모델 없음'}
               </p>
               <p className="mt-1 truncate text-xs text-[var(--app-muted)]">
                 {selectedModel?.file_url ?? '-'}
               </p>
-              <button
-                type="button"
-                className="vn-danger-button mt-3 px-3 py-2 text-xs"
+              <Button
+                variant="danger"
+                className="mt-3 px-3 py-2 text-xs"
                 onClick={() => void deleteSelectedModel()}
                 disabled={!selectedModel || isDeletingModel}
               >
                 {isDeletingModel ? '삭제 중' : '선택 모델 삭제'}
-              </button>
+              </Button>
             </div>
 
-            <label className="block space-y-1">
-              <span className="edit-label">
-                <span className="edit-label__text">모델 이름</span>
-              </span>
-              <input
+            <div className="block space-y-1">
+              <FieldLabel htmlFor="model-name">모델 이름</FieldLabel>
+              <FormControl
+                id="model-name"
                 value={modelName}
                 onChange={(event) => setModelName(event.target.value)}
-                className="edit-control h-12 w-full px-3"
+                className="h-12 w-full px-3"
               />
-            </label>
+            </div>
 
-            <label className="block space-y-1">
-              <span className="edit-label">
-                <span className="edit-label__text">parameters</span>
-              </span>
-              <textarea
+            <div className="block space-y-1">
+              <FieldLabel htmlFor="model-parameters">parameters</FieldLabel>
+              <FormControl
+                as="textarea"
+                id="model-parameters"
                 value={modelParameters}
                 onChange={(event) => setModelParameters(event.target.value)}
-                className="edit-control min-h-40 w-full resize-y px-3 py-2 font-mono text-sm"
+                className="min-h-40 w-full resize-y px-3 py-2 font-mono text-sm"
                 spellCheck={false}
               />
-            </label>
+            </div>
 
-            <button
-              type="button"
-              className="vn-button w-full px-5 py-3"
+            <Button
+              className="w-full px-5 py-3"
               onClick={() => void generateModel()}
               disabled={isGeneratingModel}
             >
               {isGeneratingModel ? '생성 중' : '모델 생성'}
-            </button>
+            </Button>
           </div>
-        </div>
+        </SectionBody>
 
         {error ? (
           <div className="relative border-t border-[var(--app-border)] px-4 py-3 text-sm font-semibold text-[#ff9ab8]">
             {error}
           </div>
         ) : null}
-      </section>
+      </Panel>
       </div>
     </div>
   );
@@ -530,16 +528,14 @@ function NumberField({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="block space-y-1">
-      <span className="edit-label">
-        <span className="edit-label__text">{label}</span>
-      </span>
-      <input
+    <div className="block space-y-1">
+      <FieldLabel>{label}</FieldLabel>
+      <FormControl
         type="number"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="edit-control h-11 w-full px-3"
+        className="h-11 w-full px-3"
       />
-    </label>
+    </div>
   );
 }

@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { dbTables } from '../api/api';
 import type { SceneOptionRecord, SceneRecord } from '../api/type';
+import {
+  Button,
+  FieldLabel,
+  FormControl,
+  ModalBackdrop,
+  Panel,
+  PanelHeader,
+  SectionBody,
+  Spinner,
+} from './ui';
 
 type SceneOptionEditorModalProps = {
   scene: SceneRecord;
@@ -94,16 +104,16 @@ export function SceneOptionEditorModal({
   }
 
   return (
-    <div className="vn-modal-backdrop" role="presentation">
-      <section
-        className="vn-panel vn-scene-option-modal"
+    <ModalBackdrop role="presentation">
+      <Panel
+        className="max-h-[min(34rem,calc(100vh-2rem))] w-[min(34rem,100%)] overflow-y-auto"
         role="dialog"
         aria-modal="true"
         aria-labelledby="scene-option-editor-title"
       >
-        <div className="vn-panel-header">
+        <PanelHeader>
           <div className="min-w-0">
-            <p className="vn-subtitle">Scene option</p>
+            <p className="text-[0.85rem] tracking-[0.16em] text-[var(--app-muted)] uppercase">Scene option</p>
             <h2
               id="scene-option-editor-title"
               className="truncate text-lg font-semibold text-[#fff7ef]"
@@ -111,73 +121,72 @@ export function SceneOptionEditorModal({
               {title}
             </h2>
           </div>
-          <button
-            type="button"
-            className="vn-danger-button px-3 py-2 text-xs"
+          <Button
+            variant="danger"
+            className="px-3 py-2 text-xs"
             onClick={onClose}
             disabled={isSaving || isDeleting}
           >
             닫기
-          </button>
-        </div>
+          </Button>
+        </PanelHeader>
 
-        <div className="vn-section-body space-y-4">
+        <SectionBody className="space-y-4">
           <div className="text-xs font-semibold text-[var(--app-muted)]">
             Scene #{scene.id ?? '-'}
           </div>
 
-          <label className="block space-y-1">
-            <span className="edit-label edit-label--required">
-              <span className="edit-label__text">option_text</span>
-            </span>
-            <textarea
+          <div className="block space-y-1">
+            <FieldLabel htmlFor="scene-option-text" required>option_text</FieldLabel>
+            <FormControl
+              as="textarea"
+              id="scene-option-text"
               value={optionText}
               onChange={(event) => setOptionText(event.target.value)}
-              className="edit-control min-h-28 w-full resize-y px-3 py-2"
+              className="min-h-28 w-full resize-y px-3 py-2"
               disabled={isSaving || isDeleting}
             />
-          </label>
+          </div>
 
           {error ? (
             <p className="text-sm font-semibold text-[#ff9ab8]">{error}</p>
           ) : null}
 
-          <div className="vn-modal-footer">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--app-border)] pt-4">
             <div>
               {option?.id ? (
-                <button
-                  type="button"
-                  className="vn-danger-button inline-flex items-center gap-2 px-5 py-3"
+                <Button
+                  variant="danger"
+                  className="inline-flex items-center gap-2 px-5 py-3"
                   onClick={() => void deleteOption()}
                   disabled={!canDelete}
                 >
-                  {isDeleting ? <span className="vn-spinner" aria-hidden="true" /> : null}
+                  {isDeleting ? <Spinner aria-hidden="true" /> : null}
                   {isDeleting ? '삭제 중' : 'Option 삭제'}
-                </button>
+                </Button>
               ) : null}
             </div>
-            <div className="vn-modal-footer-actions">
-              <button
-                type="button"
-                className="vn-button px-5 py-3"
+            <div className="ml-auto flex flex-wrap justify-end gap-2">
+              <Button
+                className="px-5 py-3"
                 onClick={onClose}
                 disabled={isSaving || isDeleting}
               >
                 취소
-              </button>
-              <button
-                type="button"
-                className="vn-button vn-button-primary inline-flex items-center gap-2 px-5 py-3"
+              </Button>
+              <Button
+                variant="primary"
+                className="inline-flex items-center gap-2 px-5 py-3"
                 onClick={() => void saveOption()}
                 disabled={!canSave}
               >
-                {isSaving ? <span className="vn-spinner" aria-hidden="true" /> : null}
+                {isSaving ? <Spinner aria-hidden="true" /> : null}
                 {isSaving ? '저장 중' : '저장'}
-              </button>
+              </Button>
             </div>
           </div>
-        </div>
-      </section>
-    </div>
+        </SectionBody>
+      </Panel>
+    </ModalBackdrop>
   );
 }

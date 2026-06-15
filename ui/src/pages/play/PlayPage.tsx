@@ -11,6 +11,14 @@ import { useSceneStore } from '../../api/store';
 import { SceneEditorModal } from '../../components/SceneEditorModal';
 import { SceneExplorerModal } from '../../components/SceneExplorerModal';
 import { SceneOptionEditorModal } from '../../components/SceneOptionEditorModal';
+import {
+  Button,
+  ImageFrame,
+  Panel,
+  PanelHeader,
+  SectionBody,
+  cx,
+} from '../../components/ui';
 
 const STATUS_FIELDS = [
   { key: 'turn', label: '턴' },
@@ -595,66 +603,63 @@ export function PlayPage() {
   }
 
   return (
-    <div className="vn-play-stage">
-      <div className="vn-play-layout">
-        <section className="vn-panel vn-scene-panel">
-          <div className="vn-panel-header">
+    <div className="min-h-[calc(100vh-7rem)] rounded-[8px] border border-[rgba(255,204,220,0.28)] bg-[linear-gradient(180deg,rgba(255,238,247,0.05),rgba(14,4,18,0.62)),rgba(13,5,18,0.52)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),var(--app-shadow)] backdrop-blur-[14px] max-[640px]:p-[0.65rem]">
+      <div className="grid min-h-[calc(100vh-9rem)] grid-cols-[minmax(24rem,1fr)_minmax(18rem,0.42fr)] grid-rows-[minmax(0,1fr)_auto] gap-4 max-[960px]:grid-cols-1 max-[960px]:grid-rows-[auto_auto_auto]">
+        <Panel className="min-h-0 min-w-0">
+          <PanelHeader>
             <div className="min-w-0">
-              <p className="vn-subtitle">Scene</p>
+              <p className="text-[0.85rem] tracking-[0.16em] text-[var(--app-muted)] uppercase">Scene</p>
               <h1 className="truncate text-lg font-semibold text-[#fff7ef]">
                 {scene?.prompt || 'Scene 없음'}
               </h1>
             </div>
             {canRerollScene ? (
               <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                <button
-                  type="button"
-                  className="vn-button px-4 py-2 text-sm"
+                <Button
+                  className="px-4 py-2 text-sm"
                   onClick={() => void rerollScene()}
                   disabled={isAdvancing}
                 >
                   다시 뽑기
-                </button>
-                <button
-                  type="button"
-                  className="vn-button px-4 py-2 text-sm"
+                </Button>
+                <Button
+                  className="px-4 py-2 text-sm"
                   onClick={openManualSceneExplorer}
                   disabled={isAdvancing}
                 >
                   다른 장면
-                </button>
-                <button
-                  type="button"
-                  className="vn-button px-4 py-2 text-sm"
+                </Button>
+                <Button
+                  className="px-4 py-2 text-sm"
                   onClick={openReplacementSceneEditor}
                   disabled={isAdvancing}
                 >
                   새 장면
-                </button>
+                </Button>
               </div>
             ) : null}
-          </div>
-          <div className="vn-section-body vn-scene-image-body">
-            <div className="dp-image-frame vn-scene-image-frame">
+          </PanelHeader>
+          <SectionBody className="grid place-items-center p-0">
+            <ImageFrame className="mx-auto w-[min(100%,max(28rem,calc(100vh-10rem)))] rounded-[8px] border border-[rgba(255,218,228,0.22)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_24px_80px_rgba(5,0,10,0.46)] max-[960px]:w-[min(100%,34rem)]">
               {scene?.image_url ? (
                 <img
                   src={scene.image_url}
                   alt={scene.prompt}
-                  className="dp-image-media vn-scene-image-media"
+                  className="block h-full w-full object-cover"
                 />
               ) : (
-                <div className="vn-scene-empty">
+                <div className="grid h-full min-h-72 w-full place-items-center gap-3 bg-[linear-gradient(145deg,rgba(255,231,238,0.1),transparent_42%),rgba(15,5,20,0.78)] p-6 text-center text-[0.95rem] text-[var(--app-muted)]">
                   {isLoading ? '장면을 불러오는 중' : '아직 이미지가 없습니다'}
                 </div>
               )}
-            </div>
-          </div>
-        </section>
+            </ImageFrame>
+          </SectionBody>
+        </Panel>
 
-        <aside className="vn-panel vn-status-panel">
-          <div className="vn-panel-header">
+        <Panel className="min-w-0 self-stretch">
+          <PanelHeader>
             <div className="min-w-0">
-              <p className="vn-subtitle">Status</p>
+              <p className="text-[0.85rem] tracking-[0.16em] text-[var(--app-muted)] uppercase">Status</p>
               <h2 className="truncate text-lg font-semibold text-[#fff7ef]">
                 {status?.name ?? 'Status'}
               </h2>
@@ -664,31 +669,33 @@ export function PlayPage() {
                 #{status.id}
               </span>
             ) : null}
-          </div>
-          <div className="vn-section-body">
+          </PanelHeader>
+          <SectionBody>
             {isLoading ? (
               <p className="text-sm text-[var(--app-muted)]">불러오는 중</p>
             ) : status ? (
-              <div className="vn-status-grid">
+              <div className="grid grid-cols-2 gap-3 max-[640px]:grid-cols-1">
                 {STATUS_FIELDS.map((field) => {
                   const delta = deltas[field.key];
                   const hasDelta = typeof delta === 'number' && delta !== 0;
                   return (
                     <div
                       key={field.key}
-                      className={[
-                        'vn-status-stat',
-                        hasDelta ? 'vn-status-stat-changed' : '',
-                      ].join(' ')}
+                      className={cx(
+                        'relative min-h-[4.75rem] overflow-hidden rounded-[8px] border border-[rgba(255,208,222,0.24)] bg-[linear-gradient(135deg,rgba(255,229,238,0.1),transparent_58%),rgba(12,5,18,0.58)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]',
+                        hasDelta && 'animate-[status-pulse_1200ms_ease] border-[rgba(255,232,183,0.82)] shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_0_28px_rgba(240,179,95,0.28)]',
+                      )}
                     >
-                      <span className="vn-status-stat-label">{field.label}</span>
-                      <span className="vn-status-stat-value">{status[field.key]}</span>
+                      <span className="block text-xs font-extrabold tracking-[0.08em] text-[#f1c4d0] uppercase">{field.label}</span>
+                      <span className="mt-1.5 block text-[1.45rem] leading-none font-extrabold text-[#fff7ef] [text-shadow:0_0_14px_rgba(255,196,214,0.28)]">{status[field.key]}</span>
                       {hasDelta ? (
                         <span
-                          className={[
-                            'vn-status-delta',
-                            delta > 0 ? 'vn-status-delta-up' : 'vn-status-delta-down',
-                          ].join(' ')}
+                          className={cx(
+                            'absolute right-2.5 bottom-2.5 rounded-full px-2 py-0.5 text-[0.78rem] leading-tight font-black',
+                            delta > 0
+                              ? 'bg-[rgba(126,231,172,0.16)] text-[#a9f5c6]'
+                              : 'bg-[rgba(255,133,165,0.16)] text-[#ff9ab8]',
+                          )}
                         >
                           {delta > 0 ? `+${delta}` : delta}
                         </span>
@@ -700,16 +707,16 @@ export function PlayPage() {
             ) : (
               <p className="text-sm text-[#ff9ab8]">Status를 표시할 수 없습니다.</p>
             )}
-          </div>
-        </aside>
+          </SectionBody>
+        </Panel>
 
-        <section className="vn-panel vn-control-panel">
+        <Panel className="col-span-full min-w-0 p-4 max-[960px]:col-auto">
           {isLoading || error || scriptLines.length > 0 ? (
             <div
-              className={[
-                'vn-dialogue-box',
-                canAdvanceScript ? 'vn-dialogue-box-clickable' : '',
-              ].join(' ')}
+              className={cx(
+                'relative flex min-h-28 w-full items-center justify-start rounded-[8px] border border-[rgba(255,218,228,0.36)] bg-[linear-gradient(135deg,rgba(255,245,232,0.12),transparent_55%),rgba(12,4,17,0.74)] px-5 py-[1.15rem] text-left text-[1.05rem] leading-[1.65] font-bold text-[#fff7ef] shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_18px_45px_rgba(5,0,10,0.34)] max-[640px]:min-h-32 max-[640px]:p-4',
+                canAdvanceScript && 'cursor-pointer',
+              )}
               role={error ? 'alert' : canAdvanceScript ? 'button' : undefined}
               tabIndex={canAdvanceScript ? 0 : undefined}
               aria-label={canAdvanceScript ? '다음 대사' : undefined}
@@ -726,73 +733,68 @@ export function PlayPage() {
               ) : error ? (
                 <span className="text-[#ff9ab8]">{error}</span>
               ) : currentScriptLine ? (
-                <div className="vn-dialogue-lines">
-                  <p className="vn-dialogue-line">{currentScriptLine}</p>
+                <div className="grid w-full gap-3">
+                  <p className="m-0 whitespace-pre-wrap">{currentScriptLine}</p>
                 </div>
               ) : null}
             </div>
           ) : null}
 
           {!isLoading && !error && canShowOptions ? (
-            <div className="vn-option-list">
+            <div className="mt-4 grid gap-3">
               {isLoadingOptions ? (
                 <p className="text-sm text-[var(--app-muted)]">선택지를 불러오는 중</p>
               ) : options.length > 0 ? (
                 <>
                   {options.map((option) => (
-                    <div key={option.id} className="vn-option-row">
-                      <button
-                        type="button"
-                        className="vn-button vn-option-button px-5 py-3"
+                    <div key={option.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-stretch gap-2 max-[640px]:grid-cols-1">
+                      <Button
+                        className="w-full px-5 py-3 text-left"
                         onClick={() => void chooseOption(option)}
                         disabled={isAdvancing}
                       >
                         {option.option_text}
-                      </button>
-                      <button
-                        type="button"
-                        className="vn-button vn-option-edit-button px-3 py-2"
+                      </Button>
+                      <Button
+                        className="self-stretch px-3 py-2 text-[0.78rem]"
                         onClick={() => openOptionEditor(option)}
                         disabled={isAdvancing}
                       >
                         편집
-                      </button>
+                      </Button>
                     </div>
                   ))}
-                  <div className="vn-option-add-row">
-                    <button
-                      type="button"
-                      className="vn-button px-3 py-2 text-xs"
+                  <div className="flex items-center justify-end gap-3 pt-1 max-[640px]:flex-col max-[640px]:items-stretch">
+                    <Button
+                      className="px-3 py-2 text-xs"
                       onClick={() => openOptionEditor(null)}
                       disabled={isAdvancing || !scene?.id}
                     >
                       새 옵션 추가
-                    </button>
+                    </Button>
                   </div>
                 </>
               ) : (
-                <div className="vn-option-add-row">
-                  <button
-                    type="button"
-                    className="vn-button vn-option-button px-5 py-3"
+                <div className="flex items-center justify-end gap-3 pt-1 max-[640px]:flex-col max-[640px]:items-stretch">
+                  <Button
+                    className="w-full px-5 py-3 text-left"
                     onClick={() => void advanceWithoutOption()}
                     disabled={isAdvancing || !scene?.id}
                   >
                     {isAdvancing ? '다음 장면을 찾는 중' : '다음 장면'}
-                  </button>
-                  <button
-                    type="button"
-                    className="vn-button px-3 py-2 text-xs"
+                  </Button>
+                  <Button
+                    className="px-3 py-2 text-xs"
                     onClick={() => openOptionEditor(null)}
                     disabled={isAdvancing || !scene?.id}
                   >
                     새 옵션 추가
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>
           ) : null}
-        </section>
+        </Panel>
       </div>
 
       {isOptionEditorOpen && scene ? (
