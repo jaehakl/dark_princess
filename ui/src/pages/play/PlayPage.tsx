@@ -8,6 +8,7 @@ import type {
   StatusRecord,
 } from '../../api/type';
 import { useSceneStore } from '../../api/store';
+import { SceneEditModal } from '../../components/SceneEditModal';
 import { SceneEditorModal } from '../../components/SceneEditorModal';
 import { SceneExplorerModal } from '../../components/SceneExplorerModal';
 import { SceneOptionEditorModal } from '../../components/SceneOptionEditorModal';
@@ -109,6 +110,7 @@ export function PlayPage() {
   const selectedScene = useSceneStore((state) => state.selectedScene);
   const deletedSceneId = useSceneStore((state) => state.deletedSceneId);
   const setCurrentScene = useSceneStore((state) => state.setCurrentScene);
+  const handleSceneDeleted = useSceneStore((state) => state.handleSceneDeleted);
   const clearDeletedScene = useSceneStore((state) => state.clearDeletedScene);
   const [status, setStatus] = useState<StatusRecord | null>(null);
   const [scene, setScene] = useState<SceneRecord | null>(null);
@@ -117,6 +119,7 @@ export function PlayPage() {
   const [pendingTransition, setPendingTransition] = useState<PendingTransition | null>(null);
   const [editingOption, setEditingOption] = useState<SceneOptionRecord | null>(null);
   const [isOptionEditorOpen, setIsOptionEditorOpen] = useState(false);
+  const [isCurrentSceneEditorOpen, setIsCurrentSceneEditorOpen] = useState(false);
   const [isSceneExplorerOpen, setIsSceneExplorerOpen] = useState(false);
   const [isSceneEditorOpen, setIsSceneEditorOpen] = useState(false);
   const [createdReplacementScene, setCreatedReplacementScene] = useState<SceneRecord | null>(null);
@@ -132,6 +135,7 @@ export function PlayPage() {
   });
 
   const currentSceneId = scene?.id ?? null;
+  const currentSceneLabel = currentSceneId ? `Scene #${currentSceneId}` : 'Scene 없음';
   const currentScript = scene?.script ?? '';
   const scriptLines = useMemo(
     () => toScriptLines(currentScript),
@@ -362,6 +366,44 @@ export function PlayPage() {
   function handleOptionDeleted() {
     closeOptionEditor();
     setOptionReloadKey((current) => current + 1);
+  }
+
+  function openCurrentSceneEditor() {
+    if (!currentSceneId || isAdvancing) {
+      return;
+    }
+    setIsCurrentSceneEditorOpen(true);
+  }
+
+  function closeCurrentSceneEditor() {
+    setIsCurrentSceneEditorOpen(false);
+  }
+
+  async function handleCurrentSceneSaved(savedSceneId: number) {
+    setError(null);
+    try {
+      const sceneResponse = await dbTables.Scene.listRows(
+        createListRequest({
+          limit: 1,
+          selected_ids: [savedSceneId],
+        }),
+      );
+      const savedScene = sceneResponse.items[0] ?? null;
+      if (!savedScene) {
+        throw new Error('저장한 Scene을 다시 불러올 수 없습니다.');
+      }
+
+      setScene(savedScene);
+      setCurrentScene(savedScene);
+      setPendingTransition(null);
+    } catch (saveError) {
+      setError(getErrorMessage(saveError));
+    }
+  }
+
+  function handleCurrentSceneDeleted(deletedSceneId: number) {
+    setIsCurrentSceneEditorOpen(false);
+    handleSceneDeleted(deletedSceneId);
   }
 
   function openManualSceneExplorer() {
@@ -627,41 +669,50 @@ export function PlayPage() {
             <div className="min-w-0">
               <p className="text-[0.85rem] tracking-[0.16em] text-[var(--app-muted)] uppercase">Scene</p>
               <h1 className="truncate text-lg font-semibold text-[#fff7ef]">
-                {scene?.prompt || 'Scene 없음'}
+                {currentSceneLabel}
               </h1>
             </div>
-            {canRerollScene ? (
-              <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                <Button
-                  className="px-4 py-2 text-sm"
-                  onClick={() => void rerollScene()}
-                  disabled={isAdvancing}
-                >
-                  다시 뽑기
-                </Button>
-                <Button
-                  className="px-4 py-2 text-sm"
-                  onClick={openManualSceneExplorer}
-                  disabled={isAdvancing}
-                >
-                  다른 장면
-                </Button>
-                <Button
-                  className="px-4 py-2 text-sm"
-                  onClick={openReplacementSceneEditor}
-                  disabled={isAdvancing}
-                >
-                  새 장면
-                </Button>
-              </div>
-            ) : null}
+            <div className="flex shrink-0 flex-wrap justify-end gap-2">
+              <Button
+                className="px-4 py-2 text-sm"
+                onClick={openCurrentSceneEditor}
+                disabled={!currentSceneId || isAdvancing}
+              >
+                현재 장면 편집
+              </Button>
+              {canRerollScene ? (
+                <>
+                  <Button
+                    className="px-4 py-2 text-sm"
+                    onClick={() => void rerollScene()}
+                    disabled={isAdvancing}
+                  >
+                    다시 뽑기
+                  </Button>
+                  <Button
+                    className="px-4 py-2 text-sm"
+                    onClick={openManualSceneExplorer}
+                    disabled={isAdvancing}
+                  >
+                    다른 장면
+                  </Button>
+                  <Button
+                    className="px-4 py-2 text-sm"
+                    onClick={openReplacementSceneEditor}
+                    disabled={isAdvancing}
+                  >
+                    새 장면
+                  </Button>
+                </>
+              ) : null}
+            </div>
           </PanelHeader>
           <SectionBody className="grid place-items-center p-0">
             <ImageFrame className="mx-auto w-[min(100%,max(28rem,calc(100vh-10rem)))] rounded-[8px] border border-[rgba(255,218,228,0.22)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_24px_80px_rgba(5,0,10,0.46)] max-[960px]:w-[min(100%,34rem)]">
               {scene?.image_url ? (
                 <img
                   src={scene.image_url}
-                  alt={scene.prompt}
+                  alt="현재 Scene 이미지"
                   className="block h-full w-full object-cover"
                 />
               ) : (
@@ -813,6 +864,16 @@ export function PlayPage() {
           ) : null}
         </Panel>
       </div>
+
+      {isCurrentSceneEditorOpen && scene ? (
+        <SceneEditModal
+          sceneId={currentSceneId}
+          initialScene={scene}
+          onClose={closeCurrentSceneEditor}
+          onSaved={(sceneId) => void handleCurrentSceneSaved(sceneId)}
+          onDeleted={handleCurrentSceneDeleted}
+        />
+      ) : null}
 
       {isOptionEditorOpen && scene ? (
         <SceneOptionEditorModal

@@ -8,7 +8,7 @@ type SceneEditModalProps = {
   onClose: () => void;
   onSaved: (sceneId: number) => void;
   onDeleted: (sceneId: number) => void;
-  onDuplicate: (scene: SceneRecord) => void;
+  onDuplicate?: (scene: SceneRecord) => void;
 };
 
 export function SceneEditModal({
