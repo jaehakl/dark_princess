@@ -10,6 +10,7 @@ import type {
   ClipboardEvent as ReactClipboardEvent,
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
+  WheelEvent as ReactWheelEvent,
 } from 'react';
 import { API_URL } from '../api/api';
 import { Button, FieldLabel, ImageFrame, Spinner } from './ui';
@@ -61,19 +62,26 @@ export type SceneImageInpaintEditorState = {
   poseImageDataUrl: string | null;
   poseOffsetX: number | null;
   poseOffsetY: number | null;
+  poseZoom: number | null;
   isMaskVisualizationEnabled: boolean | null;
   featherBrushSize: number | null;
   scribbleBrushSize: number | null;
   scribblePreviewOpacity: number | null;
-  controlnetConditioningScale: number | null;
-  controlGuidanceStart: number | null;
-  controlGuidanceEnd: number | null;
+  scribbleScale: number | null;
+  scribbleGuidanceStart: number | null;
+  scribbleGuidanceEnd: number | null;
+  poseScale: number | null;
+  poseGuidanceStart: number | null;
+  poseGuidanceEnd: number | null;
 };
 
 type ControlNetEditorSettings = {
-  controlnet_conditioning_scale: number;
-  control_guidance_start: number;
-  control_guidance_end: number;
+  scribble_scale: number;
+  scribble_guidance_start: number;
+  scribble_guidance_end: number;
+  pose_scale: number;
+  pose_guidance_start: number;
+  pose_guidance_end: number;
 };
 
 type DragState =
@@ -132,9 +140,12 @@ type SceneImageInpaintEditorProps = {
   disabled?: boolean;
   isGenerating?: boolean;
   altText?: string;
-  controlnetConditioningScale?: number;
-  controlGuidanceStart?: number;
-  controlGuidanceEnd?: number;
+  scribbleScale?: number;
+  scribbleGuidanceStart?: number;
+  scribbleGuidanceEnd?: number;
+  poseScale?: number;
+  poseGuidanceStart?: number;
+  poseGuidanceEnd?: number;
   initialEditorState?: SceneImageInpaintEditorState;
   onEditorStateChange?: (state: SceneImageInpaintEditorState) => void;
   onError?: (message: string | null) => void;
@@ -160,9 +171,14 @@ const MASK_MIN_POINTS = 3;
 const DEFAULT_FEATHER_BRUSH_SIZE = 64;
 const DEFAULT_SCRIBBLE_BRUSH_SIZE = 80;
 const DEFAULT_SCRIBBLE_PREVIEW_OPACITY = 0.5;
-const DEFAULT_CONTROLNET_CONDITIONING_SCALE = 1;
-const DEFAULT_CONTROL_GUIDANCE_START = 0;
-const DEFAULT_CONTROL_GUIDANCE_END = 1;
+const DEFAULT_SCRIBBLE_SCALE = 1;
+const DEFAULT_SCRIBBLE_GUIDANCE_START = 0;
+const DEFAULT_SCRIBBLE_GUIDANCE_END = 1;
+const DEFAULT_POSE_SCALE = 1;
+const DEFAULT_POSE_GUIDANCE_START = 0;
+const DEFAULT_POSE_GUIDANCE_END = 1;
+const MIN_POSE_ZOOM = 0.25;
+const MAX_POSE_ZOOM = 4;
 const TOOL_BUTTON_CLASS = 'grid h-8 w-8 place-items-center px-0 py-0 text-base leading-none';
 
 function createObjectId() {
@@ -370,27 +386,34 @@ function fitObjectSize(canvas: HTMLCanvasElement, width: number, height: number)
   };
 }
 
-function getCoverDrawSize(canvas: HTMLCanvasElement, width: number, height: number) {
-  const scale = Math.max(width / canvas.width, height / canvas.height);
+function getCoverDrawSize(canvas: HTMLCanvasElement, width: number, height: number, zoom = 1) {
+  const scale = Math.max(width / canvas.width, height / canvas.height) * zoom;
   return {
     width: Math.max(1, Math.round(canvas.width * scale)),
     height: Math.max(1, Math.round(canvas.height * scale)),
   };
 }
 
-function getCenteredCoverOffset(canvas: HTMLCanvasElement, width: number, height: number): Point {
-  const drawSize = getCoverDrawSize(canvas, width, height);
+function getCenteredCoverOffset(canvas: HTMLCanvasElement, width: number, height: number, zoom = 1): Point {
+  const drawSize = getCoverDrawSize(canvas, width, height, zoom);
   return {
     x: Math.round((width - drawSize.width) / 2),
     y: Math.round((height - drawSize.height) / 2),
   };
 }
 
-function clampCoverOffset(offset: Point, canvas: HTMLCanvasElement, width: number, height: number): Point {
-  const drawSize = getCoverDrawSize(canvas, width, height);
+function clampCoverAxisOffset(offset: number, drawLength: number, canvasLength: number) {
+  if (drawLength <= canvasLength) {
+    return clampNumber(offset, 0, canvasLength - drawLength);
+  }
+  return clampNumber(offset, canvasLength - drawLength, 0);
+}
+
+function clampCoverOffset(offset: Point, canvas: HTMLCanvasElement, width: number, height: number, zoom = 1): Point {
+  const drawSize = getCoverDrawSize(canvas, width, height, zoom);
   return {
-    x: clampNumber(offset.x, Math.min(0, width - drawSize.width), 0),
-    y: clampNumber(offset.y, Math.min(0, height - drawSize.height), 0),
+    x: clampCoverAxisOffset(offset.x, drawSize.width, width),
+    y: clampCoverAxisOffset(offset.y, drawSize.height, height),
   };
 }
 
@@ -400,14 +423,16 @@ function drawCoverImage(
   offset: Point,
   width: number,
   height: number,
+  zoom = 1,
 ) {
-  const drawSize = getCoverDrawSize(canvas, width, height);
+  const drawSize = getCoverDrawSize(canvas, width, height, zoom);
   context.drawImage(canvas, offset.x, offset.y, drawSize.width, drawSize.height);
 }
 
 function renderPoseConditionCanvas(
   sourceCanvas: HTMLCanvasElement | null,
   offset: Point,
+  zoom: number,
   width: number,
   height: number,
 ) {
@@ -415,13 +440,26 @@ function renderPoseConditionCanvas(
     return null;
   }
   const poseCanvas = createFilledCanvas(width, height, '#000000');
-  drawCoverImage(get2dContext(poseCanvas), sourceCanvas, offset, width, height);
+  drawCoverImage(get2dContext(poseCanvas), sourceCanvas, offset, width, height, zoom);
   return poseCanvas;
 }
 
 function getCanvasPoint(
   canvas: HTMLCanvasElement,
   event: ReactPointerEvent<HTMLCanvasElement>,
+  width: number,
+  height: number,
+): Point {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: ((event.clientX - rect.left) / rect.width) * width,
+    y: ((event.clientY - rect.top) / rect.height) * height,
+  };
+}
+
+function getCanvasWheelPoint(
+  canvas: HTMLCanvasElement,
+  event: ReactWheelEvent<HTMLCanvasElement>,
   width: number,
   height: number,
 ): Point {
@@ -973,9 +1011,12 @@ export const SceneImageInpaintEditor = forwardRef<
   disabled = false,
   isGenerating = false,
   altText,
-  controlnetConditioningScale: initialControlnetConditioningScale = DEFAULT_CONTROLNET_CONDITIONING_SCALE,
-  controlGuidanceStart: initialControlGuidanceStart = DEFAULT_CONTROL_GUIDANCE_START,
-  controlGuidanceEnd: initialControlGuidanceEnd = DEFAULT_CONTROL_GUIDANCE_END,
+  scribbleScale: initialScribbleScale = DEFAULT_SCRIBBLE_SCALE,
+  scribbleGuidanceStart: initialScribbleGuidanceStart = DEFAULT_SCRIBBLE_GUIDANCE_START,
+  scribbleGuidanceEnd: initialScribbleGuidanceEnd = DEFAULT_SCRIBBLE_GUIDANCE_END,
+  poseScale: initialPoseScale = DEFAULT_POSE_SCALE,
+  poseGuidanceStart: initialPoseGuidanceStart = DEFAULT_POSE_GUIDANCE_START,
+  poseGuidanceEnd: initialPoseGuidanceEnd = DEFAULT_POSE_GUIDANCE_END,
   initialEditorState,
   onEditorStateChange,
   onError,
@@ -987,6 +1028,7 @@ export const SceneImageInpaintEditor = forwardRef<
   const scribbleCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const poseSourceCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const poseOffsetRef = useRef<Point>({ x: 0, y: 0 });
+  const poseZoomRef = useRef(1);
   const activeObjectRef = useRef<CanvasObject | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
   const imageHistoryRef = useRef<HTMLCanvasElement[]>([]);
@@ -1014,14 +1056,16 @@ export const SceneImageInpaintEditor = forwardRef<
   const [hasScribbleEdits, setHasScribbleEdits] = useState(false);
   const [hasPoseImage, setHasPoseImage] = useState(false);
   const [poseOffset, setPoseOffset] = useState<Point>({ x: 0, y: 0 });
+  const [poseZoom, setPoseZoom] = useState(1);
   const [featherBrushSize, setFeatherBrushSize] = useState(DEFAULT_FEATHER_BRUSH_SIZE);
   const [scribbleBrushSize, setScribbleBrushSize] = useState(DEFAULT_SCRIBBLE_BRUSH_SIZE);
   const [scribblePreviewOpacity, setScribblePreviewOpacity] = useState(DEFAULT_SCRIBBLE_PREVIEW_OPACITY);
-  const [controlnetConditioningScale, setControlnetConditioningScale] = useState(
-    initialControlnetConditioningScale,
-  );
-  const [controlGuidanceStart, setControlGuidanceStart] = useState(initialControlGuidanceStart);
-  const [controlGuidanceEnd, setControlGuidanceEnd] = useState(initialControlGuidanceEnd);
+  const [scribbleScale, setScribbleScale] = useState(initialScribbleScale);
+  const [scribbleGuidanceStart, setScribbleGuidanceStart] = useState(initialScribbleGuidanceStart);
+  const [scribbleGuidanceEnd, setScribbleGuidanceEnd] = useState(initialScribbleGuidanceEnd);
+  const [poseScale, setPoseScale] = useState(initialPoseScale);
+  const [poseGuidanceStart, setPoseGuidanceStart] = useState(initialPoseGuidanceStart);
+  const [poseGuidanceEnd, setPoseGuidanceEnd] = useState(initialPoseGuidanceEnd);
   const [isLoadingSource, setIsLoadingSource] = useState(false);
   const [isAddingImage, setIsAddingImage] = useState(false);
   const [isAddingPoseImage, setIsAddingPoseImage] = useState(false);
@@ -1030,9 +1074,12 @@ export const SceneImageInpaintEditor = forwardRef<
     featherBrushSize: DEFAULT_FEATHER_BRUSH_SIZE,
     scribbleBrushSize: DEFAULT_SCRIBBLE_BRUSH_SIZE,
     scribblePreviewOpacity: DEFAULT_SCRIBBLE_PREVIEW_OPACITY,
-    controlnetConditioningScale: initialControlnetConditioningScale,
-    controlGuidanceStart: initialControlGuidanceStart,
-    controlGuidanceEnd: initialControlGuidanceEnd,
+    scribbleScale: initialScribbleScale,
+    scribbleGuidanceStart: initialScribbleGuidanceStart,
+    scribbleGuidanceEnd: initialScribbleGuidanceEnd,
+    poseScale: initialPoseScale,
+    poseGuidanceStart: initialPoseGuidanceStart,
+    poseGuidanceEnd: initialPoseGuidanceEnd,
   });
 
   const isWorking = isLoadingSource || isAddingImage || isAddingPoseImage;
@@ -1066,13 +1113,17 @@ export const SceneImageInpaintEditor = forwardRef<
       poseImageDataUrl: canvasToDataUrl(poseSourceCanvasRef.current),
       poseOffsetX: poseSourceCanvasRef.current ? poseOffsetRef.current.x : null,
       poseOffsetY: poseSourceCanvasRef.current ? poseOffsetRef.current.y : null,
+      poseZoom: poseSourceCanvasRef.current ? poseZoomRef.current : null,
       isMaskVisualizationEnabled: editorSettings.isMaskVisualizationEnabled,
       featherBrushSize: editorSettings.featherBrushSize,
       scribbleBrushSize: editorSettings.scribbleBrushSize,
       scribblePreviewOpacity: editorSettings.scribblePreviewOpacity,
-      controlnetConditioningScale: editorSettings.controlnetConditioningScale,
-      controlGuidanceStart: editorSettings.controlGuidanceStart,
-      controlGuidanceEnd: editorSettings.controlGuidanceEnd,
+      scribbleScale: editorSettings.scribbleScale,
+      scribbleGuidanceStart: editorSettings.scribbleGuidanceStart,
+      scribbleGuidanceEnd: editorSettings.scribbleGuidanceEnd,
+      poseScale: editorSettings.poseScale,
+      poseGuidanceStart: editorSettings.poseGuidanceStart,
+      poseGuidanceEnd: editorSettings.poseGuidanceEnd,
     });
   }, [onEditorStateChange]);
 
@@ -1100,13 +1151,16 @@ export const SceneImageInpaintEditor = forwardRef<
     setDraftSelectionLasso(nextPoints);
   }
 
-  function replacePoseLayer(nextCanvas: HTMLCanvasElement | null, nextOffset: Point = { x: 0, y: 0 }) {
+  function replacePoseLayer(nextCanvas: HTMLCanvasElement | null, nextOffset: Point = { x: 0, y: 0 }, nextZoom = 1) {
     poseSourceCanvasRef.current = nextCanvas;
+    const clampedZoom = clampNumber(nextZoom, MIN_POSE_ZOOM, MAX_POSE_ZOOM);
     const clampedOffset = nextCanvas
-      ? clampCoverOffset(nextOffset, nextCanvas, width, height)
+      ? clampCoverOffset(nextOffset, nextCanvas, width, height, clampedZoom)
       : { x: 0, y: 0 };
     poseOffsetRef.current = clampedOffset;
+    poseZoomRef.current = nextCanvas ? clampedZoom : 1;
     setPoseOffset(clampedOffset);
+    setPoseZoom(poseZoomRef.current);
     setHasPoseImage(Boolean(nextCanvas));
   }
 
@@ -1196,35 +1250,52 @@ export const SceneImageInpaintEditor = forwardRef<
       featherBrushSize,
       scribbleBrushSize,
       scribblePreviewOpacity,
-      controlnetConditioningScale,
-      controlGuidanceStart,
-      controlGuidanceEnd,
+      scribbleScale,
+      scribbleGuidanceStart,
+      scribbleGuidanceEnd,
+      poseScale,
+      poseGuidanceStart,
+      poseGuidanceEnd,
     };
     if (layersReady) {
       publishEditorState();
     }
   }, [
-    controlGuidanceEnd,
-    controlGuidanceStart,
-    controlnetConditioningScale,
     featherBrushSize,
     isMaskVisualizationEnabled,
     layersReady,
+    poseGuidanceEnd,
+    poseGuidanceStart,
+    poseScale,
     publishEditorState,
     scribbleBrushSize,
+    scribbleGuidanceEnd,
+    scribbleGuidanceStart,
     scribblePreviewOpacity,
+    scribbleScale,
   ]);
 
   useEffect(() => {
-    setControlnetConditioningScale(Math.max(0, Math.min(2, initialControlnetConditioningScale)));
-  }, [initialControlnetConditioningScale]);
+    setScribbleScale(Math.max(0, Math.min(2, initialScribbleScale)));
+  }, [initialScribbleScale]);
 
   useEffect(() => {
-    const nextStart = Math.max(0, Math.min(1, initialControlGuidanceStart));
-    const nextEnd = Math.max(nextStart, Math.min(1, initialControlGuidanceEnd));
-    setControlGuidanceStart(nextStart);
-    setControlGuidanceEnd(nextEnd);
-  }, [initialControlGuidanceEnd, initialControlGuidanceStart]);
+    const nextStart = Math.max(0, Math.min(1, initialScribbleGuidanceStart));
+    const nextEnd = Math.max(nextStart, Math.min(1, initialScribbleGuidanceEnd));
+    setScribbleGuidanceStart(nextStart);
+    setScribbleGuidanceEnd(nextEnd);
+  }, [initialScribbleGuidanceEnd, initialScribbleGuidanceStart]);
+
+  useEffect(() => {
+    setPoseScale(Math.max(0, Math.min(2, initialPoseScale)));
+  }, [initialPoseScale]);
+
+  useEffect(() => {
+    const nextStart = Math.max(0, Math.min(1, initialPoseGuidanceStart));
+    const nextEnd = Math.max(nextStart, Math.min(1, initialPoseGuidanceEnd));
+    setPoseGuidanceStart(nextStart);
+    setPoseGuidanceEnd(nextEnd);
+  }, [initialPoseGuidanceEnd, initialPoseGuidanceStart]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -1252,6 +1323,7 @@ export const SceneImageInpaintEditor = forwardRef<
         const nextScribbleCanvas = createBlankScribbleCanvas(width, height);
         let nextPoseSourceCanvas: HTMLCanvasElement | null = null;
         let nextPoseOffset: Point = { x: 0, y: 0 };
+        let nextPoseZoom = 1;
         const state = initialEditorStateRef.current;
         const shouldRestoreImageLayer = !hasLoadedOnceRef.current && hasEditorStateData(state);
         const restoredIsMaskVisualizationEnabled = state?.isMaskVisualizationEnabled ?? false;
@@ -1273,21 +1345,37 @@ export const SceneImageInpaintEditor = forwardRef<
           0.1,
           1,
         );
-        const restoredControlnetConditioningScale = coerceNullableNumber(
-          state?.controlnetConditioningScale,
-          initialControlnetConditioningScale,
+        const restoredScribbleScale = coerceNullableNumber(
+          state?.scribbleScale,
+          initialScribbleScale,
           0,
           2,
         );
-        const restoredControlGuidanceStart = coerceNullableNumber(
-          state?.controlGuidanceStart,
-          initialControlGuidanceStart,
+        const restoredScribbleGuidanceStart = coerceNullableNumber(
+          state?.scribbleGuidanceStart,
+          initialScribbleGuidanceStart,
           0,
           1,
         );
-        const restoredControlGuidanceEnd = Math.max(
-          restoredControlGuidanceStart,
-          coerceNullableNumber(state?.controlGuidanceEnd, initialControlGuidanceEnd, 0, 1),
+        const restoredScribbleGuidanceEnd = Math.max(
+          restoredScribbleGuidanceStart,
+          coerceNullableNumber(state?.scribbleGuidanceEnd, initialScribbleGuidanceEnd, 0, 1),
+        );
+        const restoredPoseScale = coerceNullableNumber(
+          state?.poseScale,
+          initialPoseScale,
+          0,
+          2,
+        );
+        const restoredPoseGuidanceStart = coerceNullableNumber(
+          state?.poseGuidanceStart,
+          initialPoseGuidanceStart,
+          0,
+          1,
+        );
+        const restoredPoseGuidanceEnd = Math.max(
+          restoredPoseGuidanceStart,
+          coerceNullableNumber(state?.poseGuidanceEnd, initialPoseGuidanceEnd, 0, 1),
         );
 
         editorSettingsRef.current = {
@@ -1295,17 +1383,23 @@ export const SceneImageInpaintEditor = forwardRef<
           featherBrushSize: restoredFeatherBrushSize,
           scribbleBrushSize: restoredScribbleBrushSize,
           scribblePreviewOpacity: restoredScribblePreviewOpacity,
-          controlnetConditioningScale: restoredControlnetConditioningScale,
-          controlGuidanceStart: restoredControlGuidanceStart,
-          controlGuidanceEnd: restoredControlGuidanceEnd,
+          scribbleScale: restoredScribbleScale,
+          scribbleGuidanceStart: restoredScribbleGuidanceStart,
+          scribbleGuidanceEnd: restoredScribbleGuidanceEnd,
+          poseScale: restoredPoseScale,
+          poseGuidanceStart: restoredPoseGuidanceStart,
+          poseGuidanceEnd: restoredPoseGuidanceEnd,
         };
         setIsMaskVisualizationEnabled(restoredIsMaskVisualizationEnabled);
         setFeatherBrushSize(restoredFeatherBrushSize);
         setScribbleBrushSize(restoredScribbleBrushSize);
         setScribblePreviewOpacity(restoredScribblePreviewOpacity);
-        setControlnetConditioningScale(restoredControlnetConditioningScale);
-        setControlGuidanceStart(restoredControlGuidanceStart);
-        setControlGuidanceEnd(restoredControlGuidanceEnd);
+        setScribbleScale(restoredScribbleScale);
+        setScribbleGuidanceStart(restoredScribbleGuidanceStart);
+        setScribbleGuidanceEnd(restoredScribbleGuidanceEnd);
+        setPoseScale(restoredPoseScale);
+        setPoseGuidanceStart(restoredPoseGuidanceStart);
+        setPoseGuidanceEnd(restoredPoseGuidanceEnd);
 
         if (shouldRestoreImageLayer && state?.imageDataUrl) {
           await drawDataUrlToCanvas(state.imageDataUrl, nextImageCanvas);
@@ -1335,7 +1429,8 @@ export const SceneImageInpaintEditor = forwardRef<
           const poseBitmap = await createBitmapFromDataUrl(state.poseImageDataUrl);
           try {
             const poseSourceCanvas = createCanvasFromBitmap(poseBitmap);
-            const centeredPoseOffset = getCenteredCoverOffset(poseSourceCanvas, width, height);
+            nextPoseZoom = coerceNullableNumber(state?.poseZoom, 1, MIN_POSE_ZOOM, MAX_POSE_ZOOM);
+            const centeredPoseOffset = getCenteredCoverOffset(poseSourceCanvas, width, height, nextPoseZoom);
             nextPoseSourceCanvas = poseSourceCanvas;
             nextPoseOffset = {
               x: state.poseOffsetX ?? centeredPoseOffset.x,
@@ -1354,7 +1449,7 @@ export const SceneImageInpaintEditor = forwardRef<
           imageCanvasRef.current = nextImageCanvas;
           maskCanvasRef.current = nextMaskCanvas;
           scribbleCanvasRef.current = nextScribbleCanvas;
-          replacePoseLayer(nextPoseSourceCanvas, nextPoseOffset);
+          replacePoseLayer(nextPoseSourceCanvas, nextPoseOffset, nextPoseZoom);
           hasLoadedOnceRef.current = true;
           setLayersReady(true);
           refreshLayerFlags();
@@ -1399,7 +1494,7 @@ export const SceneImageInpaintEditor = forwardRef<
     context.clearRect(0, 0, width, height);
 
     if (mode === 'openpose') {
-      const poseCanvas = renderPoseConditionCanvas(poseSourceCanvasRef.current, poseOffset, width, height);
+      const poseCanvas = renderPoseConditionCanvas(poseSourceCanvasRef.current, poseOffset, poseZoom, width, height);
       if (poseCanvas) {
         context.drawImage(poseCanvas, 0, 0, width, height);
       } else {
@@ -1473,6 +1568,7 @@ export const SceneImageInpaintEditor = forwardRef<
     isMaskVisualizationEnabled,
     mode,
     poseOffset,
+    poseZoom,
     renderVersion,
     scribbleBrushSize,
     scribblePreviewOpacity,
@@ -1517,7 +1613,7 @@ export const SceneImageInpaintEditor = forwardRef<
       const bitmap = await createImageBitmap(imageBlob);
       try {
         const poseSourceCanvas = createCanvasFromBitmap(bitmap);
-        replacePoseLayer(poseSourceCanvas, getCenteredCoverOffset(poseSourceCanvas, width, height));
+        replacePoseLayer(poseSourceCanvas, getCenteredCoverOffset(poseSourceCanvas, width, height, 1), 1);
         clearDrafts();
         requestRedraw();
         publishEditorState();
@@ -1547,6 +1643,55 @@ export const SceneImageInpaintEditor = forwardRef<
       return;
     }
     await addImageBlob(file);
+  }
+
+  function handleWheel(event: ReactWheelEvent<HTMLCanvasElement>) {
+    if (mode !== 'openpose') {
+      return;
+    }
+    event.preventDefault();
+    if (disabled || isGenerating || !isReady) {
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    const poseCanvas = poseSourceCanvasRef.current;
+    if (!canvas || !poseCanvas) {
+      return;
+    }
+
+    const currentZoom = poseZoomRef.current;
+    const nextZoom = clampNumber(
+      currentZoom * Math.exp(-event.deltaY * 0.001),
+      MIN_POSE_ZOOM,
+      MAX_POSE_ZOOM,
+    );
+    if (nextZoom === currentZoom) {
+      return;
+    }
+
+    const point = getCanvasWheelPoint(canvas, event, width, height);
+    const currentOffset = poseOffsetRef.current;
+    const currentSize = getCoverDrawSize(poseCanvas, width, height, currentZoom);
+    const nextSize = getCoverDrawSize(poseCanvas, width, height, nextZoom);
+    const sourceX = (point.x - currentOffset.x) / currentSize.width;
+    const sourceY = (point.y - currentOffset.y) / currentSize.height;
+    const nextOffset = clampCoverOffset(
+      {
+        x: point.x - sourceX * nextSize.width,
+        y: point.y - sourceY * nextSize.height,
+      },
+      poseCanvas,
+      width,
+      height,
+      nextZoom,
+    );
+    poseZoomRef.current = nextZoom;
+    poseOffsetRef.current = nextOffset;
+    setPoseZoom(nextZoom);
+    setPoseOffset(nextOffset);
+    requestRedraw();
+    publishEditorState();
   }
 
   function finishSelection(selection: SelectionRegion) {
@@ -1725,6 +1870,7 @@ export const SceneImageInpaintEditor = forwardRef<
         poseCanvas,
         width,
         height,
+        poseZoomRef.current,
       );
       poseOffsetRef.current = nextOffset;
       setPoseOffset(nextOffset);
@@ -1970,14 +2116,24 @@ export const SceneImageInpaintEditor = forwardRef<
     }
   }
 
-  function updateControlGuidanceStart(value: number) {
+  function updateScribbleGuidanceStart(value: number) {
     const nextValue = Math.max(0, Math.min(1, value));
-    setControlGuidanceStart(nextValue);
-    setControlGuidanceEnd((currentEnd) => Math.max(currentEnd, nextValue));
+    setScribbleGuidanceStart(nextValue);
+    setScribbleGuidanceEnd((currentEnd) => Math.max(currentEnd, nextValue));
   }
 
-  function updateControlGuidanceEnd(value: number) {
-    setControlGuidanceEnd(Math.max(controlGuidanceStart, Math.min(1, value)));
+  function updateScribbleGuidanceEnd(value: number) {
+    setScribbleGuidanceEnd(Math.max(scribbleGuidanceStart, Math.min(1, value)));
+  }
+
+  function updatePoseGuidanceStart(value: number) {
+    const nextValue = Math.max(0, Math.min(1, value));
+    setPoseGuidanceStart(nextValue);
+    setPoseGuidanceEnd((currentEnd) => Math.max(currentEnd, nextValue));
+  }
+
+  function updatePoseGuidanceEnd(value: number) {
+    setPoseGuidanceEnd(Math.max(poseGuidanceStart, Math.min(1, value)));
   }
 
   useImperativeHandle(ref, () => ({
@@ -1990,7 +2146,13 @@ export const SceneImageInpaintEditor = forwardRef<
       const imageCanvas = cloneCanvas(imageCanvasRef.current);
       const maskCanvas = cloneCanvas(maskCanvasRef.current);
       const scribbleCanvas = cloneCanvas(scribbleCanvasRef.current);
-      const poseCanvas = renderPoseConditionCanvas(poseSourceCanvasRef.current, poseOffsetRef.current, width, height);
+      const poseCanvas = renderPoseConditionCanvas(
+        poseSourceCanvasRef.current,
+        poseOffsetRef.current,
+        poseZoomRef.current,
+        width,
+        height,
+      );
       const hasScribble = !isCanvasSolidColor(scribbleCanvas, 255, 255, 255);
       const hasPose = Boolean(poseCanvas);
       publishEditorState();
@@ -2002,19 +2164,25 @@ export const SceneImageInpaintEditor = forwardRef<
         hasScribble,
         hasPose,
         controlSettings: {
-          controlnet_conditioning_scale: controlnetConditioningScale,
-          control_guidance_start: controlGuidanceStart,
-          control_guidance_end: controlGuidanceEnd,
+          scribble_scale: scribbleScale,
+          scribble_guidance_start: scribbleGuidanceStart,
+          scribble_guidance_end: scribbleGuidanceEnd,
+          pose_scale: poseScale,
+          pose_guidance_start: poseGuidanceStart,
+          pose_guidance_end: poseGuidanceEnd,
         },
       };
     },
   }), [
-    controlGuidanceEnd,
-    controlGuidanceStart,
-    controlnetConditioningScale,
     height,
     isReady,
+    poseGuidanceEnd,
+    poseGuidanceStart,
+    poseScale,
     publishEditorState,
+    scribbleGuidanceEnd,
+    scribbleGuidanceStart,
+    scribbleScale,
     width,
   ]);
 
@@ -2212,11 +2380,11 @@ export const SceneImageInpaintEditor = forwardRef<
                 min="0"
                 max="2"
                 step="0.05"
-                value={controlnetConditioningScale}
+                value={scribbleScale}
                 onChange={(event) => {
                   const nextValue = Number(event.target.value);
                   if (Number.isFinite(nextValue)) {
-                    setControlnetConditioningScale(Math.max(0, Math.min(2, nextValue)));
+                    setScribbleScale(Math.max(0, Math.min(2, nextValue)));
                   }
                 }}
                 disabled={disabled || isGenerating}
@@ -2230,11 +2398,11 @@ export const SceneImageInpaintEditor = forwardRef<
                 min="0"
                 max="1"
                 step="0.05"
-                value={controlGuidanceStart}
+                value={scribbleGuidanceStart}
                 onChange={(event) => {
                   const nextValue = Number(event.target.value);
                   if (Number.isFinite(nextValue)) {
-                    updateControlGuidanceStart(nextValue);
+                    updateScribbleGuidanceStart(nextValue);
                   }
                 }}
                 disabled={disabled || isGenerating}
@@ -2248,11 +2416,11 @@ export const SceneImageInpaintEditor = forwardRef<
                 min="0"
                 max="1"
                 step="0.05"
-                value={controlGuidanceEnd}
+                value={scribbleGuidanceEnd}
                 onChange={(event) => {
                   const nextValue = Number(event.target.value);
                   if (Number.isFinite(nextValue)) {
-                    updateControlGuidanceEnd(nextValue);
+                    updateScribbleGuidanceEnd(nextValue);
                   }
                 }}
                 disabled={disabled || isGenerating}
@@ -2282,6 +2450,60 @@ export const SceneImageInpaintEditor = forwardRef<
 
         {mode === 'openpose' ? (
           <>
+            <label className="flex min-w-0 items-center gap-1 text-xs font-semibold text-[var(--app-muted)]">
+              scale
+              <input
+                type="number"
+                min="0"
+                max="2"
+                step="0.05"
+                value={poseScale}
+                onChange={(event) => {
+                  const nextValue = Number(event.target.value);
+                  if (Number.isFinite(nextValue)) {
+                    setPoseScale(Math.max(0, Math.min(2, nextValue)));
+                  }
+                }}
+                disabled={disabled || isGenerating}
+                className="h-8 w-16 rounded-[8px] border border-[rgba(255,218,228,0.26)] bg-[rgba(16,8,24,0.72)] px-2 text-right text-xs text-[#fff7ef] outline-none focus:border-[#ffe2ba]"
+              />
+            </label>
+            <label className="flex min-w-0 items-center gap-1 text-xs font-semibold text-[var(--app-muted)]">
+              start
+              <input
+                type="number"
+                min="0"
+                max="1"
+                step="0.05"
+                value={poseGuidanceStart}
+                onChange={(event) => {
+                  const nextValue = Number(event.target.value);
+                  if (Number.isFinite(nextValue)) {
+                    updatePoseGuidanceStart(nextValue);
+                  }
+                }}
+                disabled={disabled || isGenerating}
+                className="h-8 w-16 rounded-[8px] border border-[rgba(255,218,228,0.26)] bg-[rgba(16,8,24,0.72)] px-2 text-right text-xs text-[#fff7ef] outline-none focus:border-[#ffe2ba]"
+              />
+            </label>
+            <label className="flex min-w-0 items-center gap-1 text-xs font-semibold text-[var(--app-muted)]">
+              end
+              <input
+                type="number"
+                min="0"
+                max="1"
+                step="0.05"
+                value={poseGuidanceEnd}
+                onChange={(event) => {
+                  const nextValue = Number(event.target.value);
+                  if (Number.isFinite(nextValue)) {
+                    updatePoseGuidanceEnd(nextValue);
+                  }
+                }}
+                disabled={disabled || isGenerating}
+                className="h-8 w-16 rounded-[8px] border border-[rgba(255,218,228,0.26)] bg-[rgba(16,8,24,0.72)] px-2 text-right text-xs text-[#fff7ef] outline-none focus:border-[#ffe2ba]"
+              />
+            </label>
             <Button
               className={TOOL_BUTTON_CLASS}
               onClick={clearPoseImage}
@@ -2313,6 +2535,7 @@ export const SceneImageInpaintEditor = forwardRef<
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
           onPointerLeave={handlePointerLeave}
+          onWheel={handleWheel}
         />
 
         {(isWorking || isGenerating) ? (

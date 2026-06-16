@@ -51,13 +51,13 @@ from utils.vector import VECTOR_DIMENSION, validate_embedding
 
 
 async def generate_scene_from_form(db: AsyncSession, form: FormData) -> Scene:
-    generate_request, image, mask, scribble, pose_image = await parse_generate_scene_form(form)
+    generate_request, image, mask, scribble_image, pose_image = await parse_generate_scene_form(form)
     return await generate_scene(
         db,
         generate_request,
         seed_image=image,
         mask_image=mask,
-        control_image=scribble,
+        scribble_image=scribble_image,
         pose_image=pose_image,
         image_mode="controlnet_inpaint",
         image_label="image",
@@ -73,9 +73,9 @@ async def parse_generate_scene_form(
 
     image = await read_image_upload(form, "image", required=True)
     mask = await read_image_upload(form, "mask", required=True)
-    scribble = await read_image_upload(form, "scribble", required=True)
+    scribble_image = await read_image_upload(form, "scribble_image", required=True)
     pose_image = await read_image_upload(form, "pose_image")
-    return generate_request, image, mask, scribble, pose_image
+    return generate_request, image, mask, scribble_image, pose_image
 
 
 async def generate_scene_t2i_from_form(db: AsyncSession, form: FormData) -> Scene:
@@ -150,7 +150,7 @@ async def generate_scene(
     request: GenerateSceneRequestBase,
     seed_image: bytes | None = None,
     mask_image: bytes | None = None,
-    control_image: bytes | None = None,
+    scribble_image: bytes | None = None,
     pose_image: bytes | None = None,
     image_mode: str = "i2i",
     image_label: str = "seed image",
@@ -161,7 +161,7 @@ async def generate_scene(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="seed image is required")
     if should_generate_image and image_mode in {"inpaint", "controlnet_inpaint"} and mask_image is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="mask image is required")
-    if should_generate_image and image_mode == "controlnet_inpaint" and control_image is None:
+    if should_generate_image and image_mode == "controlnet_inpaint" and scribble_image is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scribble image is required")
 
     scene = None
@@ -188,7 +188,7 @@ async def generate_scene(
             request.image_settings,
             image_mode=image_mode,
             mask_image=mask_image,
-            control_image=control_image,
+            scribble_image=scribble_image,
             pose_image=pose_image,
             image_label=image_label,
         )
@@ -380,7 +380,7 @@ async def generate_scene_image(
     *,
     image_mode: str = "i2i",
     mask_image: bytes | None = None,
-    control_image: bytes | None = None,
+    scribble_image: bytes | None = None,
     pose_image: bytes | None = None,
     image_label: str = "seed image",
 ) -> tuple[str, str]:
@@ -409,11 +409,14 @@ async def generate_scene_image(
     )
     init_image = None
     init_mask = None
-    control_images: list[Image.Image] = []
+    controlnet_images: list[Image.Image] = []
     controlnet_model_ids: list[str] = []
-    controlnet_scales: list[float] = []
-    control_guidance_starts: list[float] = []
-    control_guidance_ends: list[float] = []
+    scribble_scales: list[float] = []
+    scribble_guidance_starts: list[float] = []
+    scribble_guidance_ends: list[float] = []
+    pose_scales: list[float] = []
+    pose_guidance_starts: list[float] = []
+    pose_guidance_ends: list[float] = []
     if image_mode in {"i2i", "inpaint", "controlnet_inpaint"}:
         if seed_image is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{image_label} is required")
@@ -438,21 +441,21 @@ async def generate_scene_image(
             Image.Resampling.NEAREST,
         )
     if image_mode == "controlnet_inpaint":
-        if control_image is None:
+        if scribble_image is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scribble image is required")
-        init_control = decode_generation_image(
-            control_image,
-            "scribble",
+        init_scribble = decode_generation_image(
+            scribble_image,
+            "scribble image",
             "RGB",
             target_size,
             Image.Resampling.LANCZOS,
         )
-        if not is_solid_rgb_image(init_control, 255, 255, 255):
-            control_images.append(init_control)
+        if not is_solid_rgb_image(init_scribble, 255, 255, 255):
+            controlnet_images.append(init_scribble)
             controlnet_model_ids.append(settings.CONTROLNET_SCRIBBLE_MODEL_ID)
-            controlnet_scales.append(resolved_settings.controlnet_conditioning_scale)
-            control_guidance_starts.append(resolved_settings.control_guidance_start)
-            control_guidance_ends.append(resolved_settings.control_guidance_end)
+            scribble_scales.append(resolved_settings.scribble_scale)
+            scribble_guidance_starts.append(resolved_settings.scribble_guidance_start)
+            scribble_guidance_ends.append(resolved_settings.scribble_guidance_end)
         if pose_image is not None:
             init_pose = decode_generation_image(
                 pose_image,
@@ -461,23 +464,26 @@ async def generate_scene_image(
                 target_size,
                 Image.Resampling.LANCZOS,
             )
-            control_images.append(init_pose)
+            controlnet_images.append(init_pose)
             controlnet_model_ids.append(settings.CONTROLNET_OPENPOSE_MODEL_ID)
-            controlnet_scales.append(resolved_settings.controlnet_conditioning_scale)
-            control_guidance_starts.append(resolved_settings.control_guidance_start)
-            control_guidance_ends.append(resolved_settings.control_guidance_end)
-        if not control_images:
-            control_images.append(init_control)
+            pose_scales.append(resolved_settings.pose_scale)
+            pose_guidance_starts.append(resolved_settings.pose_guidance_start)
+            pose_guidance_ends.append(resolved_settings.pose_guidance_end)
+        if not controlnet_images:
+            controlnet_images.append(init_scribble)
             controlnet_model_ids.append(settings.CONTROLNET_SCRIBBLE_MODEL_ID)
-            controlnet_scales.append(0.0)
-            control_guidance_starts.append(resolved_settings.control_guidance_start)
-            control_guidance_ends.append(resolved_settings.control_guidance_end)
+            scribble_scales.append(0.0)
+            scribble_guidance_starts.append(resolved_settings.scribble_guidance_start)
+            scribble_guidance_ends.append(resolved_settings.scribble_guidance_end)
 
     positive_prompt_parts = [
         (resolved_settings.positive_base or "").strip().strip(","),
         visual_prompt.strip().strip(","),
     ]
     seed = random.randint(GEN_IMAGE_SEED_MIN, GEN_IMAGE_SEED_MAX)
+    controlnet_conditioning_scales = scribble_scales + pose_scales
+    control_guidance_starts = scribble_guidance_starts + pose_guidance_starts
+    control_guidance_ends = scribble_guidance_ends + pose_guidance_ends
     images, _seeds = await generate_images_batch(
         str(model_path),
         image_mode,
@@ -485,7 +491,7 @@ async def generate_scene_image(
         [resolved_settings.negative_prompt or ""],
         [init_image] if init_image is not None else [],
         [init_mask] if init_mask is not None else [],
-        [control_images] if control_images else [],
+        [controlnet_images] if controlnet_images else [],
         [seed],
         resolved_settings.steps or GEN_IMAGE_STEPS,
         resolved_settings.cfg or GEN_IMAGE_CFG,
@@ -499,7 +505,7 @@ async def generate_scene_image(
         resolved_settings.scheduler or "",
         resolved_settings.clip_skip,
         controlnet_model_ids,
-        controlnet_scales,
+        controlnet_conditioning_scales,
         control_guidance_starts,
         control_guidance_ends,
     )
@@ -512,13 +518,16 @@ async def generate_scene_image(
 
     image_key = build_object_key(kind="image", filename=f"scene{GEN_IMAGE_OUTPUT_EXTENSION}")
     image_bytes = BytesIO()
-    if GEN_IMAGE_OUTPUT_FORMAT.upper() == "JPEG" and getattr(image, "mode", "RGB") != "RGB":
+    output_format = GEN_IMAGE_OUTPUT_FORMAT.upper()
+    save_kwargs = {"format": GEN_IMAGE_OUTPUT_FORMAT}
+    if output_format == "JPEG":
+        save_kwargs["quality"] = GEN_IMAGE_OUTPUT_QUALITY
+    if output_format == "JPEG" and getattr(image, "mode", "RGB") != "RGB":
         image = image.convert("RGB")
     await asyncio.to_thread(
         image.save,
         image_bytes,
-        format=GEN_IMAGE_OUTPUT_FORMAT,
-        quality=GEN_IMAGE_OUTPUT_QUALITY,
+        **save_kwargs,
     )
     image_bytes.seek(0)
     upload_fileobj(image_bytes, image_key, _image_content_type(GEN_IMAGE_OUTPUT_FORMAT))

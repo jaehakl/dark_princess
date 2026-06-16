@@ -92,13 +92,17 @@ function createEmptyImageEditorState(): SceneImageInpaintEditorState {
     poseImageDataUrl: null,
     poseOffsetX: null,
     poseOffsetY: null,
+    poseZoom: null,
     isMaskVisualizationEnabled: null,
     featherBrushSize: null,
     scribbleBrushSize: null,
     scribblePreviewOpacity: null,
-    controlnetConditioningScale: null,
-    controlGuidanceStart: null,
-    controlGuidanceEnd: null,
+    scribbleScale: null,
+    scribbleGuidanceStart: null,
+    scribbleGuidanceEnd: null,
+    poseScale: null,
+    poseGuidanceStart: null,
+    poseGuidanceEnd: null,
   };
 }
 
@@ -473,9 +477,12 @@ export function SceneEditComponent({
     const strength = Number(imageSettingsDraft.strength);
     const height = Number(imageSettingsDraft.height);
     const width = Number(imageSettingsDraft.width);
-    const controlnetConditioningScale = Number(imageSettingsDraft.controlnet_conditioning_scale);
-    const controlGuidanceStart = Number(imageSettingsDraft.control_guidance_start);
-    const controlGuidanceEnd = Number(imageSettingsDraft.control_guidance_end);
+    const scribbleScale = Number(imageSettingsDraft.scribble_scale);
+    const scribbleGuidanceStart = Number(imageSettingsDraft.scribble_guidance_start);
+    const scribbleGuidanceEnd = Number(imageSettingsDraft.scribble_guidance_end);
+    const poseScale = Number(imageSettingsDraft.pose_scale);
+    const poseGuidanceStart = Number(imageSettingsDraft.pose_guidance_start);
+    const poseGuidanceEnd = Number(imageSettingsDraft.pose_guidance_end);
     const clipSkip = imageSettingsDraft.clip_skip.trim() === ''
       ? null
       : Number(imageSettingsDraft.clip_skip);
@@ -502,20 +509,36 @@ export function SceneEditComponent({
       setImageSettingsError('width는 8의 배수인 양의 정수로 입력해 주세요.');
       return;
     }
-    if (!Number.isFinite(controlnetConditioningScale) || controlnetConditioningScale < 0 || controlnetConditioningScale > 2) {
-      setImageSettingsError('ControlNet scale은 0 이상 2 이하인 숫자로 입력해 주세요.');
+    if (!Number.isFinite(scribbleScale) || scribbleScale < 0 || scribbleScale > 2) {
+      setImageSettingsError('Scribble scale은 0 이상 2 이하인 숫자로 입력해 주세요.');
       return;
     }
-    if (!Number.isFinite(controlGuidanceStart) || controlGuidanceStart < 0 || controlGuidanceStart > 1) {
-      setImageSettingsError('ControlNet start는 0 이상 1 이하인 숫자로 입력해 주세요.');
+    if (!Number.isFinite(scribbleGuidanceStart) || scribbleGuidanceStart < 0 || scribbleGuidanceStart > 1) {
+      setImageSettingsError('Scribble start는 0 이상 1 이하인 숫자로 입력해 주세요.');
       return;
     }
-    if (!Number.isFinite(controlGuidanceEnd) || controlGuidanceEnd < 0 || controlGuidanceEnd > 1) {
-      setImageSettingsError('ControlNet end는 0 이상 1 이하인 숫자로 입력해 주세요.');
+    if (!Number.isFinite(scribbleGuidanceEnd) || scribbleGuidanceEnd < 0 || scribbleGuidanceEnd > 1) {
+      setImageSettingsError('Scribble end는 0 이상 1 이하인 숫자로 입력해 주세요.');
       return;
     }
-    if (controlGuidanceEnd < controlGuidanceStart) {
-      setImageSettingsError('ControlNet end는 start 이상이어야 합니다.');
+    if (scribbleGuidanceEnd < scribbleGuidanceStart) {
+      setImageSettingsError('Scribble end는 start 이상이어야 합니다.');
+      return;
+    }
+    if (!Number.isFinite(poseScale) || poseScale < 0 || poseScale > 2) {
+      setImageSettingsError('Pose scale은 0 이상 2 이하인 숫자로 입력해 주세요.');
+      return;
+    }
+    if (!Number.isFinite(poseGuidanceStart) || poseGuidanceStart < 0 || poseGuidanceStart > 1) {
+      setImageSettingsError('Pose start는 0 이상 1 이하인 숫자로 입력해 주세요.');
+      return;
+    }
+    if (!Number.isFinite(poseGuidanceEnd) || poseGuidanceEnd < 0 || poseGuidanceEnd > 1) {
+      setImageSettingsError('Pose end는 0 이상 1 이하인 숫자로 입력해 주세요.');
+      return;
+    }
+    if (poseGuidanceEnd < poseGuidanceStart) {
+      setImageSettingsError('Pose end는 start 이상이어야 합니다.');
       return;
     }
     if (clipSkip !== null && (!Number.isInteger(clipSkip) || clipSkip < 1)) {
@@ -542,9 +565,12 @@ export function SceneEditComponent({
       clip_skip: clipSkip,
       height,
       width,
-      controlnet_conditioning_scale: controlnetConditioningScale,
-      control_guidance_start: controlGuidanceStart,
-      control_guidance_end: controlGuidanceEnd,
+      scribble_scale: scribbleScale,
+      scribble_guidance_start: scribbleGuidanceStart,
+      scribble_guidance_end: scribbleGuidanceEnd,
+      pose_scale: poseScale,
+      pose_guidance_start: poseGuidanceStart,
+      pose_guidance_end: poseGuidanceEnd,
     };
     setImageSettings(nextImageSettings);
     setImageSettingsDraft(imageSettingsToDraft(nextImageSettings));
@@ -629,7 +655,7 @@ export function SceneEditComponent({
       if (isImageSave && imagePayload) {
         formData.append('image', imagePayload.image, 'scene-inpaint-image.png');
         formData.append('mask', imagePayload.mask, 'scene-inpaint-mask.png');
-        formData.append('scribble', imagePayload.scribble, 'scene-controlnet-scribble.png');
+        formData.append('scribble_image', imagePayload.scribble, 'scene-controlnet-scribble.png');
         if (imagePayload.pose) {
           formData.append('pose_image', imagePayload.pose, 'scene-controlnet-openpose.png');
         }
@@ -943,9 +969,12 @@ export function SceneEditComponent({
                         disabled={isLoadingScene || Boolean(savingMode)}
                         isGenerating={savingMode === 'image'}
                         altText={composedPrompt || 'Scene inpaint image'}
-                        controlnetConditioningScale={imageSettings.controlnet_conditioning_scale}
-                        controlGuidanceStart={imageSettings.control_guidance_start}
-                        controlGuidanceEnd={imageSettings.control_guidance_end}
+                        scribbleScale={imageSettings.scribble_scale}
+                        scribbleGuidanceStart={imageSettings.scribble_guidance_start}
+                        scribbleGuidanceEnd={imageSettings.scribble_guidance_end}
+                        poseScale={imageSettings.pose_scale}
+                        poseGuidanceStart={imageSettings.pose_guidance_start}
+                        poseGuidanceEnd={imageSettings.pose_guidance_end}
                         initialEditorState={imageEditorState}
                         onEditorStateChange={setImageEditorState}
                         onError={setImageEditorError}
@@ -1080,9 +1109,12 @@ export function SceneEditComponent({
                 <WizardSettingsInput label="clip skip" value={imageSettingsDraft.clip_skip} onChange={(value) => updateImageSettingsDraft('clip_skip', value)} min="1" step="1" />
                 <WizardSettingsInput label="height" value={imageSettingsDraft.height} onChange={(value) => updateImageSettingsDraft('height', value)} min="8" step="8" />
                 <WizardSettingsInput label="width" value={imageSettingsDraft.width} onChange={(value) => updateImageSettingsDraft('width', value)} min="8" step="8" />
-                <WizardSettingsInput label="control scale" value={imageSettingsDraft.controlnet_conditioning_scale} onChange={(value) => updateImageSettingsDraft('controlnet_conditioning_scale', value)} min="0" step="0.05" />
-                <WizardSettingsInput label="control start" value={imageSettingsDraft.control_guidance_start} onChange={(value) => updateImageSettingsDraft('control_guidance_start', value)} min="0" step="0.05" />
-                <WizardSettingsInput label="control end" value={imageSettingsDraft.control_guidance_end} onChange={(value) => updateImageSettingsDraft('control_guidance_end', value)} min="0" step="0.05" />
+                <WizardSettingsInput label="scribble scale" value={imageSettingsDraft.scribble_scale} onChange={(value) => updateImageSettingsDraft('scribble_scale', value)} min="0" step="0.05" />
+                <WizardSettingsInput label="scribble start" value={imageSettingsDraft.scribble_guidance_start} onChange={(value) => updateImageSettingsDraft('scribble_guidance_start', value)} min="0" step="0.05" />
+                <WizardSettingsInput label="scribble end" value={imageSettingsDraft.scribble_guidance_end} onChange={(value) => updateImageSettingsDraft('scribble_guidance_end', value)} min="0" step="0.05" />
+                <WizardSettingsInput label="pose scale" value={imageSettingsDraft.pose_scale} onChange={(value) => updateImageSettingsDraft('pose_scale', value)} min="0" step="0.05" />
+                <WizardSettingsInput label="pose start" value={imageSettingsDraft.pose_guidance_start} onChange={(value) => updateImageSettingsDraft('pose_guidance_start', value)} min="0" step="0.05" />
+                <WizardSettingsInput label="pose end" value={imageSettingsDraft.pose_guidance_end} onChange={(value) => updateImageSettingsDraft('pose_guidance_end', value)} min="0" step="0.05" />
               </div>
 
               {imageSettingsError ? (

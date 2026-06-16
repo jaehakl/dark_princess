@@ -29,9 +29,12 @@ export type ImageGenerationSettings = {
   clip_skip: number | null;
   height: number;
   width: number;
-  controlnet_conditioning_scale: number;
-  control_guidance_start: number;
-  control_guidance_end: number;
+  scribble_scale: number;
+  scribble_guidance_start: number;
+  scribble_guidance_end: number;
+  pose_scale: number;
+  pose_guidance_start: number;
+  pose_guidance_end: number;
 };
 
 export type GenImageResponse = {

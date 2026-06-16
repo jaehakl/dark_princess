@@ -33,7 +33,7 @@ async def generate_images_batch(
     negative_prompt_list: list[str],
     init_image_list: list[Any],
     mask_image_list: list[Any],
-    control_image_list: list[list[Any]],
+    controlnet_image_list: list[list[Any]],
     seed_list: list[int | None],
     step: int,
     cfg: float,
@@ -60,7 +60,7 @@ async def generate_images_batch(
             negative_prompt_list,
             init_image_list,
             mask_image_list,
-            control_image_list,
+            controlnet_image_list,
             seed_list,
             step,
             cfg,
@@ -147,7 +147,7 @@ def _generate_images_batch_locked(
     negative_prompt_list: list[str],
     init_image_list: list[Any],
     mask_image_list: list[Any],
-    control_image_list: list[list[Any]],
+    controlnet_image_list: list[list[Any]],
     seed_list: list[int | None],
     step: int,
     cfg: float,
@@ -207,7 +207,7 @@ def _generate_images_batch_locked(
         negative_prompt_chunk = negative_prompt_list[i:i + chunk_size]
         init_image_chunk = init_image_list[i:i + chunk_size]
         mask_image_chunk = mask_image_list[i:i + chunk_size]
-        control_image_chunk = control_image_list[i:i + chunk_size]
+        controlnet_image_chunk = controlnet_image_list[i:i + chunk_size]
         seed_chunk = [
             random.randint(seed_min, seed_max)
             if seed_list[i + j] is None
@@ -243,14 +243,14 @@ def _generate_images_batch_locked(
                 raise ValueError("controlnet_inpaint requires at least one ControlNet model")
             if len(controlnet_model_ids) > 1 and chunk_size > 1:
                 raise ValueError("multiple ControlNets support only a single image per generation chunk")
-            if any(len(control_images) != len(controlnet_model_ids) for control_images in control_image_chunk):
+            if any(len(controlnet_images) != len(controlnet_model_ids) for controlnet_images in controlnet_image_chunk):
                 raise ValueError("control image count must match ControlNet model count")
             call_kwargs["image"] = init_image_chunk
             call_kwargs["mask_image"] = mask_image_chunk
             call_kwargs["control_image"] = (
-                [control_images[0] for control_images in control_image_chunk]
+                [controlnet_images[0] for controlnet_images in controlnet_image_chunk]
                 if len(controlnet_model_ids) == 1
-                else control_image_chunk[0]
+                else controlnet_image_chunk[0]
             )
             call_kwargs["height"] = height
             call_kwargs["width"] = width

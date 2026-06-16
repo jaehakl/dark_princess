@@ -26,9 +26,12 @@ export type ImageGenerationSettingsDraft = {
   clip_skip: string;
   height: string;
   width: string;
-  controlnet_conditioning_scale: string;
-  control_guidance_start: string;
-  control_guidance_end: string;
+  scribble_scale: string;
+  scribble_guidance_start: string;
+  scribble_guidance_end: string;
+  pose_scale: string;
+  pose_guidance_start: string;
+  pose_guidance_end: string;
 };
 
 export function imageSettingsToDraft(settings: ImageGenerationSettings): ImageGenerationSettingsDraft {
@@ -43,9 +46,12 @@ export function imageSettingsToDraft(settings: ImageGenerationSettings): ImageGe
     clip_skip: settings.clip_skip === null ? '' : String(settings.clip_skip),
     height: String(settings.height),
     width: String(settings.width),
-    controlnet_conditioning_scale: String(settings.controlnet_conditioning_scale),
-    control_guidance_start: String(settings.control_guidance_start),
-    control_guidance_end: String(settings.control_guidance_end),
+    scribble_scale: String(settings.scribble_scale),
+    scribble_guidance_start: String(settings.scribble_guidance_start),
+    scribble_guidance_end: String(settings.scribble_guidance_end),
+    pose_scale: String(settings.pose_scale),
+    pose_guidance_start: String(settings.pose_guidance_start),
+    pose_guidance_end: String(settings.pose_guidance_end),
   };
 }
 
@@ -56,7 +62,14 @@ export function readSessionImageSettings(defaults: ImageGenerationSettings): Ima
   }
 
   try {
-    const parsedSettings = JSON.parse(rawSettings) as Partial<ImageGenerationSettings>;
+    const parsedSettings = JSON.parse(rawSettings) as Partial<ImageGenerationSettings> & {
+      controlnet_conditioning_scale?: number;
+      control_guidance_start?: number;
+      control_guidance_end?: number;
+    };
+    const legacyScale = parsedSettings.controlnet_conditioning_scale;
+    const legacyGuidanceStart = parsedSettings.control_guidance_start;
+    const legacyGuidanceEnd = parsedSettings.control_guidance_end;
     return {
       positive_base: parsedSettings.positive_base ?? defaults.positive_base,
       negative_prompt: parsedSettings.negative_prompt ?? defaults.negative_prompt,
@@ -68,11 +81,16 @@ export function readSessionImageSettings(defaults: ImageGenerationSettings): Ima
       clip_skip: parsedSettings.clip_skip ?? defaults.clip_skip,
       height: parsedSettings.height ?? defaults.height,
       width: parsedSettings.width ?? defaults.width,
-      controlnet_conditioning_scale: (
-        parsedSettings.controlnet_conditioning_scale ?? defaults.controlnet_conditioning_scale
+      scribble_scale: parsedSettings.scribble_scale ?? legacyScale ?? defaults.scribble_scale,
+      scribble_guidance_start: (
+        parsedSettings.scribble_guidance_start ?? legacyGuidanceStart ?? defaults.scribble_guidance_start
       ),
-      control_guidance_start: parsedSettings.control_guidance_start ?? defaults.control_guidance_start,
-      control_guidance_end: parsedSettings.control_guidance_end ?? defaults.control_guidance_end,
+      scribble_guidance_end: (
+        parsedSettings.scribble_guidance_end ?? legacyGuidanceEnd ?? defaults.scribble_guidance_end
+      ),
+      pose_scale: parsedSettings.pose_scale ?? legacyScale ?? defaults.pose_scale,
+      pose_guidance_start: parsedSettings.pose_guidance_start ?? legacyGuidanceStart ?? defaults.pose_guidance_start,
+      pose_guidance_end: parsedSettings.pose_guidance_end ?? legacyGuidanceEnd ?? defaults.pose_guidance_end,
     };
   } catch {
     sessionStorage.removeItem(IMAGE_SETTINGS_SESSION_KEY);
