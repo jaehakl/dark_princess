@@ -24,11 +24,14 @@ GEN_IMAGE_NEGATIVE_PROMPT = "blurry, low quality, bad anatomy, disfigured, defor
 GEN_IMAGE_STEPS = 30
 GEN_IMAGE_CFG = 5
 GEN_IMAGE_STRENGTH = 1.0
+GEN_IMAGE_CONTROLNET_CONDITIONING_SCALE = 0.6
+GEN_IMAGE_CONTROL_GUIDANCE_START = 0.0
+GEN_IMAGE_CONTROL_GUIDANCE_END = 1.0
 GEN_IMAGE_SAMPLER = "euler_a" #"dpmpp_2m"
 GEN_IMAGE_SCHEDULER = "" #"karras"
 GEN_IMAGE_CLIP_SKIP: int | None = None #2
-GEN_IMAGE_HEIGHT = 1216
-GEN_IMAGE_WIDTH = 832
+GEN_IMAGE_HEIGHT = 832
+GEN_IMAGE_WIDTH = 1216
 GEN_IMAGE_MAX_CHUNK_SIZE = 1
 GEN_IMAGE_OUTPUT_FORMAT = "JPEG"
 GEN_IMAGE_OUTPUT_EXTENSION = ".jpg"
@@ -242,6 +245,9 @@ def get_default_image_generation_settings() -> ImageGenerationSettingsBase:
         clip_skip=GEN_IMAGE_CLIP_SKIP,
         height=GEN_IMAGE_HEIGHT,
         width=GEN_IMAGE_WIDTH,
+        controlnet_conditioning_scale=GEN_IMAGE_CONTROLNET_CONDITIONING_SCALE,
+        control_guidance_start=GEN_IMAGE_CONTROL_GUIDANCE_START,
+        control_guidance_end=GEN_IMAGE_CONTROL_GUIDANCE_END,
     )
 
 
@@ -263,6 +269,21 @@ def resolve_image_generation_settings(
         clip_skip=defaults.clip_skip if image_settings.clip_skip is None else image_settings.clip_skip,
         height=defaults.height if image_settings.height is None else image_settings.height,
         width=defaults.width if image_settings.width is None else image_settings.width,
+        controlnet_conditioning_scale=(
+            defaults.controlnet_conditioning_scale
+            if image_settings.controlnet_conditioning_scale is None
+            else image_settings.controlnet_conditioning_scale
+        ),
+        control_guidance_start=(
+            defaults.control_guidance_start
+            if image_settings.control_guidance_start is None
+            else image_settings.control_guidance_start
+        ),
+        control_guidance_end=(
+            defaults.control_guidance_end
+            if image_settings.control_guidance_end is None
+            else image_settings.control_guidance_end
+        ),
     )
     return _validate_image_generation_settings(resolved)
 
@@ -276,6 +297,9 @@ def _validate_image_generation_settings(
     height = image_settings.height
     width = image_settings.width
     clip_skip = image_settings.clip_skip
+    controlnet_conditioning_scale = image_settings.controlnet_conditioning_scale
+    control_guidance_start = image_settings.control_guidance_start
+    control_guidance_end = image_settings.control_guidance_end
     sampler = (image_settings.sampler or "").strip().lower()
     scheduler = (image_settings.scheduler or "").strip().lower()
 
@@ -301,6 +325,30 @@ def _validate_image_generation_settings(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unsupported image sampler")
     if scheduler not in GEN_IMAGE_ALLOWED_SCHEDULERS:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unsupported image scheduler")
+    if (
+        controlnet_conditioning_scale is None
+        or controlnet_conditioning_scale < 0
+        or controlnet_conditioning_scale > 2
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="controlnet conditioning scale must be between 0 and 2",
+        )
+    if control_guidance_start is None or control_guidance_start < 0 or control_guidance_start > 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="control guidance start must be between 0 and 1",
+        )
+    if control_guidance_end is None or control_guidance_end < 0 or control_guidance_end > 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="control guidance end must be between 0 and 1",
+        )
+    if control_guidance_end < control_guidance_start:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="control guidance end must be greater than or equal to start",
+        )
 
     return ImageGenerationSettingsBase(
         positive_base=(image_settings.positive_base or "").strip(),
@@ -313,4 +361,7 @@ def _validate_image_generation_settings(
         clip_skip=clip_skip,
         height=height,
         width=width,
+        controlnet_conditioning_scale=controlnet_conditioning_scale,
+        control_guidance_start=control_guidance_start,
+        control_guidance_end=control_guidance_end,
     )

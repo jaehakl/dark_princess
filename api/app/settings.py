@@ -8,6 +8,7 @@ ENV_PATH = API_ROOT / ".env"
 DEFAULT_DB_URL = f"sqlite+aiosqlite:///{(API_ROOT / 'local.sqlite3').as_posix()}"
 DEFAULT_LOCAL_UPLOAD_DIR = str(API_ROOT / "uploads")
 DEFAULT_SCENE_EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-large"
+DEFAULT_CONTROLNET_SCRIBBLE_MODEL_ID = "xinsir/controlnet-scribble-sdxl-1.0"
 
 load_dotenv(ENV_PATH)
 
@@ -37,6 +38,7 @@ class Settings(BaseModel):
 
     stable_diffusion_model_path: str
     SCENE_EMBEDDING_MODEL_NAME: str
+    CONTROLNET_SCRIBBLE_MODEL_ID: str
 
 
 def build_settings() -> Settings:
@@ -49,6 +51,9 @@ def build_settings() -> Settings:
         MAX_UPLOAD_SIZE_MB=int(os.getenv("MAX_UPLOAD_SIZE_MB", "20")),
         stable_diffusion_model_path=get_local_path_env("STABLE_DIFFUSION_MODEL_PATH"),
         SCENE_EMBEDDING_MODEL_NAME=os.getenv("SCENE_EMBEDDING_MODEL_NAME", DEFAULT_SCENE_EMBEDDING_MODEL_NAME),
+        CONTROLNET_SCRIBBLE_MODEL_ID=(
+            os.getenv("CONTROLNET_SCRIBBLE_MODEL_ID") or DEFAULT_CONTROLNET_SCRIBBLE_MODEL_ID
+        ),
     )
 
 

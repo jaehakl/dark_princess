@@ -848,7 +848,7 @@ export function PlayPage() {
   ]);
 
   return (
-    <div className="mx-auto min-h-[calc(100vh-7rem)] max-w-[1024px] rounded-[8px] border border-[rgba(255,204,220,0.28)] bg-[linear-gradient(180deg,rgba(255,238,247,0.05),rgba(14,4,18,0.62)),rgba(13,5,18,0.52)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),var(--app-shadow)] backdrop-blur-[14px] max-[640px]:p-[0.65rem]">
+    <div className="mx-auto min-h-[calc(100vh-7rem)] max-w-[1216px] rounded-[8px] border border-[rgba(255,204,220,0.28)] bg-[linear-gradient(180deg,rgba(255,238,247,0.05),rgba(14,4,18,0.62)),rgba(13,5,18,0.52)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),var(--app-shadow)] backdrop-blur-[14px] max-[640px]:p-[0.65rem]">
       <div className="grid min-h-[calc(100vh-20rem)] grid-cols-[minmax(24rem,1fr)_minmax(18rem,0.42fr)] grid-rows-[minmax(0,1fr)_auto] gap-4 max-[960px]:grid-cols-1 max-[960px]:grid-rows-[auto_auto_auto]">
         <Panel className="min-h-0 min-w-0">
           <PanelHeader>
@@ -862,7 +862,7 @@ export function PlayPage() {
           <SectionBody className="grid place-items-center p-0">
             <ImageFrame
               className={cx(
-                'mx-auto w-[min(100%,max(28rem,calc(100vh-10rem)))] rounded-[8px] border border-[rgba(255,218,228,0.22)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_24px_80px_rgba(5,0,10,0.46)] max-[960px]:w-[min(100%,34rem)]',
+                'mx-auto w-full rounded-[8px] border border-[rgba(255,218,228,0.22)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_24px_80px_rgba(5,0,10,0.46)]',
                 canNavigateScript && 'cursor-pointer',
               )}
               role={canAdvanceScript ? 'button' : undefined}

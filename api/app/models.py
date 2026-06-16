@@ -49,6 +49,9 @@ class ImageGenerationSettingsBase(BaseModel):
     clip_skip: Optional[int] = None
     height: Optional[int] = None
     width: Optional[int] = None
+    controlnet_conditioning_scale: Optional[float] = None
+    control_guidance_start: Optional[float] = None
+    control_guidance_end: Optional[float] = None
 
 
 class GenerateSceneRequestBase(BaseModel):

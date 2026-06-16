@@ -21,6 +21,7 @@ torchvision = { version = "0.22.0+cu128", source = "pytorch-gpu" }
 diffusers = "^0.35.1"
 sentence-transformers = "^5.1.0"
 llama-cpp-python = { version = "^0.3.28", source = "llama-cpp-python-cpu" }
+accelerate = "^1.14.0"
 
 [build-system]
 requires = ["poetry-core"]

@@ -29,6 +29,9 @@ export type ImageGenerationSettings = {
   clip_skip: number | null;
   height: number;
   width: number;
+  controlnet_conditioning_scale: number;
+  control_guidance_start: number;
+  control_guidance_end: number;
 };
 
 export type GenImageResponse = {

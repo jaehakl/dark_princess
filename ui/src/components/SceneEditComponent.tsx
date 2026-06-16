@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { dbTables } from '../api/api';
 import type {
   GenerateSceneRequest,
@@ -9,20 +9,24 @@ import type {
   SceneRecord,
 } from '../api/type';
 import {
-  createNoiseSeedImage,
-  createSeedImageFromUrl,
   IMAGE_SAMPLER_OPTIONS,
   IMAGE_SCHEDULER_OPTIONS,
   IMAGE_SETTINGS_SESSION_KEY,
   imageSettingsToDraft,
   readSessionImageSettings,
 } from '../lib/scene-image';
-import type { ImageGenerationSettingsDraft, SeedImageSource, SeedImageState } from '../lib/scene-image';
+import type { ImageGenerationSettingsDraft } from '../lib/scene-image';
+import {
+  SceneImageInpaintEditor,
+} from './SceneImageInpaintEditor';
+import type {
+  SceneImageInpaintEditorHandle,
+  SceneImageInpaintEditorState,
+} from './SceneImageInpaintEditor';
 import {
   Button,
   FieldLabel,
   FormControl,
-  ImageFrame,
   ModalBackdrop,
   Panel,
   PanelHeader,
@@ -55,6 +59,8 @@ const EMPTY_RECOMMENDATIONS: RecommendPromptColumns = {
   detail: [],
 };
 
+const QUICK_IMAGE_STRENGTHS = [0.5, 0.75, 1.0];
+
 const STATUS_CHANGE_FIELDS = [
   { key: 'cash', label: '현금' },
   { key: 'strength', label: '힘' },
@@ -77,6 +83,13 @@ const FETCH_SCENE_BY_ID_REQUEST: GetListRequest = {
   filter: {},
   sort: null,
 };
+
+function createEmptyImageEditorState(): SceneImageInpaintEditorState {
+  return {
+    maskRegions: [],
+    scribbleStrokes: [],
+  };
+}
 
 type SaveMode =
   | 'text'
@@ -152,9 +165,13 @@ export function SceneEditComponent({
   const [recommendations, setRecommendations] = useState<RecommendPromptColumns>({
     ...EMPTY_RECOMMENDATIONS,
   });
-  const [seedImage, setSeedImage] = useState<SeedImageState | null>(null);
-  const [isPreparingSeedImage, setIsPreparingSeedImage] = useState(false);
-  const [seedImageError, setSeedImageError] = useState<string | null>(null);
+  const imageEditorRef = useRef<SceneImageInpaintEditorHandle | null>(null);
+  const preserveImageEditorStateSceneIdRef = useRef<number | null>(null);
+  const [imageEditorState, setImageEditorState] = useState<SceneImageInpaintEditorState>(
+    () => createEmptyImageEditorState(),
+  );
+  const [isImageEditorReady, setIsImageEditorReady] = useState(false);
+  const [imageEditorError, setImageEditorError] = useState<string | null>(null);
   const [imageSettingsDefaults, setImageSettingsDefaults] = useState<ImageGenerationSettings | null>(null);
   const [imageSettings, setImageSettings] = useState<ImageGenerationSettings | null>(null);
   const [imageSettingsDraft, setImageSettingsDraft] = useState<ImageGenerationSettingsDraft | null>(null);
@@ -179,27 +196,17 @@ export function SceneEditComponent({
   const canEdit = Boolean(activeScene);
   const canSaveText = canEdit && composedPrompt.length > 0 && !isBusy;
   const canDelete = sceneId !== null && !isBusy;
-  const canSaveImage = canSaveText && Boolean(seedImage) && !isPreparingSeedImage && Boolean(imageSettings);
+  const canSaveImage = canSaveText && Boolean(imageSettings) && isImageEditorReady;
   const canRefreshRecommendations =
     canEdit && script.trim().length > 0 && !isRecommending && !isTranslatingPromptColumns && !savingMode;
   const canTranslatePromptColumns =
     canEdit && !isBusy && PROMPT_COLUMNS.some((column) => translationDraft[column.key].trim().length > 0);
   const canDuplicate = Boolean(modalLayout && onDuplicate && sceneId !== null && canEdit && !isBusy);
-  const imageWidth = imageSettings?.width;
-  const imageHeight = imageSettings?.height;
   const selectedLabel = sceneId === null
     ? '새 Scene 생성'
     : isLoadingScene
       ? `Scene #${sceneId} 불러오는 중`
       : `Scene #${sceneId}`;
-
-  const applySeedImage = useCallback((blob: Blob, source: SeedImageSource) => {
-    setSeedImage({
-      blob,
-      previewUrl: URL.createObjectURL(blob),
-      source,
-    });
-  }, []);
 
   const applySceneDraft = useCallback((scene: SceneRecord) => {
     setActiveScene(scene);
@@ -209,21 +216,19 @@ export function SceneEditComponent({
     setStatusChangeValues(statusChangeToValues(scene.status_change));
     setRecommendations({ ...EMPTY_RECOMMENDATIONS });
     setError(null);
-    setSeedImageError(null);
+    setImageEditorError(null);
   }, []);
 
-  useEffect(() => () => {
-    if (seedImage?.previewUrl) {
-      URL.revokeObjectURL(seedImage.previewUrl);
-    }
-  }, [seedImage?.previewUrl]);
-
   useEffect(() => {
+    const shouldPreserveImageEditorState =
+      sceneId !== null && preserveImageEditorStateSceneIdRef.current === sceneId;
+
     if (sceneId === null) {
+      preserveImageEditorStateSceneIdRef.current = null;
       setIsLoadingScene(false);
       setIsDeleting(false);
       setSavingMode(null);
-      setSeedImage(null);
+      setImageEditorState(createEmptyImageEditorState());
       applySceneDraft({ ...initialScene, id: null });
       return;
     }
@@ -232,13 +237,15 @@ export function SceneEditComponent({
     let isCancelled = false;
 
     async function loadScene() {
+      if (!shouldPreserveImageEditorState) {
+        setImageEditorState(createEmptyImageEditorState());
+      }
       setIsLoadingScene(true);
       setIsDeleting(false);
       setSavingMode(null);
       setActiveScene(null);
-      setSeedImage(null);
       setError(null);
-      setSeedImageError(null);
+      setImageEditorError(null);
       try {
         const sceneResponse = await dbTables.Scene.listRows({
           ...FETCH_SCENE_BY_ID_REQUEST,
@@ -250,9 +257,13 @@ export function SceneEditComponent({
         }
         if (!isCancelled) {
           applySceneDraft(loadedScene);
+          if (shouldPreserveImageEditorState) {
+            preserveImageEditorStateSceneIdRef.current = null;
+          }
         }
       } catch (loadError) {
         if (!isCancelled) {
+          preserveImageEditorStateSceneIdRef.current = null;
           setActiveScene(null);
           setPromptDraft({ ...EMPTY_PROMPT_DRAFT });
           setTranslationDraft({ ...EMPTY_PROMPT_DRAFT });
@@ -301,52 +312,6 @@ export function SceneEditComponent({
       isCancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (!activeScene || imageWidth === undefined || imageHeight === undefined) {
-      return;
-    }
-
-    const seedSourceScene = activeScene;
-    const resolvedImageWidth = imageWidth;
-    const resolvedImageHeight = imageHeight;
-    let isCancelled = false;
-    async function prepareSeedImage() {
-      setIsPreparingSeedImage(true);
-      setSeedImageError(null);
-      try {
-        const blob = seedSourceScene.image_url
-          ? await createSeedImageFromUrl(
-            seedSourceScene.image_url,
-            resolvedImageWidth,
-            resolvedImageHeight,
-          )
-          : await createNoiseSeedImage(resolvedImageWidth, resolvedImageHeight);
-        if (!isCancelled) {
-          applySeedImage(blob, seedSourceScene.image_url ? 'existing' : 'noise');
-        }
-      } catch (seedError) {
-        if (!isCancelled) {
-          setSeedImage(null);
-          setSeedImageError(getErrorMessage(seedError));
-        }
-      } finally {
-        if (!isCancelled) {
-          setIsPreparingSeedImage(false);
-        }
-      }
-    }
-
-    void prepareSeedImage();
-    return () => {
-      isCancelled = true;
-    };
-  }, [
-    activeScene,
-    applySeedImage,
-    imageHeight,
-    imageWidth,
-  ]);
 
   async function refreshRecommendationsFromScript() {
     const trimmedScript = script.trim();
@@ -438,26 +403,6 @@ export function SceneEditComponent({
     }
   }
 
-  async function shuffleSeedImage() {
-    if (!imageSettings) {
-      setSeedImageError('이미지 설정 기본값을 불러오는 중입니다.');
-      return;
-    }
-
-    setIsPreparingSeedImage(true);
-    setSeedImageError(null);
-    try {
-      applySeedImage(
-        await createNoiseSeedImage(imageSettings.width, imageSettings.height),
-        'noise',
-      );
-    } catch (seedError) {
-      setSeedImageError(getErrorMessage(seedError));
-    } finally {
-      setIsPreparingSeedImage(false);
-    }
-  }
-
   function updateImageSettingsDraft(field: keyof ImageGenerationSettingsDraft, value: string) {
     setImageSettingsDraft((currentDraft) => (
       currentDraft ? { ...currentDraft, [field]: value } : currentDraft
@@ -472,7 +417,7 @@ export function SceneEditComponent({
 
     const strength = Number(value);
     if (!Number.isFinite(strength) || strength <= 0 || strength > 1) {
-      setSeedImageError('strength는 0보다 크고 1 이하인 숫자로 입력해 주세요.');
+      setImageEditorError('strength는 0보다 크고 1 이하인 숫자로 입력해 주세요.');
       return;
     }
 
@@ -480,7 +425,7 @@ export function SceneEditComponent({
     setImageSettings(nextImageSettings);
     setImageSettingsDraft(imageSettingsToDraft(nextImageSettings));
     sessionStorage.setItem(IMAGE_SETTINGS_SESSION_KEY, JSON.stringify(nextImageSettings));
-    setSeedImageError(null);
+    setImageEditorError(null);
   }
 
   function openImageSettings() {
@@ -517,6 +462,9 @@ export function SceneEditComponent({
     const strength = Number(imageSettingsDraft.strength);
     const height = Number(imageSettingsDraft.height);
     const width = Number(imageSettingsDraft.width);
+    const controlnetConditioningScale = Number(imageSettingsDraft.controlnet_conditioning_scale);
+    const controlGuidanceStart = Number(imageSettingsDraft.control_guidance_start);
+    const controlGuidanceEnd = Number(imageSettingsDraft.control_guidance_end);
     const clipSkip = imageSettingsDraft.clip_skip.trim() === ''
       ? null
       : Number(imageSettingsDraft.clip_skip);
@@ -543,6 +491,22 @@ export function SceneEditComponent({
       setImageSettingsError('width는 8의 배수인 양의 정수로 입력해 주세요.');
       return;
     }
+    if (!Number.isFinite(controlnetConditioningScale) || controlnetConditioningScale < 0 || controlnetConditioningScale > 2) {
+      setImageSettingsError('ControlNet scale은 0 이상 2 이하인 숫자로 입력해 주세요.');
+      return;
+    }
+    if (!Number.isFinite(controlGuidanceStart) || controlGuidanceStart < 0 || controlGuidanceStart > 1) {
+      setImageSettingsError('ControlNet start는 0 이상 1 이하인 숫자로 입력해 주세요.');
+      return;
+    }
+    if (!Number.isFinite(controlGuidanceEnd) || controlGuidanceEnd < 0 || controlGuidanceEnd > 1) {
+      setImageSettingsError('ControlNet end는 0 이상 1 이하인 숫자로 입력해 주세요.');
+      return;
+    }
+    if (controlGuidanceEnd < controlGuidanceStart) {
+      setImageSettingsError('ControlNet end는 start 이상이어야 합니다.');
+      return;
+    }
     if (clipSkip !== null && (!Number.isInteger(clipSkip) || clipSkip < 1)) {
       setImageSettingsError('clip skip은 비우거나 1 이상의 정수로 입력해 주세요.');
       return;
@@ -567,6 +531,9 @@ export function SceneEditComponent({
       clip_skip: clipSkip,
       height,
       width,
+      controlnet_conditioning_scale: controlnetConditioningScale,
+      control_guidance_start: controlGuidanceStart,
+      control_guidance_end: controlGuidanceEnd,
     };
     setImageSettings(nextImageSettings);
     setImageSettingsDraft(imageSettingsToDraft(nextImageSettings));
@@ -626,18 +593,32 @@ export function SceneEditComponent({
         ...sceneColumns,
       };
       const formData = new FormData();
+      let imagePayload: Awaited<ReturnType<SceneImageInpaintEditorHandle['renderImageAndMask']>> | null = null;
+
+      if (isImageSave) {
+        if (!imageEditorRef.current) {
+          throw new Error(imageEditorError ?? '이미지 편집기를 준비해 주세요.');
+        }
+
+        imagePayload = await imageEditorRef.current.renderImageAndMask();
+      }
+
+      const imageSettingsForPayload = isImageSave && imageSettings
+        ? {
+          ...imageSettings,
+          ...(imagePayload?.controlSettings ?? {}),
+        }
+        : imageSettings;
       formData.append('payload', JSON.stringify(
         isImageSave
-          ? { ...payload, image_settings: imageSettings }
+          ? { ...payload, image_settings: imageSettingsForPayload }
           : payload,
       ));
 
-      if (isImageSave) {
-        if (!seedImage) {
-          throw new Error(seedImageError ?? 'seed image를 준비해 주세요.');
-        }
-
-        formData.append('seed_image', seedImage.blob, `scene-wizard-seed-${seedImage.source}.png`);
+      if (isImageSave && imagePayload) {
+        formData.append('image', imagePayload.image, 'scene-inpaint-image.png');
+        formData.append('mask', imagePayload.mask, 'scene-inpaint-mask.png');
+        formData.append('scribble', imagePayload.scribble, 'scene-controlnet-scribble.png');
       }
 
       const generatedScene = await dbTables.Scene.generateScene(formData);
@@ -646,6 +627,9 @@ export function SceneEditComponent({
         throw new Error('Scene 저장 결과를 확인할 수 없습니다.');
       }
 
+      if (targetSceneId !== generatedSceneId) {
+        preserveImageEditorStateSceneIdRef.current = generatedSceneId;
+      }
       applySceneDraft(generatedScene);
       onSaved(generatedSceneId);
     } catch (saveError) {
@@ -907,24 +891,6 @@ export function SceneEditComponent({
               </div>
 
               <aside className="min-w-0 space-y-3">
-                <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                  <FieldLabel>SEED 이미지</FieldLabel>
-                  <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    {seedImage ? (
-                      <span className="truncate text-xs font-semibold text-[var(--app-muted)]">
-                        {seedImage.source === 'existing' ? 'existing seed' : 'noise seed'}
-                      </span>
-                    ) : null}
-                    <Button
-                      className="px-2.5 py-1 text-xs"
-                      onClick={() => void shuffleSeedImage()}
-                      disabled={isLoadingScene || Boolean(savingMode) || isPreparingSeedImage || !imageSettings}
-                    >
-                      shuffle
-                    </Button>
-                  </div>
-                </div>
-
                 <div className="space-y-3">
                   <div className="space-y-2">
                     <label className="flex items-center justify-between gap-2 text-xs font-semibold text-[var(--app-muted)]">
@@ -940,34 +906,45 @@ export function SceneEditComponent({
                         disabled={isLoadingScene || Boolean(savingMode) || !imageSettings}
                       />
                     </label>
+                    <div className="flex min-w-0 flex-wrap justify-end gap-2">
+                      {QUICK_IMAGE_STRENGTHS.map((strength) => (
+                        <Button
+                          key={strength}
+                          className="h-7 px-2.5 py-0 text-xs"
+                          variant={imageSettings?.strength === strength ? 'primary' : 'default'}
+                          onClick={() => updateImageStrength(String(strength))}
+                          disabled={isLoadingScene || Boolean(savingMode) || !imageSettings}
+                        >
+                          {strength === 1 ? '1.0' : String(strength)}
+                        </Button>
+                      ))}
+                    </div>
 
-                    <ImageFrame className="relative mx-auto w-[min(100%,32rem)] rounded-[8px] border border-[rgba(255,218,228,0.22)] max-[960px]:w-[min(100%,28rem)]">
-                      {seedImage ? (
-                        <img src={seedImage.previewUrl} alt={composedPrompt || 'Seed image'} className="block h-full w-full object-cover" />
-                      ) : isPreparingSeedImage ? (
-                        <div className="grid h-full min-h-72 w-full place-items-center gap-3 bg-[linear-gradient(145deg,rgba(255,231,238,0.1),transparent_42%),rgba(15,5,20,0.78)] p-6 text-center text-[0.95rem] text-[var(--app-muted)]">
-                          <Spinner aria-hidden="true" />
-                          <span>seed 준비 중</span>
-                        </div>
-                      ) : (
-                        <div className="grid h-full min-h-72 w-full place-items-center bg-[linear-gradient(145deg,rgba(255,231,238,0.1),transparent_42%),rgba(15,5,20,0.78)] p-6 text-center text-[0.95rem] text-[var(--app-muted)]">seed image가 없습니다.</div>
-                      )}
-                      {isPreparingSeedImage && seedImage ? (
-                        <div className="absolute inset-0 grid place-items-center gap-3 bg-[rgba(7,1,12,0.54)] text-center text-[0.95rem] font-extrabold text-[#fff7ef]">
-                          <Spinner aria-hidden="true" />
-                          <span>seed 준비 중</span>
-                        </div>
-                      ) : null}
-                      {savingMode?.endsWith('image') && seedImage ? (
-                        <div className="absolute inset-0 grid place-items-center gap-3 bg-[rgba(7,1,12,0.54)] text-center text-[0.95rem] font-extrabold text-[#fff7ef]">
-                          <Spinner aria-hidden="true" />
-                          <span>이미지 생성 중</span>
-                        </div>
-                      ) : null}
-                    </ImageFrame>
+                    {imageSettings ? (
+                      <SceneImageInpaintEditor
+                        ref={imageEditorRef}
+                        width={imageSettings.width}
+                        height={imageSettings.height}
+                        sourceImageUrl={activeScene?.image_url ?? null}
+                        disabled={isLoadingScene || Boolean(savingMode)}
+                        isGenerating={savingMode === 'image'}
+                        altText={composedPrompt || 'Scene inpaint image'}
+                        controlnetConditioningScale={imageSettings.controlnet_conditioning_scale}
+                        controlGuidanceStart={imageSettings.control_guidance_start}
+                        controlGuidanceEnd={imageSettings.control_guidance_end}
+                        initialEditorState={imageEditorState}
+                        onEditorStateChange={setImageEditorState}
+                        onError={setImageEditorError}
+                        onReadyChange={setIsImageEditorReady}
+                      />
+                    ) : (
+                      <div className="grid aspect-[1216/832] min-h-72 w-full place-items-center rounded-[8px] border border-[rgba(255,218,228,0.22)] bg-[rgba(15,5,20,0.78)] p-6 text-center text-[0.95rem] text-[var(--app-muted)]">
+                        이미지 설정을 불러오는 중
+                      </div>
+                    )}
 
-                    {seedImageError ? (
-                      <p className="text-sm font-semibold text-[#ff9ab8]">{seedImageError}</p>
+                    {imageEditorError ? (
+                      <p className="text-sm font-semibold text-[#ff9ab8]">{imageEditorError}</p>
                     ) : null}
                   </div>
                 </div>
@@ -1089,6 +1066,9 @@ export function SceneEditComponent({
                 <WizardSettingsInput label="clip skip" value={imageSettingsDraft.clip_skip} onChange={(value) => updateImageSettingsDraft('clip_skip', value)} min="1" step="1" />
                 <WizardSettingsInput label="height" value={imageSettingsDraft.height} onChange={(value) => updateImageSettingsDraft('height', value)} min="8" step="8" />
                 <WizardSettingsInput label="width" value={imageSettingsDraft.width} onChange={(value) => updateImageSettingsDraft('width', value)} min="8" step="8" />
+                <WizardSettingsInput label="control scale" value={imageSettingsDraft.controlnet_conditioning_scale} onChange={(value) => updateImageSettingsDraft('controlnet_conditioning_scale', value)} min="0" step="0.05" />
+                <WizardSettingsInput label="control start" value={imageSettingsDraft.control_guidance_start} onChange={(value) => updateImageSettingsDraft('control_guidance_start', value)} min="0" step="0.05" />
+                <WizardSettingsInput label="control end" value={imageSettingsDraft.control_guidance_end} onChange={(value) => updateImageSettingsDraft('control_guidance_end', value)} min="0" step="0.05" />
               </div>
 
               {imageSettingsError ? (

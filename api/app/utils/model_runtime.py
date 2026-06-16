@@ -12,6 +12,8 @@ _embedding_model: Any | None = None
 
 _image_lock = asyncio.Lock()
 _image_ckpt_path: str | None = None
+_image_pipe_mode: str | None = None
+_image_controlnet_model_id: str | None = None
 _image_pipe: Any | None = None
 
 _selection_lock = asyncio.Lock()
@@ -26,9 +28,12 @@ async def encode_scene_text(model_name: str, text: str) -> list[float]:
 
 async def generate_images_batch(
     ckpt_path: str,
+    image_mode: str,
     positive_prompt_list: list[str],
     negative_prompt_list: list[str],
     init_image_list: list[Any],
+    mask_image_list: list[Any],
+    control_image_list: list[Any],
     seed_list: list[int | None],
     step: int,
     cfg: float,
@@ -41,14 +46,21 @@ async def generate_images_batch(
     sampler: str,
     scheduler: str,
     clip_skip: int | None,
+    controlnet_model_id: str,
+    controlnet_conditioning_scale: float,
+    control_guidance_start: float,
+    control_guidance_end: float,
 ) -> tuple[list[Any], list[int]]:
     async with _image_lock:
         return await asyncio.to_thread(
             _generate_images_batch_locked,
             ckpt_path,
+            image_mode,
             positive_prompt_list,
             negative_prompt_list,
             init_image_list,
+            mask_image_list,
+            control_image_list,
             seed_list,
             step,
             cfg,
@@ -61,6 +73,10 @@ async def generate_images_batch(
             sampler,
             scheduler,
             clip_skip,
+            controlnet_model_id,
+            controlnet_conditioning_scale,
+            control_guidance_start,
+            control_guidance_end,
         )
 
 
@@ -90,12 +106,14 @@ async def update_selection_model(update_model: Callable[[], Any]) -> Any:
 
 def reset_model_runtime_for_tests() -> None:
     global _embedding_model_name, _embedding_model
-    global _image_ckpt_path, _image_pipe
+    global _image_ckpt_path, _image_pipe_mode, _image_controlnet_model_id, _image_pipe
     global _selection_model_file_url, _selection_model
 
     _embedding_model_name = None
     _embedding_model = None
     _image_ckpt_path = None
+    _image_pipe_mode = None
+    _image_controlnet_model_id = None
     _image_pipe = None
     _selection_model_file_url = None
     _selection_model = None
@@ -124,9 +142,12 @@ def _get_embedding_model_locked(model_name: str) -> Any:
 
 def _generate_images_batch_locked(
     ckpt_path: str,
+    image_mode: str,
     positive_prompt_list: list[str],
     negative_prompt_list: list[str],
     init_image_list: list[Any],
+    mask_image_list: list[Any],
+    control_image_list: list[Any],
     seed_list: list[int | None],
     step: int,
     cfg: float,
@@ -139,9 +160,14 @@ def _generate_images_batch_locked(
     sampler: str,
     scheduler: str,
     clip_skip: int | None,
+    controlnet_model_id: str,
+    controlnet_conditioning_scale: float,
+    control_guidance_start: float,
+    control_guidance_end: float,
 ) -> tuple[list[Any], list[int]]:
+    normalized_image_mode = image_mode.strip().lower()
     torch = _load_image_torch()
-    pipe = _get_image_pipe_locked(ckpt_path, torch)
+    pipe = _get_image_pipe_locked(ckpt_path, normalized_image_mode, controlnet_model_id, torch)
     sampler_key = sampler.strip().lower()
     scheduler_key = scheduler.strip().lower()
     if sampler_key:
@@ -180,6 +206,8 @@ def _generate_images_batch_locked(
         positive_prompt_chunk = positive_prompt_list[i:i + chunk_size]
         negative_prompt_chunk = negative_prompt_list[i:i + chunk_size]
         init_image_chunk = init_image_list[i:i + chunk_size]
+        mask_image_chunk = mask_image_list[i:i + chunk_size]
+        control_image_chunk = control_image_list[i:i + chunk_size]
         seed_chunk = [
             random.randint(seed_min, seed_max)
             if seed_list[i + j] is None
@@ -194,12 +222,34 @@ def _generate_images_batch_locked(
         call_kwargs = {
             "prompt": positive_prompt_chunk,
             "negative_prompt": negative_prompt_chunk,
-            "image": init_image_chunk,
-            "strength": strength,
             "num_inference_steps": step,
             "guidance_scale": cfg,
             "generator": generators_chunk,
         }
+        if normalized_image_mode == "t2i":
+            call_kwargs["height"] = height
+            call_kwargs["width"] = width
+        elif normalized_image_mode == "i2i":
+            call_kwargs["image"] = init_image_chunk
+            call_kwargs["strength"] = strength
+        elif normalized_image_mode == "inpaint":
+            call_kwargs["image"] = init_image_chunk
+            call_kwargs["mask_image"] = mask_image_chunk
+            call_kwargs["height"] = height
+            call_kwargs["width"] = width
+            call_kwargs["strength"] = strength
+        elif normalized_image_mode == "controlnet_inpaint":
+            call_kwargs["image"] = init_image_chunk
+            call_kwargs["mask_image"] = mask_image_chunk
+            call_kwargs["control_image"] = control_image_chunk
+            call_kwargs["height"] = height
+            call_kwargs["width"] = width
+            call_kwargs["strength"] = strength
+            call_kwargs["controlnet_conditioning_scale"] = controlnet_conditioning_scale
+            call_kwargs["control_guidance_start"] = control_guidance_start
+            call_kwargs["control_guidance_end"] = control_guidance_end
+        else:
+            raise ValueError(f"unsupported image generation mode: {image_mode}")
         if clip_skip is not None:
             call_kwargs["clip_skip"] = clip_skip
         images.extend(pipe(**call_kwargs).images)
@@ -209,29 +259,76 @@ def _generate_images_batch_locked(
     return images, seeds
 
 
-def _get_image_pipe_locked(ckpt_path: str, torch: Any) -> Any:
-    global _image_ckpt_path, _image_pipe
+def _get_image_pipe_locked(
+    ckpt_path: str,
+    image_mode: str,
+    controlnet_model_id: str,
+    torch: Any,
+) -> Any:
+    global _image_ckpt_path, _image_pipe_mode, _image_controlnet_model_id, _image_pipe
 
-    if _image_pipe is not None and _image_ckpt_path != ckpt_path:
+    next_controlnet_model_id = controlnet_model_id if image_mode == "controlnet_inpaint" else None
+    if (
+        _image_pipe is not None
+        and (
+            _image_ckpt_path != ckpt_path
+            or _image_pipe_mode != image_mode
+            or _image_controlnet_model_id != next_controlnet_model_id
+        )
+    ):
         _image_pipe = None
         _image_ckpt_path = None
+        _image_pipe_mode = None
+        _image_controlnet_model_id = None
         _clear_cuda_cache(torch)
 
     if _image_pipe is None:
-        from diffusers import StableDiffusionXLImg2ImgPipeline
+        if image_mode == "t2i":
+            from diffusers import StableDiffusionXLPipeline
 
-        print(f"Loading Stable Diffusion img2img checkpoint: {ckpt_path}", flush=True)
-        pipe = StableDiffusionXLImg2ImgPipeline.from_single_file(
-            ckpt_path,
-            torch_dtype=torch.float16,
-            use_safetensors=True,
-        )
+            pipeline_cls = StableDiffusionXLPipeline
+        elif image_mode == "i2i":
+            from diffusers import StableDiffusionXLImg2ImgPipeline
+
+            pipeline_cls = StableDiffusionXLImg2ImgPipeline
+        elif image_mode == "inpaint":
+            from diffusers import StableDiffusionXLInpaintPipeline
+
+            pipeline_cls = StableDiffusionXLInpaintPipeline
+        elif image_mode == "controlnet_inpaint":
+            from diffusers import ControlNetModel, StableDiffusionXLControlNetInpaintPipeline
+
+            controlnet = ControlNetModel.from_pretrained(
+                controlnet_model_id,
+                torch_dtype=torch.float16,
+            )
+            pipeline_cls = StableDiffusionXLControlNetInpaintPipeline
+        else:
+            raise ValueError(f"unsupported image generation mode: {image_mode}")
+
+        print(f"Loading Stable Diffusion {image_mode} checkpoint: {ckpt_path}", flush=True)
+        if image_mode == "controlnet_inpaint":
+            print(f"Loading ControlNet scribble model: {controlnet_model_id}", flush=True)
+            pipe = pipeline_cls.from_single_file(
+                ckpt_path,
+                controlnet=controlnet,
+                torch_dtype=torch.float16,
+                use_safetensors=True,
+            )
+        else:
+            pipe = pipeline_cls.from_single_file(
+                ckpt_path,
+                torch_dtype=torch.float16,
+                use_safetensors=True,
+            )
         pipe.to("cuda")
 
         pipe.enable_attention_slicing()
         pipe.enable_vae_slicing()
         _image_pipe = pipe
         _image_ckpt_path = ckpt_path
+        _image_pipe_mode = image_mode
+        _image_controlnet_model_id = next_controlnet_model_id
     return _image_pipe
 
 

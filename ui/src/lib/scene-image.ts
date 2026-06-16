@@ -26,6 +26,9 @@ export type ImageGenerationSettingsDraft = {
   clip_skip: string;
   height: string;
   width: string;
+  controlnet_conditioning_scale: string;
+  control_guidance_start: string;
+  control_guidance_end: string;
 };
 
 export function imageSettingsToDraft(settings: ImageGenerationSettings): ImageGenerationSettingsDraft {
@@ -40,6 +43,9 @@ export function imageSettingsToDraft(settings: ImageGenerationSettings): ImageGe
     clip_skip: settings.clip_skip === null ? '' : String(settings.clip_skip),
     height: String(settings.height),
     width: String(settings.width),
+    controlnet_conditioning_scale: String(settings.controlnet_conditioning_scale),
+    control_guidance_start: String(settings.control_guidance_start),
+    control_guidance_end: String(settings.control_guidance_end),
   };
 }
 
@@ -62,6 +68,11 @@ export function readSessionImageSettings(defaults: ImageGenerationSettings): Ima
       clip_skip: parsedSettings.clip_skip ?? defaults.clip_skip,
       height: parsedSettings.height ?? defaults.height,
       width: parsedSettings.width ?? defaults.width,
+      controlnet_conditioning_scale: (
+        parsedSettings.controlnet_conditioning_scale ?? defaults.controlnet_conditioning_scale
+      ),
+      control_guidance_start: parsedSettings.control_guidance_start ?? defaults.control_guidance_start,
+      control_guidance_end: parsedSettings.control_guidance_end ?? defaults.control_guidance_end,
     };
   } catch {
     sessionStorage.removeItem(IMAGE_SETTINGS_SESSION_KEY);

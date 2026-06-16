@@ -14,6 +14,9 @@ from models import (
 )
 from service.scene import (
     generate_scene_from_form,
+    generate_scene_i2i_from_form,
+    generate_scene_inpaint_from_form,
+    generate_scene_t2i_from_form,
     get_similar_scenes,
     update_scene_context,
     upsert_scenes,
@@ -48,6 +51,37 @@ async def api_generate_scene(
     db: AsyncSession = Depends(get_db),
 ):
     scene = await generate_scene_from_form(db, await request.form())
+    return scene_to_base(scene)
+
+
+@router.post("/generate/t2i", response_model=SceneBase)
+async def api_generate_scene_t2i(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    scene = await generate_scene_t2i_from_form(db, await request.form())
+    return scene_to_base(scene)
+
+
+@router.post("/generate/i2i", response_model=SceneBase)
+async def api_generate_scene_i2i(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    scene = await generate_scene_i2i_from_form(db, await request.form())
+    return scene_to_base(scene)
+
+
+@router.post("/generate/inpaint", response_model=SceneBase)
+async def api_generate_scene_inpaint(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    scene = await generate_scene_inpaint_from_form(db, await request.form())
+    return scene_to_base(scene)
+
+
+def scene_to_base(scene: Scene) -> SceneBase:
     return SceneBase(
         id=scene.id,
         image_url=scene.image_url,
