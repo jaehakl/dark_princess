@@ -89,6 +89,9 @@ function createEmptyImageEditorState(): SceneImageInpaintEditorState {
     imageDataUrl: null,
     maskDataUrl: null,
     scribbleDataUrl: null,
+    poseImageDataUrl: null,
+    poseOffsetX: null,
+    poseOffsetY: null,
     isMaskVisualizationEnabled: null,
     featherBrushSize: null,
     scribbleBrushSize: null,
@@ -627,6 +630,9 @@ export function SceneEditComponent({
         formData.append('image', imagePayload.image, 'scene-inpaint-image.png');
         formData.append('mask', imagePayload.mask, 'scene-inpaint-mask.png');
         formData.append('scribble', imagePayload.scribble, 'scene-controlnet-scribble.png');
+        if (imagePayload.pose) {
+          formData.append('pose_image', imagePayload.pose, 'scene-controlnet-openpose.png');
+        }
       }
 
       const generatedScene = await dbTables.Scene.generateScene(formData);

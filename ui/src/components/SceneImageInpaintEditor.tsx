@@ -20,7 +20,7 @@ type Point = {
 };
 
 type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
-type EditorMode = 'select' | 'feather' | 'scribble';
+type EditorMode = 'select' | 'feather' | 'scribble' | 'openpose';
 type SelectionTool = 'move' | 'rect' | 'lasso';
 type MaskPaintValue = 'white' | 'black';
 
@@ -58,6 +58,9 @@ export type SceneImageInpaintEditorState = {
   imageDataUrl: string | null;
   maskDataUrl: string | null;
   scribbleDataUrl: string | null;
+  poseImageDataUrl: string | null;
+  poseOffsetX: number | null;
+  poseOffsetY: number | null;
   isMaskVisualizationEnabled: boolean | null;
   featherBrushSize: number | null;
   scribbleBrushSize: number | null;
@@ -103,6 +106,11 @@ type DragState =
   | {
     kind: 'scribble';
     lastPoint: Point;
+  }
+  | {
+    kind: 'pose';
+    start: Point;
+    originalOffset: Point;
   };
 
 export type SceneImageInpaintEditorHandle = {
@@ -110,7 +118,9 @@ export type SceneImageInpaintEditorHandle = {
     image: Blob;
     mask: Blob;
     scribble: Blob;
+    pose: Blob | null;
     hasScribble: boolean;
+    hasPose: boolean;
     controlSettings: ControlNetEditorSettings;
   }>;
 };
@@ -269,7 +279,13 @@ async function drawDataUrlToCanvas(dataUrl: string | null | undefined, canvas: H
 }
 
 function hasEditorStateData(state: SceneImageInpaintEditorState | undefined) {
-  return Boolean(state?.imageDataUrl || state?.maskDataUrl || state?.scribbleDataUrl);
+  return Boolean(state?.imageDataUrl || state?.maskDataUrl || state?.scribbleDataUrl || state?.poseImageDataUrl);
+}
+
+function createCanvasFromBitmap(bitmap: ImageBitmap) {
+  const canvas = createRenderCanvas(bitmap.width, bitmap.height);
+  get2dContext(canvas).drawImage(bitmap, 0, 0);
+  return canvas;
 }
 
 function clampNumber(value: number, min: number, max: number) {
@@ -352,6 +368,55 @@ function fitObjectSize(canvas: HTMLCanvasElement, width: number, height: number)
     width: Math.max(1, Math.round(canvas.width * scale)),
     height: Math.max(1, Math.round(canvas.height * scale)),
   };
+}
+
+function getCoverDrawSize(canvas: HTMLCanvasElement, width: number, height: number) {
+  const scale = Math.max(width / canvas.width, height / canvas.height);
+  return {
+    width: Math.max(1, Math.round(canvas.width * scale)),
+    height: Math.max(1, Math.round(canvas.height * scale)),
+  };
+}
+
+function getCenteredCoverOffset(canvas: HTMLCanvasElement, width: number, height: number): Point {
+  const drawSize = getCoverDrawSize(canvas, width, height);
+  return {
+    x: Math.round((width - drawSize.width) / 2),
+    y: Math.round((height - drawSize.height) / 2),
+  };
+}
+
+function clampCoverOffset(offset: Point, canvas: HTMLCanvasElement, width: number, height: number): Point {
+  const drawSize = getCoverDrawSize(canvas, width, height);
+  return {
+    x: clampNumber(offset.x, Math.min(0, width - drawSize.width), 0),
+    y: clampNumber(offset.y, Math.min(0, height - drawSize.height), 0),
+  };
+}
+
+function drawCoverImage(
+  context: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  offset: Point,
+  width: number,
+  height: number,
+) {
+  const drawSize = getCoverDrawSize(canvas, width, height);
+  context.drawImage(canvas, offset.x, offset.y, drawSize.width, drawSize.height);
+}
+
+function renderPoseConditionCanvas(
+  sourceCanvas: HTMLCanvasElement | null,
+  offset: Point,
+  width: number,
+  height: number,
+) {
+  if (!sourceCanvas) {
+    return null;
+  }
+  const poseCanvas = createFilledCanvas(width, height, '#000000');
+  drawCoverImage(get2dContext(poseCanvas), sourceCanvas, offset, width, height);
+  return poseCanvas;
 }
 
 function getCanvasPoint(
@@ -920,6 +985,8 @@ export const SceneImageInpaintEditor = forwardRef<
   const imageCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const scribbleCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const poseSourceCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const poseOffsetRef = useRef<Point>({ x: 0, y: 0 });
   const activeObjectRef = useRef<CanvasObject | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
   const imageHistoryRef = useRef<HTMLCanvasElement[]>([]);
@@ -945,6 +1012,8 @@ export const SceneImageInpaintEditor = forwardRef<
   const [maskHistoryCount, setMaskHistoryCount] = useState(0);
   const [scribbleHistoryCount, setScribbleHistoryCount] = useState(0);
   const [hasScribbleEdits, setHasScribbleEdits] = useState(false);
+  const [hasPoseImage, setHasPoseImage] = useState(false);
+  const [poseOffset, setPoseOffset] = useState<Point>({ x: 0, y: 0 });
   const [featherBrushSize, setFeatherBrushSize] = useState(DEFAULT_FEATHER_BRUSH_SIZE);
   const [scribbleBrushSize, setScribbleBrushSize] = useState(DEFAULT_SCRIBBLE_BRUSH_SIZE);
   const [scribblePreviewOpacity, setScribblePreviewOpacity] = useState(DEFAULT_SCRIBBLE_PREVIEW_OPACITY);
@@ -955,6 +1024,7 @@ export const SceneImageInpaintEditor = forwardRef<
   const [controlGuidanceEnd, setControlGuidanceEnd] = useState(initialControlGuidanceEnd);
   const [isLoadingSource, setIsLoadingSource] = useState(false);
   const [isAddingImage, setIsAddingImage] = useState(false);
+  const [isAddingPoseImage, setIsAddingPoseImage] = useState(false);
   const editorSettingsRef = useRef({
     isMaskVisualizationEnabled: false,
     featherBrushSize: DEFAULT_FEATHER_BRUSH_SIZE,
@@ -965,9 +1035,13 @@ export const SceneImageInpaintEditor = forwardRef<
     controlGuidanceEnd: initialControlGuidanceEnd,
   });
 
-  const isWorking = isLoadingSource || isAddingImage;
+  const isWorking = isLoadingSource || isAddingImage || isAddingPoseImage;
   const isReady = !isWorking && layersReady && width > 0 && height > 0;
-  const canvasCursor = mode === 'feather' || mode === 'scribble'
+  const canvasCursor = mode === 'openpose' && hasPoseImage
+    ? dragState?.kind === 'pose'
+      ? 'grabbing'
+      : 'grab'
+    : mode === 'feather' || mode === 'scribble'
     ? 'none'
     : mode === 'select' && selectionTool !== 'move' && !activeObject
       ? 'crosshair'
@@ -989,6 +1063,9 @@ export const SceneImageInpaintEditor = forwardRef<
       imageDataUrl: canvasToDataUrl(imageCanvasRef.current),
       maskDataUrl: canvasToDataUrl(maskCanvasRef.current),
       scribbleDataUrl: canvasToDataUrl(scribbleCanvasRef.current),
+      poseImageDataUrl: canvasToDataUrl(poseSourceCanvasRef.current),
+      poseOffsetX: poseSourceCanvasRef.current ? poseOffsetRef.current.x : null,
+      poseOffsetY: poseSourceCanvasRef.current ? poseOffsetRef.current.y : null,
       isMaskVisualizationEnabled: editorSettings.isMaskVisualizationEnabled,
       featherBrushSize: editorSettings.featherBrushSize,
       scribbleBrushSize: editorSettings.scribbleBrushSize,
@@ -1021,6 +1098,16 @@ export const SceneImageInpaintEditor = forwardRef<
   function replaceDraftSelectionLasso(nextPoints: Point[]) {
     draftSelectionLassoRef.current = nextPoints;
     setDraftSelectionLasso(nextPoints);
+  }
+
+  function replacePoseLayer(nextCanvas: HTMLCanvasElement | null, nextOffset: Point = { x: 0, y: 0 }) {
+    poseSourceCanvasRef.current = nextCanvas;
+    const clampedOffset = nextCanvas
+      ? clampCoverOffset(nextOffset, nextCanvas, width, height)
+      : { x: 0, y: 0 };
+    poseOffsetRef.current = clampedOffset;
+    setPoseOffset(clampedOffset);
+    setHasPoseImage(Boolean(nextCanvas));
   }
 
   function pushImageHistory(canvas = imageCanvasRef.current) {
@@ -1153,6 +1240,7 @@ export const SceneImageInpaintEditor = forwardRef<
       imageHistoryRef.current = [];
       maskHistoryRef.current = [];
       scribbleHistoryRef.current = [];
+      replacePoseLayer(null);
       setImageHistoryCount(0);
       setMaskHistoryCount(0);
       setScribbleHistoryCount(0);
@@ -1162,6 +1250,8 @@ export const SceneImageInpaintEditor = forwardRef<
         const nextImageCanvas = createBlankImageCanvas(width, height);
         const nextMaskCanvas = createDefaultMaskCanvas(width, height);
         const nextScribbleCanvas = createBlankScribbleCanvas(width, height);
+        let nextPoseSourceCanvas: HTMLCanvasElement | null = null;
+        let nextPoseOffset: Point = { x: 0, y: 0 };
         const state = initialEditorStateRef.current;
         const shouldRestoreImageLayer = !hasLoadedOnceRef.current && hasEditorStateData(state);
         const restoredIsMaskVisualizationEnabled = state?.isMaskVisualizationEnabled ?? false;
@@ -1241,11 +1331,30 @@ export const SceneImageInpaintEditor = forwardRef<
         if (state?.scribbleDataUrl) {
           await drawDataUrlToCanvas(state.scribbleDataUrl, nextScribbleCanvas);
         }
+        if (state?.poseImageDataUrl) {
+          const poseBitmap = await createBitmapFromDataUrl(state.poseImageDataUrl);
+          try {
+            const poseSourceCanvas = createCanvasFromBitmap(poseBitmap);
+            const centeredPoseOffset = getCenteredCoverOffset(poseSourceCanvas, width, height);
+            nextPoseSourceCanvas = poseSourceCanvas;
+            nextPoseOffset = {
+              x: state.poseOffsetX ?? centeredPoseOffset.x,
+              y: state.poseOffsetY ?? centeredPoseOffset.y,
+            };
+          } finally {
+            try {
+              poseBitmap.close();
+            } catch {
+              // Bitmap cleanup is best-effort.
+            }
+          }
+        }
 
         if (!isCancelled) {
           imageCanvasRef.current = nextImageCanvas;
           maskCanvasRef.current = nextMaskCanvas;
           scribbleCanvasRef.current = nextScribbleCanvas;
+          replacePoseLayer(nextPoseSourceCanvas, nextPoseOffset);
           hasLoadedOnceRef.current = true;
           setLayersReady(true);
           refreshLayerFlags();
@@ -1257,6 +1366,7 @@ export const SceneImageInpaintEditor = forwardRef<
           imageCanvasRef.current = createBlankImageCanvas(width, height);
           maskCanvasRef.current = createDefaultMaskCanvas(width, height);
           scribbleCanvasRef.current = createBlankScribbleCanvas(width, height);
+          replacePoseLayer(null);
           hasLoadedOnceRef.current = true;
           setLayersReady(true);
           refreshLayerFlags();
@@ -1287,6 +1397,18 @@ export const SceneImageInpaintEditor = forwardRef<
 
     const context = get2dContext(canvas);
     context.clearRect(0, 0, width, height);
+
+    if (mode === 'openpose') {
+      const poseCanvas = renderPoseConditionCanvas(poseSourceCanvasRef.current, poseOffset, width, height);
+      if (poseCanvas) {
+        context.drawImage(poseCanvas, 0, 0, width, height);
+      } else {
+        context.fillStyle = '#000000';
+        context.fillRect(0, 0, width, height);
+      }
+      return;
+    }
+
     context.fillStyle = '#ffffff';
     context.fillRect(0, 0, width, height);
 
@@ -1350,6 +1472,7 @@ export const SceneImageInpaintEditor = forwardRef<
     hoverPoint,
     isMaskVisualizationEnabled,
     mode,
+    poseOffset,
     renderVersion,
     scribbleBrushSize,
     scribblePreviewOpacity,
@@ -1386,6 +1509,32 @@ export const SceneImageInpaintEditor = forwardRef<
     }
   }
 
+  async function addPoseImageBlob(imageBlob: Blob) {
+    setIsAddingPoseImage(true);
+    onError?.(null);
+    try {
+      mergeActiveObject();
+      const bitmap = await createImageBitmap(imageBlob);
+      try {
+        const poseSourceCanvas = createCanvasFromBitmap(bitmap);
+        replacePoseLayer(poseSourceCanvas, getCenteredCoverOffset(poseSourceCanvas, width, height));
+        clearDrafts();
+        requestRedraw();
+        publishEditorState();
+      } finally {
+        try {
+          bitmap.close();
+        } catch {
+          // Bitmap cleanup is best-effort.
+        }
+      }
+    } catch (error) {
+      onError?.(getErrorMessage(error));
+    } finally {
+      setIsAddingPoseImage(false);
+    }
+  }
+
   async function handlePaste(event: ReactClipboardEvent<HTMLElement>) {
     const imageItem = Array.from(event.clipboardData.items).find((item) => item.type.startsWith('image/'));
     const file = imageItem?.getAsFile();
@@ -1393,6 +1542,10 @@ export const SceneImageInpaintEditor = forwardRef<
       return;
     }
     event.preventDefault();
+    if (mode === 'openpose') {
+      await addPoseImageBlob(file);
+      return;
+    }
     await addImageBlob(file);
   }
 
@@ -1452,6 +1605,18 @@ export const SceneImageInpaintEditor = forwardRef<
     const point = getCanvasPoint(canvas, event, width, height);
     setHoverPoint(point);
     canvas.setPointerCapture(event.pointerId);
+
+    if (mode === 'openpose') {
+      mergeActiveObject();
+      if (poseSourceCanvasRef.current) {
+        replaceDragState({
+          kind: 'pose',
+          start: point,
+          originalOffset: poseOffsetRef.current,
+        });
+      }
+      return;
+    }
 
     if (mode === 'scribble') {
       mergeActiveObject();
@@ -1544,6 +1709,26 @@ export const SceneImageInpaintEditor = forwardRef<
       } else {
         setHoverResizeHandle(null);
       }
+      return;
+    }
+
+    if (currentDragState.kind === 'pose') {
+      const poseCanvas = poseSourceCanvasRef.current;
+      if (!poseCanvas) {
+        return;
+      }
+      const nextOffset = clampCoverOffset(
+        {
+          x: currentDragState.originalOffset.x + point.x - currentDragState.start.x,
+          y: currentDragState.originalOffset.y + point.y - currentDragState.start.y,
+        },
+        poseCanvas,
+        width,
+        height,
+      );
+      poseOffsetRef.current = nextOffset;
+      setPoseOffset(nextOffset);
+      requestRedraw();
       return;
     }
 
@@ -1667,6 +1852,10 @@ export const SceneImageInpaintEditor = forwardRef<
       publishEditorState();
     }
 
+    if (currentDragState?.kind === 'pose') {
+      publishEditorState();
+    }
+
     replaceDragState(null);
     setHoverResizeHandle(null);
   }
@@ -1728,6 +1917,12 @@ export const SceneImageInpaintEditor = forwardRef<
     publishEditorState();
   }
 
+  function clearPoseImage() {
+    replacePoseLayer(null);
+    requestRedraw();
+    publishEditorState();
+  }
+
   function deleteActiveObject() {
     if (!activeObjectRef.current) {
       return;
@@ -1756,6 +1951,12 @@ export const SceneImageInpaintEditor = forwardRef<
     if (event.key === 'Delete' && activeObjectRef.current) {
       event.preventDefault();
       deleteActiveObject();
+      return;
+    }
+
+    if (event.key === 'Delete' && mode === 'openpose' && hasPoseImage) {
+      event.preventDefault();
+      clearPoseImage();
       return;
     }
 
@@ -1789,15 +1990,19 @@ export const SceneImageInpaintEditor = forwardRef<
       const imageCanvas = cloneCanvas(imageCanvasRef.current);
       const maskCanvas = cloneCanvas(maskCanvasRef.current);
       const scribbleCanvas = cloneCanvas(scribbleCanvasRef.current);
+      const poseCanvas = renderPoseConditionCanvas(poseSourceCanvasRef.current, poseOffsetRef.current, width, height);
       const hasScribble = !isCanvasSolidColor(scribbleCanvas, 255, 255, 255);
+      const hasPose = Boolean(poseCanvas);
       publishEditorState();
       return {
         image: await canvasToPngBlob(imageCanvas),
         mask: await canvasToPngBlob(maskCanvas),
         scribble: await canvasToPngBlob(scribbleCanvas),
+        pose: poseCanvas ? await canvasToPngBlob(poseCanvas) : null,
         hasScribble,
+        hasPose,
         controlSettings: {
-          controlnet_conditioning_scale: hasScribble ? controlnetConditioningScale : 0,
+          controlnet_conditioning_scale: controlnetConditioningScale,
           control_guidance_start: controlGuidanceStart,
           control_guidance_end: controlGuidanceEnd,
         },
@@ -1807,8 +2012,10 @@ export const SceneImageInpaintEditor = forwardRef<
     controlGuidanceEnd,
     controlGuidanceStart,
     controlnetConditioningScale,
+    height,
     isReady,
     publishEditorState,
+    width,
   ]);
 
   return (
@@ -1845,6 +2052,16 @@ export const SceneImageInpaintEditor = forwardRef<
             title="Scribble ControlNet"
           >
             ✏️
+          </Button>
+          <Button
+            className={TOOL_BUTTON_CLASS}
+            variant={mode === 'openpose' ? 'primary' : 'default'}
+            onClick={() => switchMode('openpose')}
+            disabled={disabled || isGenerating}
+            aria-label="OpenPose ControlNet"
+            title="OpenPose ControlNet"
+          >
+            OP
           </Button>
           <Button
             className={TOOL_BUTTON_CLASS}
@@ -2059,6 +2276,20 @@ export const SceneImageInpaintEditor = forwardRef<
               title="Scribble 모두 지우기"
             >
               🧹
+            </Button>
+          </>
+        ) : null}
+
+        {mode === 'openpose' ? (
+          <>
+            <Button
+              className={TOOL_BUTTON_CLASS}
+              onClick={clearPoseImage}
+              disabled={disabled || isGenerating || !hasPoseImage}
+              aria-label="OpenPose 이미지 지우기"
+              title="OpenPose 이미지 지우기"
+            >
+              ×
             </Button>
           </>
         ) : null}

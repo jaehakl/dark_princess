@@ -51,13 +51,14 @@ from utils.vector import VECTOR_DIMENSION, validate_embedding
 
 
 async def generate_scene_from_form(db: AsyncSession, form: FormData) -> Scene:
-    generate_request, image, mask, scribble = await parse_generate_scene_form(form)
+    generate_request, image, mask, scribble, pose_image = await parse_generate_scene_form(form)
     return await generate_scene(
         db,
         generate_request,
         seed_image=image,
         mask_image=mask,
         control_image=scribble,
+        pose_image=pose_image,
         image_mode="controlnet_inpaint",
         image_label="image",
     )
@@ -65,15 +66,16 @@ async def generate_scene_from_form(db: AsyncSession, form: FormData) -> Scene:
 
 async def parse_generate_scene_form(
     form: FormData,
-) -> tuple[GenerateSceneRequestBase, bytes | None, bytes | None, bytes | None]:
+) -> tuple[GenerateSceneRequestBase, bytes | None, bytes | None, bytes | None, bytes | None]:
     generate_request = parse_generate_scene_payload(form)
     if not generate_request.generate_image:
-        return generate_request, None, None, None
+        return generate_request, None, None, None, None
 
     image = await read_image_upload(form, "image", required=True)
     mask = await read_image_upload(form, "mask", required=True)
     scribble = await read_image_upload(form, "scribble", required=True)
-    return generate_request, image, mask, scribble
+    pose_image = await read_image_upload(form, "pose_image")
+    return generate_request, image, mask, scribble, pose_image
 
 
 async def generate_scene_t2i_from_form(db: AsyncSession, form: FormData) -> Scene:
@@ -149,6 +151,7 @@ async def generate_scene(
     seed_image: bytes | None = None,
     mask_image: bytes | None = None,
     control_image: bytes | None = None,
+    pose_image: bytes | None = None,
     image_mode: str = "i2i",
     image_label: str = "seed image",
     force_generate_image: bool = False,
@@ -186,6 +189,7 @@ async def generate_scene(
             image_mode=image_mode,
             mask_image=mask_image,
             control_image=control_image,
+            pose_image=pose_image,
             image_label=image_label,
         )
 
@@ -377,6 +381,7 @@ async def generate_scene_image(
     image_mode: str = "i2i",
     mask_image: bytes | None = None,
     control_image: bytes | None = None,
+    pose_image: bytes | None = None,
     image_label: str = "seed image",
 ) -> tuple[str, str]:
     model_path_value = settings.stable_diffusion_model_path.strip()
@@ -404,7 +409,11 @@ async def generate_scene_image(
     )
     init_image = None
     init_mask = None
-    init_control = None
+    control_images: list[Image.Image] = []
+    controlnet_model_ids: list[str] = []
+    controlnet_scales: list[float] = []
+    control_guidance_starts: list[float] = []
+    control_guidance_ends: list[float] = []
     if image_mode in {"i2i", "inpaint", "controlnet_inpaint"}:
         if seed_image is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{image_label} is required")
@@ -438,6 +447,31 @@ async def generate_scene_image(
             target_size,
             Image.Resampling.LANCZOS,
         )
+        if not is_solid_rgb_image(init_control, 255, 255, 255):
+            control_images.append(init_control)
+            controlnet_model_ids.append(settings.CONTROLNET_SCRIBBLE_MODEL_ID)
+            controlnet_scales.append(resolved_settings.controlnet_conditioning_scale)
+            control_guidance_starts.append(resolved_settings.control_guidance_start)
+            control_guidance_ends.append(resolved_settings.control_guidance_end)
+        if pose_image is not None:
+            init_pose = decode_generation_image(
+                pose_image,
+                "pose image",
+                "RGB",
+                target_size,
+                Image.Resampling.LANCZOS,
+            )
+            control_images.append(init_pose)
+            controlnet_model_ids.append(settings.CONTROLNET_OPENPOSE_MODEL_ID)
+            controlnet_scales.append(resolved_settings.controlnet_conditioning_scale)
+            control_guidance_starts.append(resolved_settings.control_guidance_start)
+            control_guidance_ends.append(resolved_settings.control_guidance_end)
+        if not control_images:
+            control_images.append(init_control)
+            controlnet_model_ids.append(settings.CONTROLNET_SCRIBBLE_MODEL_ID)
+            controlnet_scales.append(0.0)
+            control_guidance_starts.append(resolved_settings.control_guidance_start)
+            control_guidance_ends.append(resolved_settings.control_guidance_end)
 
     positive_prompt_parts = [
         (resolved_settings.positive_base or "").strip().strip(","),
@@ -451,7 +485,7 @@ async def generate_scene_image(
         [resolved_settings.negative_prompt or ""],
         [init_image] if init_image is not None else [],
         [init_mask] if init_mask is not None else [],
-        [init_control] if init_control is not None else [],
+        [control_images] if control_images else [],
         [seed],
         resolved_settings.steps or GEN_IMAGE_STEPS,
         resolved_settings.cfg or GEN_IMAGE_CFG,
@@ -464,10 +498,10 @@ async def generate_scene_image(
         resolved_settings.sampler or "",
         resolved_settings.scheduler or "",
         resolved_settings.clip_skip,
-        settings.CONTROLNET_SCRIBBLE_MODEL_ID,
-        resolved_settings.controlnet_conditioning_scale,
-        resolved_settings.control_guidance_start,
-        resolved_settings.control_guidance_end,
+        controlnet_model_ids,
+        controlnet_scales,
+        control_guidance_starts,
+        control_guidance_ends,
     )
     image = images[0] if images else None
     if image is None:
@@ -509,6 +543,12 @@ def decode_generation_image(
     if image.size != target_size:
         image = image.resize(target_size, resample)
     return image
+
+
+def is_solid_rgb_image(image: Image.Image, red: int, green: int, blue: int) -> bool:
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+    return image.getextrema() == ((red, red), (green, green), (blue, blue))
 
 
 def _image_content_type(output_format: str) -> str:
