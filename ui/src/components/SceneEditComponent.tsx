@@ -89,6 +89,13 @@ function createEmptyImageEditorState(): SceneImageInpaintEditorState {
     imageDataUrl: null,
     maskDataUrl: null,
     scribbleDataUrl: null,
+    isMaskVisualizationEnabled: null,
+    featherBrushSize: null,
+    scribbleBrushSize: null,
+    scribblePreviewOpacity: null,
+    controlnetConditioningScale: null,
+    controlGuidanceStart: null,
+    controlGuidanceEnd: null,
   };
 }
 

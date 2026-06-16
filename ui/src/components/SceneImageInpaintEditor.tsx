@@ -58,6 +58,13 @@ export type SceneImageInpaintEditorState = {
   imageDataUrl: string | null;
   maskDataUrl: string | null;
   scribbleDataUrl: string | null;
+  isMaskVisualizationEnabled: boolean | null;
+  featherBrushSize: number | null;
+  scribbleBrushSize: number | null;
+  scribblePreviewOpacity: number | null;
+  controlnetConditioningScale: number | null;
+  controlGuidanceStart: number | null;
+  controlGuidanceEnd: number | null;
 };
 
 type ControlNetEditorSettings = {
@@ -141,7 +148,8 @@ const MIN_SELECTION_SIZE = 3;
 const LASSO_MIN_POINTS = 3;
 const MASK_MIN_POINTS = 3;
 const DEFAULT_FEATHER_BRUSH_SIZE = 64;
-const DEFAULT_SCRIBBLE_BRUSH_SIZE = 12;
+const DEFAULT_SCRIBBLE_BRUSH_SIZE = 80;
+const DEFAULT_SCRIBBLE_PREVIEW_OPACITY = 0.5;
 const DEFAULT_CONTROLNET_CONDITIONING_SCALE = 1;
 const DEFAULT_CONTROL_GUIDANCE_START = 0;
 const DEFAULT_CONTROL_GUIDANCE_END = 1;
@@ -262,6 +270,19 @@ async function drawDataUrlToCanvas(dataUrl: string | null | undefined, canvas: H
 
 function hasEditorStateData(state: SceneImageInpaintEditorState | undefined) {
   return Boolean(state?.imageDataUrl || state?.maskDataUrl || state?.scribbleDataUrl);
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function coerceNullableNumber(
+  value: number | null | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+) {
+  return Number.isFinite(value) ? clampNumber(Number(value), min, max) : fallback;
 }
 
 function rotatePoint(point: Point, rotation: number): Point {
@@ -649,11 +670,16 @@ function drawWhiteMaskVisualization(
   context.restore();
 }
 
-function drawScribblePreview(context: CanvasRenderingContext2D, scribbleCanvas: HTMLCanvasElement | null) {
+function drawScribblePreview(
+  context: CanvasRenderingContext2D,
+  scribbleCanvas: HTMLCanvasElement | null,
+  opacity: number,
+) {
   if (!scribbleCanvas) {
     return;
   }
   context.save();
+  context.globalAlpha = Math.max(0, Math.min(1, opacity));
   context.globalCompositeOperation = 'multiply';
   context.drawImage(scribbleCanvas, 0, 0);
   context.restore();
@@ -921,6 +947,7 @@ export const SceneImageInpaintEditor = forwardRef<
   const [hasScribbleEdits, setHasScribbleEdits] = useState(false);
   const [featherBrushSize, setFeatherBrushSize] = useState(DEFAULT_FEATHER_BRUSH_SIZE);
   const [scribbleBrushSize, setScribbleBrushSize] = useState(DEFAULT_SCRIBBLE_BRUSH_SIZE);
+  const [scribblePreviewOpacity, setScribblePreviewOpacity] = useState(DEFAULT_SCRIBBLE_PREVIEW_OPACITY);
   const [controlnetConditioningScale, setControlnetConditioningScale] = useState(
     initialControlnetConditioningScale,
   );
@@ -928,12 +955,21 @@ export const SceneImageInpaintEditor = forwardRef<
   const [controlGuidanceEnd, setControlGuidanceEnd] = useState(initialControlGuidanceEnd);
   const [isLoadingSource, setIsLoadingSource] = useState(false);
   const [isAddingImage, setIsAddingImage] = useState(false);
+  const editorSettingsRef = useRef({
+    isMaskVisualizationEnabled: false,
+    featherBrushSize: DEFAULT_FEATHER_BRUSH_SIZE,
+    scribbleBrushSize: DEFAULT_SCRIBBLE_BRUSH_SIZE,
+    scribblePreviewOpacity: DEFAULT_SCRIBBLE_PREVIEW_OPACITY,
+    controlnetConditioningScale: initialControlnetConditioningScale,
+    controlGuidanceStart: initialControlGuidanceStart,
+    controlGuidanceEnd: initialControlGuidanceEnd,
+  });
 
   const isWorking = isLoadingSource || isAddingImage;
   const isReady = !isWorking && layersReady && width > 0 && height > 0;
-  const canvasCursor = mode === 'feather'
+  const canvasCursor = mode === 'feather' || mode === 'scribble'
     ? 'none'
-    : mode === 'scribble' || (mode === 'select' && selectionTool !== 'move' && !activeObject)
+    : mode === 'select' && selectionTool !== 'move' && !activeObject
       ? 'crosshair'
       : dragState?.kind === 'resize'
         ? getResizeCursor(dragState.handle)
@@ -948,10 +984,18 @@ export const SceneImageInpaintEditor = forwardRef<
                 : 'default';
 
   const publishEditorState = useCallback(() => {
+    const editorSettings = editorSettingsRef.current;
     onEditorStateChange?.({
       imageDataUrl: canvasToDataUrl(imageCanvasRef.current),
       maskDataUrl: canvasToDataUrl(maskCanvasRef.current),
       scribbleDataUrl: canvasToDataUrl(scribbleCanvasRef.current),
+      isMaskVisualizationEnabled: editorSettings.isMaskVisualizationEnabled,
+      featherBrushSize: editorSettings.featherBrushSize,
+      scribbleBrushSize: editorSettings.scribbleBrushSize,
+      scribblePreviewOpacity: editorSettings.scribblePreviewOpacity,
+      controlnetConditioningScale: editorSettings.controlnetConditioningScale,
+      controlGuidanceStart: editorSettings.controlGuidanceStart,
+      controlGuidanceEnd: editorSettings.controlGuidanceEnd,
     });
   }, [onEditorStateChange]);
 
@@ -1060,6 +1104,31 @@ export const SceneImageInpaintEditor = forwardRef<
   }, [isReady, onReadyChange]);
 
   useEffect(() => {
+    editorSettingsRef.current = {
+      isMaskVisualizationEnabled,
+      featherBrushSize,
+      scribbleBrushSize,
+      scribblePreviewOpacity,
+      controlnetConditioningScale,
+      controlGuidanceStart,
+      controlGuidanceEnd,
+    };
+    if (layersReady) {
+      publishEditorState();
+    }
+  }, [
+    controlGuidanceEnd,
+    controlGuidanceStart,
+    controlnetConditioningScale,
+    featherBrushSize,
+    isMaskVisualizationEnabled,
+    layersReady,
+    publishEditorState,
+    scribbleBrushSize,
+    scribblePreviewOpacity,
+  ]);
+
+  useEffect(() => {
     setControlnetConditioningScale(Math.max(0, Math.min(2, initialControlnetConditioningScale)));
   }, [initialControlnetConditioningScale]);
 
@@ -1081,7 +1150,6 @@ export const SceneImageInpaintEditor = forwardRef<
       clearDrafts();
       setHoverPoint(null);
       setHoverResizeHandle(null);
-      setIsMaskVisualizationEnabled(false);
       imageHistoryRef.current = [];
       maskHistoryRef.current = [];
       scribbleHistoryRef.current = [];
@@ -1095,9 +1163,61 @@ export const SceneImageInpaintEditor = forwardRef<
         const nextMaskCanvas = createDefaultMaskCanvas(width, height);
         const nextScribbleCanvas = createBlankScribbleCanvas(width, height);
         const state = initialEditorStateRef.current;
-        const shouldRestoreEditorState = !hasLoadedOnceRef.current && hasEditorStateData(state);
+        const shouldRestoreImageLayer = !hasLoadedOnceRef.current && hasEditorStateData(state);
+        const restoredIsMaskVisualizationEnabled = state?.isMaskVisualizationEnabled ?? false;
+        const restoredFeatherBrushSize = coerceNullableNumber(
+          state?.featherBrushSize,
+          DEFAULT_FEATHER_BRUSH_SIZE,
+          12,
+          180,
+        );
+        const restoredScribbleBrushSize = coerceNullableNumber(
+          state?.scribbleBrushSize,
+          DEFAULT_SCRIBBLE_BRUSH_SIZE,
+          2,
+          96,
+        );
+        const restoredScribblePreviewOpacity = coerceNullableNumber(
+          state?.scribblePreviewOpacity,
+          DEFAULT_SCRIBBLE_PREVIEW_OPACITY,
+          0.1,
+          1,
+        );
+        const restoredControlnetConditioningScale = coerceNullableNumber(
+          state?.controlnetConditioningScale,
+          initialControlnetConditioningScale,
+          0,
+          2,
+        );
+        const restoredControlGuidanceStart = coerceNullableNumber(
+          state?.controlGuidanceStart,
+          initialControlGuidanceStart,
+          0,
+          1,
+        );
+        const restoredControlGuidanceEnd = Math.max(
+          restoredControlGuidanceStart,
+          coerceNullableNumber(state?.controlGuidanceEnd, initialControlGuidanceEnd, 0, 1),
+        );
 
-        if (shouldRestoreEditorState && state?.imageDataUrl) {
+        editorSettingsRef.current = {
+          isMaskVisualizationEnabled: restoredIsMaskVisualizationEnabled,
+          featherBrushSize: restoredFeatherBrushSize,
+          scribbleBrushSize: restoredScribbleBrushSize,
+          scribblePreviewOpacity: restoredScribblePreviewOpacity,
+          controlnetConditioningScale: restoredControlnetConditioningScale,
+          controlGuidanceStart: restoredControlGuidanceStart,
+          controlGuidanceEnd: restoredControlGuidanceEnd,
+        };
+        setIsMaskVisualizationEnabled(restoredIsMaskVisualizationEnabled);
+        setFeatherBrushSize(restoredFeatherBrushSize);
+        setScribbleBrushSize(restoredScribbleBrushSize);
+        setScribblePreviewOpacity(restoredScribblePreviewOpacity);
+        setControlnetConditioningScale(restoredControlnetConditioningScale);
+        setControlGuidanceStart(restoredControlGuidanceStart);
+        setControlGuidanceEnd(restoredControlGuidanceEnd);
+
+        if (shouldRestoreImageLayer && state?.imageDataUrl) {
           await drawDataUrlToCanvas(state.imageDataUrl, nextImageCanvas);
         } else if (sourceImageUrl) {
           const bitmap = await createBitmapFromUrl(sourceImageUrl);
@@ -1115,10 +1235,10 @@ export const SceneImageInpaintEditor = forwardRef<
           }
         }
 
-        if (shouldRestoreEditorState && state?.maskDataUrl) {
+        if (state?.maskDataUrl) {
           await drawDataUrlToCanvas(state.maskDataUrl, nextMaskCanvas);
         }
-        if (shouldRestoreEditorState && state?.scribbleDataUrl) {
+        if (state?.scribbleDataUrl) {
           await drawDataUrlToCanvas(state.scribbleDataUrl, nextScribbleCanvas);
         }
 
@@ -1182,7 +1302,7 @@ export const SceneImageInpaintEditor = forwardRef<
       drawWhiteMaskVisualization(context, width, height, maskCanvasRef.current);
     }
 
-    drawScribblePreview(context, scribbleCanvasRef.current);
+    drawScribblePreview(context, scribbleCanvasRef.current, scribblePreviewOpacity);
 
     const scale = getViewScale(canvas);
     if (mode === 'select') {
@@ -1202,6 +1322,23 @@ export const SceneImageInpaintEditor = forwardRef<
       context.restore();
     }
 
+    if (mode === 'scribble' && hoverPoint) {
+      context.save();
+      context.fillStyle = 'rgba(0, 0, 0, 0.08)';
+      context.strokeStyle = 'rgba(255, 244, 220, 0.96)';
+      context.lineWidth = 3 * scale;
+      context.beginPath();
+      context.arc(hoverPoint.x, hoverPoint.y, scribbleBrushSize / 2, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      context.strokeStyle = 'rgba(0, 0, 0, 0.72)';
+      context.lineWidth = 1.5 * scale;
+      context.beginPath();
+      context.arc(hoverPoint.x, hoverPoint.y, scribbleBrushSize / 2, 0, Math.PI * 2);
+      context.stroke();
+      context.restore();
+    }
+
     if (mode === 'select' && activeObjectRef.current) {
       drawObjectHandles(context, activeObjectRef.current, scale);
     }
@@ -1214,6 +1351,8 @@ export const SceneImageInpaintEditor = forwardRef<
     isMaskVisualizationEnabled,
     mode,
     renderVersion,
+    scribbleBrushSize,
+    scribblePreviewOpacity,
     width,
   ]);
 
@@ -1311,6 +1450,7 @@ export const SceneImageInpaintEditor = forwardRef<
     }
 
     const point = getCanvasPoint(canvas, event, width, height);
+    setHoverPoint(point);
     canvas.setPointerCapture(event.pointerId);
 
     if (mode === 'scribble') {
@@ -1767,7 +1907,7 @@ export const SceneImageInpaintEditor = forwardRef<
               aria-label="선택 object를 white mask로 적용"
               title="선택 object를 white mask로 적용"
             >
-              □
+              ■
             </Button>
             <Button
               className={TOOL_BUTTON_CLASS}
@@ -1776,7 +1916,7 @@ export const SceneImageInpaintEditor = forwardRef<
               aria-label="선택 object를 black mask로 적용"
               title="선택 object를 black mask로 적용"
             >
-              ■
+              □
             </Button>
             <Button
               className={TOOL_BUTTON_CLASS}
@@ -1825,7 +1965,7 @@ export const SceneImageInpaintEditor = forwardRef<
               <input
                 type="range"
                 min="2"
-                max="96"
+                max="100"
                 step="1"
                 value={scribbleBrushSize}
                 onChange={(event) => setScribbleBrushSize(Number(event.target.value))}
@@ -1833,6 +1973,20 @@ export const SceneImageInpaintEditor = forwardRef<
                 className="w-20 accent-[#ffe2ba]"
               />
               <span className="w-9 text-right">{scribbleBrushSize}px</span>
+            </label>
+            <label className="flex min-w-0 items-center gap-2 text-xs font-semibold text-[var(--app-muted)]">
+              opacity
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={scribblePreviewOpacity}
+                onChange={(event) => setScribblePreviewOpacity(Number(event.target.value))}
+                disabled={disabled || isGenerating}
+                className="w-20 accent-[#ffe2ba]"
+              />
+              <span className="w-10 text-right">{Math.round(scribblePreviewOpacity * 100)}%</span>
             </label>
             <label className="flex min-w-0 items-center gap-1 text-xs font-semibold text-[var(--app-muted)]">
               scale
