@@ -3,7 +3,6 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
-  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -22,11 +21,13 @@ type Point = {
 
 type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 type EditorMode = 'select' | 'feather' | 'mask' | 'scribble';
+type SelectionTool = 'move' | 'rect' | 'lasso';
 type MaskTool = 'freehand' | 'rect';
+type MaskPaintValue = 'white' | 'black';
 
 type CanvasObject = {
   id: string;
-  bitmap: ImageBitmap;
+  canvas: HTMLCanvasElement;
   x: number;
   y: number;
   width: number;
@@ -34,7 +35,8 @@ type CanvasObject = {
   rotation: number;
   label: string;
   flipX: boolean;
-  editCanvas?: HTMLCanvasElement;
+  dirty: boolean;
+  maskPath?: Point[];
 };
 
 type CanvasObjectSnapshot = Pick<CanvasObject, 'x' | 'y' | 'width' | 'height' | 'rotation'>;
@@ -43,6 +45,7 @@ export type SceneImageMaskRegion =
   | {
     kind: 'freehand';
     points: Point[];
+    value: MaskPaintValue;
   }
   | {
     kind: 'rect';
@@ -50,6 +53,7 @@ export type SceneImageMaskRegion =
     y: number;
     width: number;
     height: number;
+    value: MaskPaintValue;
   };
 
 type SceneImageMaskRectRegion = Extract<SceneImageMaskRegion, { kind: 'rect' }>;
@@ -73,32 +77,37 @@ type ControlNetEditorSettings = {
 type DragState =
   | {
     kind: 'move';
-    objectId: string;
     start: Point;
     original: CanvasObjectSnapshot;
   }
   | {
     kind: 'resize';
-    objectId: string;
     handle: ResizeHandle;
     original: CanvasObjectSnapshot;
   }
   | {
     kind: 'rotate';
-    objectId: string;
     startAngle: number;
     original: CanvasObjectSnapshot;
   }
   | {
     kind: 'mask-freehand';
+    value: MaskPaintValue;
   }
   | {
     kind: 'mask-rect';
     start: Point;
+    value: MaskPaintValue;
+  }
+  | {
+    kind: 'select-rect';
+    start: Point;
+  }
+  | {
+    kind: 'select-lasso';
   }
   | {
     kind: 'feather';
-    objectId: string;
     lastPoint: Point;
   }
   | {
@@ -141,10 +150,12 @@ const HANDLE_DEFS: Array<{ key: ResizeHandle; x: number; y: number }> = [
   { key: 'sw', x: -0.5, y: 0.5 },
   { key: 'w', x: -0.5, y: 0 },
 ];
+const HISTORY_LIMIT = 10;
 const MIN_OBJECT_SIZE = 24;
 const ROTATE_HANDLE_OFFSET = 42;
 const MASK_FREEHAND_MIN_POINTS = 3;
 const MASK_RECT_MIN_SIZE = 3;
+const SELECT_LASSO_MIN_POINTS = 3;
 const DEFAULT_FEATHER_BRUSH_SIZE = 64;
 const DEFAULT_SCRIBBLE_BRUSH_SIZE = 12;
 const DEFAULT_CONTROLNET_CONDITIONING_SCALE = 1;
@@ -177,8 +188,8 @@ function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
 
 function createRenderCanvas(width: number, height: number) {
   const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
+  canvas.width = Math.max(1, Math.round(width));
+  canvas.height = Math.max(1, Math.round(height));
   return canvas;
 }
 
@@ -188,6 +199,20 @@ function get2dContext(canvas: HTMLCanvasElement) {
     throw new Error('canvas를 사용할 수 없습니다.');
   }
   return context;
+}
+
+function createBlankImageCanvas(width: number, height: number) {
+  const canvas = createRenderCanvas(width, height);
+  const context = get2dContext(canvas);
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+function cloneCanvas(canvas: HTMLCanvasElement) {
+  const nextCanvas = createRenderCanvas(canvas.width, canvas.height);
+  get2dContext(nextCanvas).drawImage(canvas, 0, 0);
+  return nextCanvas;
 }
 
 function resolveImageFetchUrl(imageUrl: string) {
@@ -211,14 +236,11 @@ async function createBitmapFromUrl(imageUrl: string) {
   return await createImageBitmap(await response.blob());
 }
 
-function closeObjects(objects: CanvasObject[]) {
-  for (const object of objects) {
-    try {
-      object.bitmap.close();
-    } catch {
-      // ImageBitmap.close() is best-effort cleanup; repeated closes are harmless to ignore.
-    }
-  }
+function normalizeMaskRegions(maskRegions: SceneImageMaskRegion[]) {
+  return maskRegions.map((region) => ({
+    ...region,
+    value: region.value ?? 'black',
+  }));
 }
 
 function objectSnapshot(object: CanvasObject): CanvasObjectSnapshot {
@@ -241,14 +263,13 @@ function rotatePoint(point: Point, rotation: number): Point {
 }
 
 function toObjectLocal(point: Point, object: CanvasObject | CanvasObjectSnapshot): Point {
-  const rotated = rotatePoint(
+  return rotatePoint(
     {
       x: point.x - object.x,
       y: point.y - object.y,
     },
     -object.rotation,
   );
-  return rotated;
 }
 
 function objectLocalToCanvas(object: CanvasObject | CanvasObjectSnapshot, localX: number, localY: number): Point {
@@ -293,29 +314,390 @@ function getResizeCursor(handle: ResizeHandle) {
   return 'nwse-resize';
 }
 
-function createEditableObjectCanvas(bitmap: ImageBitmap) {
-  const canvas = createRenderCanvas(bitmap.width, bitmap.height);
-  const context = get2dContext(canvas);
-  context.drawImage(bitmap, 0, 0);
-  return canvas;
-}
-
-function getObjectBitmapPoint(point: Point, object: CanvasObject): Point | null {
-  if (!isPointInObject(point, object)) {
-    return null;
-  }
-
-  const localPoint = toObjectLocal(point, object);
-  const normalizedX = object.flipX
-    ? object.width / 2 - localPoint.x
-    : localPoint.x + object.width / 2;
+function fitObjectSize(canvas: HTMLCanvasElement, width: number, height: number) {
+  const scale = Math.min(1, width / canvas.width, height / canvas.height);
   return {
-    x: (normalizedX / object.width) * object.bitmap.width,
-    y: ((localPoint.y + object.height / 2) / object.height) * object.bitmap.height,
+    width: Math.max(1, Math.round(canvas.width * scale)),
+    height: Math.max(1, Math.round(canvas.height * scale)),
   };
 }
 
-function shuffleAdjacentObjectPixels(canvas: HTMLCanvasElement, point: Point, radius: number) {
+function getCanvasPoint(
+  canvas: HTMLCanvasElement,
+  event: ReactPointerEvent<HTMLCanvasElement>,
+  width: number,
+  height: number,
+): Point {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: ((event.clientX - rect.left) / rect.width) * width,
+    y: ((event.clientY - rect.top) / rect.height) * height,
+  };
+}
+
+function getViewScale(canvas: HTMLCanvasElement) {
+  const rect = canvas.getBoundingClientRect();
+  return rect.width > 0 ? canvas.width / rect.width : 1;
+}
+
+function drawObject(context: CanvasRenderingContext2D, object: CanvasObject) {
+  context.save();
+  context.translate(object.x, object.y);
+  context.rotate(object.rotation);
+  if (object.flipX) {
+    context.scale(-1, 1);
+  }
+  context.drawImage(
+    object.canvas,
+    -object.width / 2,
+    -object.height / 2,
+    object.width,
+    object.height,
+  );
+  context.restore();
+}
+
+function drawFreehandPath(
+  context: CanvasRenderingContext2D,
+  points: Point[],
+  closePath: boolean,
+) {
+  if (points.length === 0) {
+    return;
+  }
+  context.beginPath();
+  context.moveTo(points[0].x, points[0].y);
+  for (const point of points.slice(1)) {
+    context.lineTo(point.x, point.y);
+  }
+  if (closePath) {
+    context.closePath();
+  }
+}
+
+function drawMaskRegionPath(
+  context: CanvasRenderingContext2D,
+  region: SceneImageMaskRegion,
+) {
+  if (region.kind === 'rect') {
+    context.beginPath();
+    context.rect(region.x, region.y, region.width, region.height);
+    return;
+  }
+  drawFreehandPath(context, region.points, true);
+}
+
+function drawScribbleStroke(
+  context: CanvasRenderingContext2D,
+  stroke: SceneImageScribbleStroke,
+  strokeStyle = '#000000',
+) {
+  if (stroke.points.length === 0) {
+    return;
+  }
+
+  context.save();
+  context.strokeStyle = strokeStyle;
+  context.fillStyle = strokeStyle;
+  context.lineWidth = stroke.brushSize;
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+  if (stroke.points.length === 1) {
+    context.beginPath();
+    context.arc(stroke.points[0].x, stroke.points[0].y, stroke.brushSize / 2, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+    return;
+  }
+
+  context.beginPath();
+  context.moveTo(stroke.points[0].x, stroke.points[0].y);
+  for (const point of stroke.points.slice(1)) {
+    context.lineTo(point.x, point.y);
+  }
+  context.stroke();
+  context.restore();
+}
+
+function getMaskRectFromPoints(
+  start: Point,
+  end: Point,
+  value: MaskPaintValue,
+): SceneImageMaskRectRegion {
+  const x = Math.min(start.x, end.x);
+  const y = Math.min(start.y, end.y);
+  return {
+    kind: 'rect',
+    x,
+    y,
+    width: Math.abs(end.x - start.x),
+    height: Math.abs(end.y - start.y),
+    value,
+  };
+}
+
+function getBoundsFromPoints(points: Point[]) {
+  let left = Number.POSITIVE_INFINITY;
+  let top = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+
+  for (const point of points) {
+    left = Math.min(left, point.x);
+    top = Math.min(top, point.y);
+    right = Math.max(right, point.x);
+    bottom = Math.max(bottom, point.y);
+  }
+
+  return { left, top, right, bottom };
+}
+
+function getSelectionBounds(region: SceneImageMaskRegion) {
+  if (region.kind === 'rect') {
+    return {
+      left: region.x,
+      top: region.y,
+      right: region.x + region.width,
+      bottom: region.y + region.height,
+    };
+  }
+  return getBoundsFromPoints(region.points);
+}
+
+function createObjectFromCanvas(
+  canvas: HTMLCanvasElement,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  label: string,
+  dirty: boolean,
+  maskPath?: Point[],
+): CanvasObject {
+  return {
+    id: createObjectId(),
+    canvas,
+    x,
+    y,
+    width,
+    height,
+    rotation: 0,
+    label,
+    flipX: false,
+    dirty,
+    maskPath,
+  };
+}
+
+function createObjectFromBitmap(bitmap: ImageBitmap, width: number, height: number) {
+  const objectCanvas = createRenderCanvas(bitmap.width, bitmap.height);
+  get2dContext(objectCanvas).drawImage(bitmap, 0, 0);
+  const fittedSize = fitObjectSize(objectCanvas, width, height);
+  const maskPath = [
+    { x: -fittedSize.width / 2, y: -fittedSize.height / 2 },
+    { x: fittedSize.width / 2, y: -fittedSize.height / 2 },
+    { x: fittedSize.width / 2, y: fittedSize.height / 2 },
+    { x: -fittedSize.width / 2, y: fittedSize.height / 2 },
+  ];
+  return createObjectFromCanvas(
+    objectCanvas,
+    width / 2,
+    height / 2,
+    fittedSize.width,
+    fittedSize.height,
+    'clipboard',
+    true,
+    maskPath,
+  );
+}
+
+function createObjectFromSelection(sourceCanvas: HTMLCanvasElement, region: SceneImageMaskRegion) {
+  const bounds = getSelectionBounds(region);
+  const left = Math.max(0, Math.floor(bounds.left));
+  const top = Math.max(0, Math.floor(bounds.top));
+  const right = Math.min(sourceCanvas.width, Math.ceil(bounds.right));
+  const bottom = Math.min(sourceCanvas.height, Math.ceil(bounds.bottom));
+  const selectionWidth = right - left;
+  const selectionHeight = bottom - top;
+
+  if (selectionWidth < MASK_RECT_MIN_SIZE || selectionHeight < MASK_RECT_MIN_SIZE) {
+    return null;
+  }
+
+  const selectionCanvas = createRenderCanvas(selectionWidth, selectionHeight);
+  const selectionContext = get2dContext(selectionCanvas);
+
+  if (region.kind === 'freehand') {
+    selectionContext.save();
+    selectionContext.beginPath();
+    selectionContext.moveTo(region.points[0].x - left, region.points[0].y - top);
+    for (const point of region.points.slice(1)) {
+      selectionContext.lineTo(point.x - left, point.y - top);
+    }
+    selectionContext.closePath();
+    selectionContext.clip();
+    selectionContext.drawImage(sourceCanvas, -left, -top);
+    selectionContext.restore();
+  } else {
+    selectionContext.drawImage(
+      sourceCanvas,
+      left,
+      top,
+      selectionWidth,
+      selectionHeight,
+      0,
+      0,
+      selectionWidth,
+      selectionHeight,
+    );
+  }
+
+  const centerX = left + selectionWidth / 2;
+  const centerY = top + selectionHeight / 2;
+  const maskPath = region.kind === 'freehand'
+    ? region.points.map((point) => ({ x: point.x - centerX, y: point.y - centerY }))
+    : [
+      { x: -selectionWidth / 2, y: -selectionHeight / 2 },
+      { x: selectionWidth / 2, y: -selectionHeight / 2 },
+      { x: selectionWidth / 2, y: selectionHeight / 2 },
+      { x: -selectionWidth / 2, y: selectionHeight / 2 },
+    ];
+
+  return createObjectFromCanvas(
+    selectionCanvas,
+    centerX,
+    centerY,
+    selectionWidth,
+    selectionHeight,
+    'selection',
+    false,
+    maskPath,
+  );
+}
+
+function createMaskRegionFromObject(object: CanvasObject, value: MaskPaintValue): SceneImageMaskRegion {
+  const localPath = object.maskPath ?? [
+    { x: -object.width / 2, y: -object.height / 2 },
+    { x: object.width / 2, y: -object.height / 2 },
+    { x: object.width / 2, y: object.height / 2 },
+    { x: -object.width / 2, y: object.height / 2 },
+  ];
+  return {
+    kind: 'freehand',
+    points: localPath.map((point) => objectLocalToCanvas(
+      object,
+      object.flipX ? -point.x : point.x,
+      point.y,
+    )),
+    value,
+  };
+}
+
+function renderImageCanvas(
+  width: number,
+  height: number,
+  baseImageCanvas: HTMLCanvasElement | null,
+  activeObject: CanvasObject | null,
+) {
+  const imageCanvas = baseImageCanvas ? cloneCanvas(baseImageCanvas) : createBlankImageCanvas(width, height);
+  if (activeObject?.dirty) {
+    drawObject(get2dContext(imageCanvas), activeObject);
+  }
+  return imageCanvas;
+}
+
+function renderMaskCanvas(
+  width: number,
+  height: number,
+  maskRegions: SceneImageMaskRegion[],
+) {
+  const maskCanvas = createRenderCanvas(width, height);
+  const maskContext = get2dContext(maskCanvas);
+  maskContext.fillStyle = '#ffffff';
+  maskContext.fillRect(0, 0, width, height);
+
+  for (const region of maskRegions) {
+    maskContext.fillStyle = region.value === 'white' ? '#ffffff' : '#000000';
+    drawMaskRegionPath(maskContext, region);
+    maskContext.fill();
+  }
+  return maskCanvas;
+}
+
+function renderScribbleCanvas(
+  width: number,
+  height: number,
+  scribbleStrokes: SceneImageScribbleStroke[],
+) {
+  const scribbleCanvas = createRenderCanvas(width, height);
+  const scribbleContext = get2dContext(scribbleCanvas);
+  scribbleContext.fillStyle = '#ffffff';
+  scribbleContext.fillRect(0, 0, width, height);
+  for (const stroke of scribbleStrokes) {
+    drawScribbleStroke(scribbleContext, stroke, '#000000');
+  }
+  return scribbleCanvas;
+}
+
+function drawEditorImage(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  baseImageCanvas: HTMLCanvasElement | null,
+  activeObject: CanvasObject | null,
+) {
+  context.clearRect(0, 0, width, height);
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, width, height);
+  if (baseImageCanvas) {
+    context.drawImage(baseImageCanvas, 0, 0, width, height);
+  }
+  if (activeObject) {
+    drawObject(context, activeObject);
+  }
+}
+
+function drawWhiteMaskVisualization(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  maskRegions: SceneImageMaskRegion[],
+) {
+  const overlayCanvas = createRenderCanvas(width, height);
+  const overlayContext = get2dContext(overlayCanvas);
+  overlayContext.fillStyle = 'rgba(255, 255, 255, 0.72)';
+  overlayContext.fillRect(0, 0, width, height);
+
+  for (const region of maskRegions) {
+    overlayContext.globalCompositeOperation = region.value === 'white' ? 'source-over' : 'destination-out';
+    overlayContext.fillStyle = 'rgba(255, 255, 255, 0.72)';
+    drawMaskRegionPath(overlayContext, region);
+    overlayContext.fill();
+  }
+  overlayContext.globalCompositeOperation = 'source-over';
+  context.drawImage(overlayCanvas, 0, 0);
+}
+
+function drawMaskPreview(
+  context: CanvasRenderingContext2D,
+  region: SceneImageMaskRegion,
+  scale: number,
+) {
+  context.save();
+  context.fillStyle = region.value === 'white'
+    ? 'rgba(255, 255, 255, 0.22)'
+    : 'rgba(0, 0, 0, 0.26)';
+  context.strokeStyle = region.value === 'white'
+    ? 'rgba(255, 250, 235, 0.94)'
+    : 'rgba(255, 226, 186, 0.92)';
+  context.lineWidth = 2 * scale;
+  drawMaskRegionPath(context, region);
+  context.fill();
+  context.stroke();
+  context.restore();
+}
+
+function shuffleAdjacentPixels(canvas: HTMLCanvasElement, point: Point, radius: number) {
   const context = get2dContext(canvas);
   const left = Math.max(0, Math.floor(point.x - radius));
   const top = Math.max(0, Math.floor(point.y - radius));
@@ -395,27 +777,14 @@ function shuffleAdjacentObjectPixels(canvas: HTMLCanvasElement, point: Point, ra
   context.putImageData(imageData, left, top);
 }
 
-function applyFeatherPointToObject(object: CanvasObject, point: Point, brushSize: number) {
-  const bitmapPoint = getObjectBitmapPoint(point, object);
-  if (!bitmapPoint) {
-    return object;
-  }
-
-  const editCanvas = object.editCanvas ?? createEditableObjectCanvas(object.bitmap);
-  const averageScale = (object.bitmap.width / object.width + object.bitmap.height / object.height) / 2;
-  shuffleAdjacentObjectPixels(editCanvas, bitmapPoint, Math.max(1, (brushSize / 2) * averageScale));
-  return { ...object, editCanvas };
-}
-
-function applyFeatherStrokeToObject(
-  object: CanvasObject,
+function applyFeatherStrokeToImage(
+  imageCanvas: HTMLCanvasElement,
   startPoint: Point | null,
   endPoint: Point,
   brushSize: number,
 ) {
   const distance = startPoint ? Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y) : 0;
   const steps = Math.max(1, Math.ceil(distance / Math.max(1, brushSize / 4)));
-  let nextObject = object;
 
   for (let step = 0; step <= steps; step += 1) {
     const progress = steps === 0 ? 1 : step / steps;
@@ -425,182 +794,12 @@ function applyFeatherStrokeToObject(
         y: startPoint.y + (endPoint.y - startPoint.y) * progress,
       }
       : endPoint;
-    nextObject = applyFeatherPointToObject(nextObject, point, brushSize);
-  }
-
-  return nextObject;
-}
-
-function drawObject(context: CanvasRenderingContext2D, object: CanvasObject) {
-  context.save();
-  context.translate(object.x, object.y);
-  context.rotate(object.rotation);
-  if (object.flipX) {
-    context.scale(-1, 1);
-  }
-
-  context.drawImage(
-    object.editCanvas ?? object.bitmap,
-    -object.width / 2,
-    -object.height / 2,
-    object.width,
-    object.height,
-  );
-  context.restore();
-}
-
-function drawFreehandPath(
-  context: CanvasRenderingContext2D,
-  points: Point[],
-  closePath: boolean,
-) {
-  if (points.length === 0) {
-    return;
-  }
-  context.beginPath();
-  context.moveTo(points[0].x, points[0].y);
-  for (const point of points.slice(1)) {
-    context.lineTo(point.x, point.y);
-  }
-  if (closePath) {
-    context.closePath();
+    shuffleAdjacentPixels(imageCanvas, point, Math.max(1, brushSize / 2));
   }
 }
 
-function getMaskRectFromPoints(start: Point, end: Point): SceneImageMaskRectRegion {
-  const x = Math.min(start.x, end.x);
-  const y = Math.min(start.y, end.y);
-  return {
-    kind: 'rect',
-    x,
-    y,
-    width: Math.abs(end.x - start.x),
-    height: Math.abs(end.y - start.y),
-  };
-}
-
-function drawMaskRegion(
-  context: CanvasRenderingContext2D,
-  region: SceneImageMaskRegion,
-) {
-  if (region.kind === 'rect') {
-    context.beginPath();
-    context.rect(region.x, region.y, region.width, region.height);
-    return;
-  }
-
-  drawFreehandPath(context, region.points, true);
-}
-
-function drawScribbleStroke(
-  context: CanvasRenderingContext2D,
-  stroke: SceneImageScribbleStroke,
-  strokeStyle = '#000000',
-) {
-  if (stroke.points.length === 0) {
-    return;
-  }
-
-  context.save();
-  context.strokeStyle = strokeStyle;
-  context.fillStyle = strokeStyle;
-  context.lineWidth = stroke.brushSize;
-  context.lineCap = 'round';
-  context.lineJoin = 'round';
-  if (stroke.points.length === 1) {
-    context.beginPath();
-    context.arc(stroke.points[0].x, stroke.points[0].y, stroke.brushSize / 2, 0, Math.PI * 2);
-    context.fill();
-    context.restore();
-    return;
-  }
-
-  context.beginPath();
-  context.moveTo(stroke.points[0].x, stroke.points[0].y);
-  for (const point of stroke.points.slice(1)) {
-    context.lineTo(point.x, point.y);
-  }
-  context.stroke();
-  context.restore();
-}
-
-function drawScene(
-  context: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  objects: CanvasObject[],
-) {
-  context.clearRect(0, 0, width, height);
-  context.fillStyle = '#ffffff';
-  context.fillRect(0, 0, width, height);
-  for (const object of objects) {
-    drawObject(context, object);
-  }
-}
-
-function getCanvasPoint(
-  canvas: HTMLCanvasElement,
-  event: ReactPointerEvent<HTMLCanvasElement>,
-  width: number,
-  height: number,
-): Point {
-  const rect = canvas.getBoundingClientRect();
-  return {
-    x: ((event.clientX - rect.left) / rect.width) * width,
-    y: ((event.clientY - rect.top) / rect.height) * height,
-  };
-}
-
-function getViewScale(canvas: HTMLCanvasElement) {
-  const rect = canvas.getBoundingClientRect();
-  return rect.width > 0 ? canvas.width / rect.width : 1;
-}
-
-function fitObjectSize(bitmap: ImageBitmap, width: number, height: number) {
-  const scale = Math.min(1, width / bitmap.width, height / bitmap.height);
-  return {
-    width: Math.max(1, Math.round(bitmap.width * scale)),
-    height: Math.max(1, Math.round(bitmap.height * scale)),
-  };
-}
-
-function renderCompositeCanvas(width: number, height: number, objects: CanvasObject[]) {
-  const canvas = createRenderCanvas(width, height);
-  drawScene(get2dContext(canvas), width, height, objects);
-  return canvas;
-}
-
-function renderMaskCanvas(
-  width: number,
-  height: number,
-  maskRegions: SceneImageMaskRegion[],
-) {
-  const maskCanvas = createRenderCanvas(width, height);
-  const maskContext = get2dContext(maskCanvas);
-  maskContext.fillStyle = '#ffffff';
-  maskContext.fillRect(0, 0, width, height);
-  maskContext.fillStyle = '#000000';
-
-  for (const region of maskRegions) {
-    drawMaskRegion(maskContext, region);
-    maskContext.fill();
-  }
-  return maskCanvas;
-}
-
-function renderScribbleCanvas(
-  width: number,
-  height: number,
-  scribbleStrokes: SceneImageScribbleStroke[],
-) {
-  const scribbleCanvas = createRenderCanvas(width, height);
-  const scribbleContext = get2dContext(scribbleCanvas);
-  scribbleContext.fillStyle = '#ffffff';
-  scribbleContext.fillRect(0, 0, width, height);
-  for (const stroke of scribbleStrokes) {
-    drawScribbleStroke(scribbleContext, stroke, '#000000');
-  }
-  return scribbleCanvas;
+function pushCapped<T>(items: T[], item: T) {
+  return [...items.slice(-(HISTORY_LIMIT - 1)), item];
 }
 
 export const SceneImageInpaintEditor = forwardRef<
@@ -622,20 +821,32 @@ export const SceneImageInpaintEditor = forwardRef<
   onReadyChange,
 }, ref) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const objectsRef = useRef<CanvasObject[]>([]);
-  const [objects, setObjects] = useState<CanvasObject[]>([]);
-  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
+  const baseImageCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const activeObjectRef = useRef<CanvasObject | null>(null);
+  const dragStateRef = useRef<DragState | null>(null);
+  const imageHistoryRef = useRef<HTMLCanvasElement[]>([]);
+  const [baseImageCanvas, setBaseImageCanvas] = useState<HTMLCanvasElement | null>(null);
+  const [baseImageVersion, setBaseImageVersion] = useState(0);
+  const [activeObject, setActiveObject] = useState<CanvasObject | null>(null);
+  const [imageHistoryCount, setImageHistoryCount] = useState(0);
   const [maskRegions, setMaskRegions] = useState<SceneImageMaskRegion[]>(
-    () => initialEditorState?.maskRegions ?? [],
+    () => normalizeMaskRegions(initialEditorState?.maskRegions ?? []),
   );
+  const [maskHistory, setMaskHistory] = useState<SceneImageMaskRegion[][]>([]);
   const [draftMaskFreehand, setDraftMaskFreehand] = useState<Point[]>([]);
   const [draftMaskRect, setDraftMaskRect] = useState<SceneImageMaskRectRegion | null>(null);
   const [scribbleStrokes, setScribbleStrokes] = useState<SceneImageScribbleStroke[]>(
     () => initialEditorState?.scribbleStrokes ?? [],
   );
+  const [scribbleHistory, setScribbleHistory] = useState<SceneImageScribbleStroke[][]>([]);
   const [draftScribble, setDraftScribble] = useState<SceneImageScribbleStroke | null>(null);
+  const [draftSelectionRect, setDraftSelectionRect] = useState<SceneImageMaskRectRegion | null>(null);
+  const [draftSelectionLasso, setDraftSelectionLasso] = useState<Point[]>([]);
   const [mode, setMode] = useState<EditorMode>('select');
+  const [selectionTool, setSelectionTool] = useState<SelectionTool>('rect');
   const [maskTool, setMaskTool] = useState<MaskTool>('freehand');
+  const [maskPaintValue, setMaskPaintValue] = useState<MaskPaintValue>('black');
+  const [isMaskVisualizationEnabled, setIsMaskVisualizationEnabled] = useState(false);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [hoverPoint, setHoverPoint] = useState<Point | null>(null);
   const [hoverResizeHandle, setHoverResizeHandle] = useState<ResizeHandle | null>(null);
@@ -649,15 +860,11 @@ export const SceneImageInpaintEditor = forwardRef<
   const [isLoadingSource, setIsLoadingSource] = useState(false);
   const [isAddingImage, setIsAddingImage] = useState(false);
 
-  const selectedObject = useMemo(
-    () => objects.find((object) => object.id === selectedObjectId) ?? null,
-    [objects, selectedObjectId],
-  );
   const isWorking = isLoadingSource || isAddingImage;
-  const isReady = !isWorking && width > 0 && height > 0;
+  const isReady = !isWorking && Boolean(baseImageCanvas) && width > 0 && height > 0;
   const canvasCursor = mode === 'feather'
     ? 'none'
-    : mode === 'mask' || mode === 'scribble'
+    : mode === 'mask' || mode === 'scribble' || (mode === 'select' && selectionTool !== 'move' && !activeObject)
       ? 'crosshair'
       : dragState?.kind === 'resize'
         ? getResizeCursor(dragState.handle)
@@ -667,17 +874,17 @@ export const SceneImageInpaintEditor = forwardRef<
             ? 'move'
             : hoverResizeHandle
               ? getResizeCursor(hoverResizeHandle)
-              : selectedObjectId
+              : activeObject
                 ? 'move'
                 : 'default';
 
   useEffect(() => {
-    objectsRef.current = objects;
-  }, [objects]);
+    baseImageCanvasRef.current = baseImageCanvas;
+  }, [baseImageCanvas]);
 
-  useEffect(() => () => {
-    closeObjects(objectsRef.current);
-  }, []);
+  useEffect(() => {
+    activeObjectRef.current = activeObject;
+  }, [activeObject]);
 
   useEffect(() => {
     onReadyChange?.(isReady);
@@ -687,11 +894,16 @@ export const SceneImageInpaintEditor = forwardRef<
     if (!initialEditorState) {
       return;
     }
-    setMaskRegions(initialEditorState.maskRegions);
+    setMaskRegions(normalizeMaskRegions(initialEditorState.maskRegions));
     setScribbleStrokes(initialEditorState.scribbleStrokes);
+    setMaskHistory([]);
+    setScribbleHistory([]);
     setDraftMaskFreehand([]);
     setDraftMaskRect(null);
     setDraftScribble(null);
+    setDraftSelectionRect(null);
+    setDraftSelectionLasso([]);
+    setIsMaskVisualizationEnabled(false);
   }, [initialEditorState]);
 
   useEffect(() => {
@@ -712,59 +924,134 @@ export const SceneImageInpaintEditor = forwardRef<
     setControlGuidanceEnd(nextEnd);
   }, [initialControlGuidanceEnd, initialControlGuidanceStart]);
 
+  function replaceBaseImageCanvas(nextCanvas: HTMLCanvasElement | null) {
+    baseImageCanvasRef.current = nextCanvas;
+    setBaseImageCanvas(nextCanvas);
+    setBaseImageVersion((version) => version + 1);
+  }
+
+  function replaceActiveObject(nextObject: CanvasObject | null) {
+    activeObjectRef.current = nextObject;
+    setActiveObject(nextObject);
+  }
+
+  function replaceDragState(nextDragState: DragState | null) {
+    dragStateRef.current = nextDragState;
+    setDragState(nextDragState);
+  }
+
+  function pushImageHistory(canvas = baseImageCanvasRef.current) {
+    if (!canvas) {
+      return;
+    }
+    imageHistoryRef.current = pushCapped(imageHistoryRef.current, cloneCanvas(canvas));
+    setImageHistoryCount(imageHistoryRef.current.length);
+  }
+
+  function pushMaskHistoryFrom(regions: SceneImageMaskRegion[]) {
+    setMaskHistory((history) => pushCapped(history, regions.map((region) => ({ ...region }))));
+  }
+
+  function pushScribbleHistoryFrom(strokes: SceneImageScribbleStroke[]) {
+    setScribbleHistory((history) => pushCapped(
+      history,
+      strokes.map((stroke) => ({ ...stroke, points: stroke.points.map((point) => ({ ...point })) })),
+    ));
+  }
+
+  function mergeActiveObject() {
+    const object = activeObjectRef.current;
+    const imageCanvas = baseImageCanvasRef.current;
+    if (!object || !imageCanvas) {
+      replaceActiveObject(null);
+      return imageCanvas;
+    }
+
+    if (!object.dirty) {
+      replaceActiveObject(null);
+      return imageCanvas;
+    }
+
+    pushImageHistory(imageCanvas);
+    const nextCanvas = cloneCanvas(imageCanvas);
+    drawObject(get2dContext(nextCanvas), object);
+    replaceBaseImageCanvas(nextCanvas);
+    replaceActiveObject(null);
+    return nextCanvas;
+  }
+
+  function discardActiveObject() {
+    replaceActiveObject(null);
+    replaceDragState(null);
+    setHoverResizeHandle(null);
+  }
+
+  function setActiveObjectValue(updateObjectValue: (object: CanvasObject) => CanvasObject) {
+    const object = activeObjectRef.current;
+    if (!object) {
+      return;
+    }
+    replaceActiveObject(updateObjectValue(object));
+  }
+
+  function switchMode(nextMode: EditorMode) {
+    if (nextMode !== mode) {
+      mergeActiveObject();
+      setDraftMaskFreehand([]);
+      setDraftMaskRect(null);
+      setDraftSelectionRect(null);
+      setDraftSelectionLasso([]);
+      setDraftScribble(null);
+      replaceDragState(null);
+      setHoverResizeHandle(null);
+      if (nextMode === 'mask') {
+        setIsMaskVisualizationEnabled(true);
+      }
+    }
+    setMode(nextMode);
+  }
+
   useEffect(() => {
     let isCancelled = false;
 
     async function loadSourceImage() {
       setIsLoadingSource(true);
-      setSelectedObjectId(null);
+      replaceActiveObject(null);
+      imageHistoryRef.current = [];
+      setImageHistoryCount(0);
       setDraftMaskFreehand([]);
       setDraftMaskRect(null);
+      setDraftSelectionRect(null);
+      setDraftSelectionLasso([]);
       setDraftScribble(null);
-      setDragState(null);
+      replaceDragState(null);
       onError?.(null);
 
       try {
-        if (!sourceImageUrl) {
-          setObjects((current) => {
-            closeObjects(current);
-            return [];
-          });
-          return;
-        }
-
-        const bitmap = await createBitmapFromUrl(sourceImageUrl);
-        if (isCancelled) {
+        const nextCanvas = createBlankImageCanvas(width, height);
+        if (sourceImageUrl) {
+          const bitmap = await createBitmapFromUrl(sourceImageUrl);
+          if (isCancelled) {
+            try {
+              bitmap.close();
+            } catch {
+              return;
+            }
+            return;
+          }
+          get2dContext(nextCanvas).drawImage(bitmap, 0, 0, width, height);
           try {
             bitmap.close();
           } catch {
-            return;
+            // Bitmap cleanup is best-effort.
           }
-          return;
         }
-
-        const nextObject: CanvasObject = {
-          id: createObjectId(),
-          bitmap,
-          x: width / 2,
-          y: height / 2,
-          width,
-          height,
-          rotation: 0,
-          label: 'existing',
-          flipX: false,
-        };
-        setObjects((current) => {
-          closeObjects(current);
-          return [nextObject];
-        });
-        setSelectedObjectId(nextObject.id);
+        if (!isCancelled) {
+          replaceBaseImageCanvas(nextCanvas);
+        }
       } catch (error) {
         if (!isCancelled) {
-          setObjects((current) => {
-            closeObjects(current);
-            return [];
-          });
+          replaceBaseImageCanvas(createBlankImageCanvas(width, height));
           onError?.(getErrorMessage(error));
         }
       } finally {
@@ -786,41 +1073,73 @@ export const SceneImageInpaintEditor = forwardRef<
       return;
     }
 
+    void baseImageVersion;
+
     const context = get2dContext(canvas);
-    drawScene(context, width, height, objects);
+    drawEditorImage(context, width, height, baseImageCanvas, activeObject);
 
-    context.save();
-    context.fillStyle = 'rgba(0, 0, 0, 0.26)';
-    context.strokeStyle = 'rgba(255, 226, 186, 0.92)';
-    context.lineWidth = 2 * getViewScale(canvas);
-    for (const region of maskRegions) {
-      drawMaskRegion(context, region);
-      context.fill();
-      context.stroke();
+    if (isMaskVisualizationEnabled) {
+      drawWhiteMaskVisualization(context, width, height, maskRegions);
     }
-    if (draftMaskFreehand.length > 0) {
-      context.setLineDash([8 * getViewScale(canvas), 5 * getViewScale(canvas)]);
-      drawFreehandPath(context, draftMaskFreehand, false);
-      context.stroke();
-    }
-    if (draftMaskRect) {
-      context.setLineDash([8 * getViewScale(canvas), 5 * getViewScale(canvas)]);
-      drawMaskRegion(context, draftMaskRect);
-      context.stroke();
-    }
-    context.restore();
 
-    context.save();
+    const scale = getViewScale(canvas);
+    if (mode === 'mask') {
+      for (const region of maskRegions) {
+        drawMaskPreview(context, region, scale);
+      }
+      if (draftMaskFreehand.length > 0) {
+        context.save();
+        context.strokeStyle = maskPaintValue === 'white'
+          ? 'rgba(255, 250, 235, 0.94)'
+          : 'rgba(255, 226, 186, 0.92)';
+        context.lineWidth = 2 * scale;
+        context.setLineDash([8 * scale, 5 * scale]);
+        drawFreehandPath(context, draftMaskFreehand, false);
+        context.stroke();
+        context.restore();
+      }
+      if (draftMaskRect) {
+        context.save();
+        context.strokeStyle = draftMaskRect.value === 'white'
+          ? 'rgba(255, 250, 235, 0.94)'
+          : 'rgba(255, 226, 186, 0.92)';
+        context.lineWidth = 2 * scale;
+        context.setLineDash([8 * scale, 5 * scale]);
+        drawMaskRegionPath(context, draftMaskRect);
+        context.stroke();
+        context.restore();
+      }
+    }
+
+    if (mode === 'select') {
+      if (draftSelectionRect) {
+        context.save();
+        context.strokeStyle = 'rgba(255, 244, 220, 0.96)';
+        context.lineWidth = 2 * scale;
+        context.setLineDash([8 * scale, 5 * scale]);
+        drawMaskRegionPath(context, draftSelectionRect);
+        context.stroke();
+        context.restore();
+      }
+      if (draftSelectionLasso.length > 0) {
+        context.save();
+        context.strokeStyle = 'rgba(255, 244, 220, 0.96)';
+        context.lineWidth = 2 * scale;
+        context.setLineDash([8 * scale, 5 * scale]);
+        drawFreehandPath(context, draftSelectionLasso, false);
+        context.stroke();
+        context.restore();
+      }
+    }
+
     for (const stroke of scribbleStrokes) {
       drawScribbleStroke(context, stroke, 'rgba(0, 0, 0, 0.92)');
     }
     if (draftScribble) {
       drawScribbleStroke(context, draftScribble, 'rgba(0, 0, 0, 0.92)');
     }
-    context.restore();
 
     if (mode === 'feather' && hoverPoint) {
-      const scale = getViewScale(canvas);
       context.save();
       context.strokeStyle = 'rgba(255, 244, 220, 0.96)';
       context.fillStyle = 'rgba(255, 226, 186, 0.12)';
@@ -833,20 +1152,19 @@ export const SceneImageInpaintEditor = forwardRef<
       context.restore();
     }
 
-    if (!selectedObject || (mode !== 'select' && mode !== 'feather')) {
+    if (!activeObject || mode !== 'select') {
       return;
     }
 
-    const scale = getViewScale(canvas);
     context.save();
     context.strokeStyle = 'rgba(255, 244, 220, 0.96)';
     context.lineWidth = 2 * scale;
     context.setLineDash([7 * scale, 4 * scale]);
     const corners = [
-      getHandlePosition(selectedObject, 'nw'),
-      getHandlePosition(selectedObject, 'ne'),
-      getHandlePosition(selectedObject, 'se'),
-      getHandlePosition(selectedObject, 'sw'),
+      getHandlePosition(activeObject, 'nw'),
+      getHandlePosition(activeObject, 'ne'),
+      getHandlePosition(activeObject, 'se'),
+      getHandlePosition(activeObject, 'sw'),
     ];
     context.beginPath();
     context.moveTo(corners[0].x, corners[0].y);
@@ -857,13 +1175,8 @@ export const SceneImageInpaintEditor = forwardRef<
     context.stroke();
     context.setLineDash([]);
 
-    if (mode === 'feather') {
-      context.restore();
-      return;
-    }
-
-    const rotateHandle = getRotateHandlePosition(selectedObject);
-    const topHandle = getHandlePosition(selectedObject, 'n');
+    const rotateHandle = getRotateHandlePosition(activeObject);
+    const topHandle = getHandlePosition(activeObject, 'n');
     context.beginPath();
     context.moveTo(topHandle.x, topHandle.y);
     context.lineTo(rotateHandle.x, rotateHandle.y);
@@ -874,7 +1187,7 @@ export const SceneImageInpaintEditor = forwardRef<
     context.lineWidth = 1.5 * scale;
     const handleSize = 9 * scale;
     for (const handle of HANDLE_DEFS) {
-      const point = getHandlePosition(selectedObject, handle.key);
+      const point = getHandlePosition(activeObject, handle.key);
       context.beginPath();
       context.rect(point.x - handleSize / 2, point.y - handleSize / 2, handleSize, handleSize);
       context.fill();
@@ -886,17 +1199,22 @@ export const SceneImageInpaintEditor = forwardRef<
     context.stroke();
     context.restore();
   }, [
+    activeObject,
+    baseImageCanvas,
+    baseImageVersion,
     draftMaskFreehand,
     draftMaskRect,
     draftScribble,
+    draftSelectionLasso,
+    draftSelectionRect,
     featherBrushSize,
     height,
     hoverPoint,
+    isMaskVisualizationEnabled,
+    maskPaintValue,
     maskRegions,
     mode,
-    objects,
     scribbleStrokes,
-    selectedObject,
     width,
   ]);
 
@@ -904,32 +1222,27 @@ export const SceneImageInpaintEditor = forwardRef<
     redraw();
   }, [redraw]);
 
-  const addImageBlob = useCallback(async (imageBlob: Blob) => {
+  async function addImageBlob(imageBlob: Blob) {
     setIsAddingImage(true);
     onError?.(null);
     try {
+      mergeActiveObject();
       const bitmap = await createImageBitmap(imageBlob);
-      const fittedSize = fitObjectSize(bitmap, width, height);
-      const nextObject: CanvasObject = {
-        id: createObjectId(),
-        bitmap,
-        x: width / 2,
-        y: height / 2,
-        width: fittedSize.width,
-        height: fittedSize.height,
-        rotation: 0,
-        label: 'clipboard',
-        flipX: false,
-      };
-      setObjects((current) => [...current, nextObject]);
-      setSelectedObjectId(nextObject.id);
+      const nextObject = createObjectFromBitmap(bitmap, width, height);
+      try {
+        bitmap.close();
+      } catch {
+        // Bitmap cleanup is best-effort.
+      }
+      replaceActiveObject(nextObject);
       setMode('select');
+      setSelectionTool('move');
     } catch (error) {
       onError?.(getErrorMessage(error));
     } finally {
       setIsAddingImage(false);
     }
-  }, [height, onError, width]);
+  }
 
   function handlePaste(event: ReactClipboardEvent<HTMLDivElement>) {
     if (disabled || isGenerating) {
@@ -960,34 +1273,30 @@ export const SceneImageInpaintEditor = forwardRef<
     return null;
   }
 
-  function findObjectAt(point: Point) {
-    for (let index = objects.length - 1; index >= 0; index -= 1) {
-      const object = objects[index];
-      if (isPointInObject(point, object)) {
-        return object;
-      }
+  function finishSelection(region: SceneImageMaskRegion) {
+    const imageCanvas = baseImageCanvasRef.current;
+    if (!imageCanvas) {
+      return;
     }
-    return null;
+    const nextObject = createObjectFromSelection(imageCanvas, region);
+    if (!nextObject) {
+      return;
+    }
+    replaceActiveObject(nextObject);
+    setSelectionTool('move');
   }
 
-  function updateObject(objectId: string, updateObjectValue: (object: CanvasObject) => CanvasObject) {
-    setObjects((current) =>
-      current.map((object) => (object.id === objectId ? updateObjectValue(object) : object)),
-    );
-  }
-
-  function applyFeatherStroke(
-    objectId: string,
-    startPoint: Point | null,
-    endPoint: Point,
-  ) {
-    setObjects((current) =>
-      current.map((object) => (
-        object.id === objectId
-          ? applyFeatherStrokeToObject(object, startPoint, endPoint, featherBrushSize)
-          : object
-      )),
-    );
+  function applyActiveObjectToMask(value: MaskPaintValue) {
+    const object = activeObjectRef.current;
+    if (!object) {
+      return;
+    }
+    const nextRegion = createMaskRegionFromObject(object, value);
+    setMaskRegions((current) => {
+      pushMaskHistoryFrom(current);
+      return [...current, nextRegion];
+    });
+    setIsMaskVisualizationEnabled(true);
   }
 
   function handlePointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
@@ -1000,79 +1309,85 @@ export const SceneImageInpaintEditor = forwardRef<
     canvas.setPointerCapture(event.pointerId);
 
     if (mode === 'mask') {
-      setSelectedObjectId(null);
+      mergeActiveObject();
+      setIsMaskVisualizationEnabled(true);
       if (maskTool === 'rect') {
-        setDraftMaskRect(getMaskRectFromPoints(point, point));
-        setDragState({ kind: 'mask-rect', start: point });
+        setDraftMaskRect(getMaskRectFromPoints(point, point, maskPaintValue));
+        replaceDragState({ kind: 'mask-rect', start: point, value: maskPaintValue });
       } else {
         setDraftMaskFreehand([point]);
-        setDragState({ kind: 'mask-freehand' });
+        replaceDragState({ kind: 'mask-freehand', value: maskPaintValue });
       }
       return;
     }
 
     if (mode === 'scribble') {
-      setSelectedObjectId(null);
+      mergeActiveObject();
       setDraftScribble({ points: [point], brushSize: scribbleBrushSize });
-      setDragState({ kind: 'scribble' });
+      replaceDragState({ kind: 'scribble' });
       return;
     }
 
     if (mode === 'feather') {
-      const targetObject = selectedObject && isPointInObject(point, selectedObject)
-        ? selectedObject
-        : findObjectAt(point);
-      if (targetObject) {
-        setSelectedObjectId(targetObject.id);
-        applyFeatherStroke(targetObject.id, null, point);
-        setDragState({
-          kind: 'feather',
-          objectId: targetObject.id,
-          lastPoint: point,
-        });
-      } else {
-        setDragState(null);
+      mergeActiveObject();
+      const imageCanvas = baseImageCanvasRef.current;
+      if (!imageCanvas) {
+        return;
       }
+      pushImageHistory(imageCanvas);
+      applyFeatherStrokeToImage(imageCanvas, null, point, featherBrushSize);
+      setBaseImageVersion((version) => version + 1);
+      replaceDragState({
+        kind: 'feather',
+        lastPoint: point,
+      });
       return;
     }
 
-    if (selectedObject) {
+    const object = activeObjectRef.current;
+    if (object) {
       const scale = getViewScale(canvas);
-      const rotatePointValue = getRotateHandlePosition(selectedObject);
+      const rotatePointValue = getRotateHandlePosition(object);
       if (Math.hypot(point.x - rotatePointValue.x, point.y - rotatePointValue.y) <= 12 * scale) {
-        setDragState({
+        replaceDragState({
           kind: 'rotate',
-          objectId: selectedObject.id,
-          startAngle: Math.atan2(point.y - selectedObject.y, point.x - selectedObject.x),
-          original: objectSnapshot(selectedObject),
+          startAngle: Math.atan2(point.y - object.y, point.x - object.x),
+          original: objectSnapshot(object),
         });
         return;
       }
 
-      const resizeHandle = findResizeHandle(point, selectedObject, 12 * scale);
+      const resizeHandle = findResizeHandle(point, object, 12 * scale);
       if (resizeHandle) {
-        setDragState({
+        replaceDragState({
           kind: 'resize',
-          objectId: selectedObject.id,
           handle: resizeHandle,
-          original: objectSnapshot(selectedObject),
+          original: objectSnapshot(object),
         });
         return;
       }
+
+      if (isPointInObject(point, object)) {
+        replaceDragState({
+          kind: 'move',
+          start: point,
+          original: objectSnapshot(object),
+        });
+        return;
+      }
+
+      mergeActiveObject();
     }
 
-    const object = findObjectAt(point);
-    if (object) {
-      setSelectedObjectId(object.id);
-      setDragState({
-        kind: 'move',
-        objectId: object.id,
-        start: point,
-        original: objectSnapshot(object),
-      });
+    if (selectionTool === 'rect') {
+      const nextRect = getMaskRectFromPoints(point, point, maskPaintValue);
+      setDraftSelectionRect(nextRect);
+      replaceDragState({ kind: 'select-rect', start: point });
+    } else if (selectionTool === 'lasso') {
+      setDraftSelectionLasso([point]);
+      replaceDragState({ kind: 'select-lasso' });
     } else {
-      setSelectedObjectId(null);
-      setDragState(null);
+      replaceDragState(null);
     }
   }
 
@@ -1083,89 +1398,108 @@ export const SceneImageInpaintEditor = forwardRef<
     }
 
     const point = getCanvasPoint(canvas, event, width, height);
+    const currentDragState = dragStateRef.current;
     setHoverPoint(point);
 
-    if (!dragState) {
-      if (mode === 'select' && selectedObject) {
-        setHoverResizeHandle(findResizeHandle(point, selectedObject, 12 * getViewScale(canvas)));
+    if (!currentDragState) {
+      if (mode === 'select' && activeObject) {
+        setHoverResizeHandle(findResizeHandle(point, activeObject, 12 * getViewScale(canvas)));
       } else {
         setHoverResizeHandle(null);
       }
       return;
     }
 
-    if (dragState.kind === 'mask-freehand') {
+    if (currentDragState.kind === 'mask-freehand') {
       setDraftMaskFreehand((current) => [...current, point]);
       return;
     }
 
-    if (dragState.kind === 'mask-rect') {
-      setDraftMaskRect(getMaskRectFromPoints(dragState.start, point));
+    if (currentDragState.kind === 'mask-rect') {
+      setDraftMaskRect(getMaskRectFromPoints(currentDragState.start, point, currentDragState.value));
       return;
     }
 
-    if (dragState.kind === 'scribble') {
+    if (currentDragState.kind === 'select-rect') {
+      setDraftSelectionRect(getMaskRectFromPoints(currentDragState.start, point, maskPaintValue));
+      return;
+    }
+
+    if (currentDragState.kind === 'select-lasso') {
+      setDraftSelectionLasso((current) => [...current, point]);
+      return;
+    }
+
+    if (currentDragState.kind === 'scribble') {
       setDraftScribble((current) => (
         current ? { ...current, points: [...current.points, point] } : current
       ));
       return;
     }
 
-    if (dragState.kind === 'feather') {
-      applyFeatherStroke(dragState.objectId, dragState.lastPoint, point);
-      setDragState({
-        ...dragState,
+    if (currentDragState.kind === 'feather') {
+      const imageCanvas = baseImageCanvasRef.current;
+      if (!imageCanvas) {
+        return;
+      }
+      applyFeatherStrokeToImage(imageCanvas, currentDragState.lastPoint, point, featherBrushSize);
+      setBaseImageVersion((version) => version + 1);
+      replaceDragState({
+        ...currentDragState,
         lastPoint: point,
       });
       return;
     }
 
-    if (dragState.kind === 'move') {
-      updateObject(dragState.objectId, (object) => ({
+    if (currentDragState.kind === 'move') {
+      setActiveObjectValue((object) => ({
         ...object,
-        x: dragState.original.x + point.x - dragState.start.x,
-        y: dragState.original.y + point.y - dragState.start.y,
+        x: currentDragState.original.x + point.x - currentDragState.start.x,
+        y: currentDragState.original.y + point.y - currentDragState.start.y,
+        dirty: true,
       }));
       return;
     }
 
-    if (dragState.kind === 'rotate') {
-      const angle = Math.atan2(point.y - dragState.original.y, point.x - dragState.original.x);
-      updateObject(dragState.objectId, (object) => ({
+    if (currentDragState.kind === 'rotate') {
+      const angle = Math.atan2(point.y - currentDragState.original.y, point.x - currentDragState.original.x);
+      setActiveObjectValue((object) => ({
         ...object,
-        rotation: dragState.original.rotation + angle - dragState.startAngle,
+        rotation: currentDragState.original.rotation + angle - currentDragState.startAngle,
+        dirty: true,
       }));
       return;
     }
 
-    const localPoint = toObjectLocal(point, dragState.original);
-    updateObject(dragState.objectId, (object) => {
-      let nextWidth = dragState.original.width;
-      let nextHeight = dragState.original.height;
-      if (dragState.handle.includes('e') || dragState.handle.includes('w')) {
+    const localPoint = toObjectLocal(point, currentDragState.original);
+    setActiveObjectValue((object) => {
+      let nextWidth = currentDragState.original.width;
+      let nextHeight = currentDragState.original.height;
+      if (currentDragState.handle.includes('e') || currentDragState.handle.includes('w')) {
         nextWidth = Math.max(MIN_OBJECT_SIZE, Math.abs(localPoint.x) * 2);
       }
-      if (dragState.handle.includes('n') || dragState.handle.includes('s')) {
+      if (currentDragState.handle.includes('n') || currentDragState.handle.includes('s')) {
         nextHeight = Math.max(MIN_OBJECT_SIZE, Math.abs(localPoint.y) * 2);
       }
-      if (dragState.handle.length === 2) {
+      if (currentDragState.handle.length === 2) {
         const scale = Math.max(
-          nextWidth / dragState.original.width,
-          nextHeight / dragState.original.height,
+          nextWidth / currentDragState.original.width,
+          nextHeight / currentDragState.original.height,
         );
-        nextWidth = Math.max(MIN_OBJECT_SIZE, dragState.original.width * scale);
-        nextHeight = Math.max(MIN_OBJECT_SIZE, dragState.original.height * scale);
+        nextWidth = Math.max(MIN_OBJECT_SIZE, currentDragState.original.width * scale);
+        nextHeight = Math.max(MIN_OBJECT_SIZE, currentDragState.original.height * scale);
       }
       return {
         ...object,
         width: nextWidth,
         height: nextHeight,
+        dirty: true,
       };
     });
   }
 
   function handlePointerLeave() {
-    if (dragState) {
+    if (dragStateRef.current) {
       return;
     }
 
@@ -1175,106 +1509,173 @@ export const SceneImageInpaintEditor = forwardRef<
 
   function handlePointerUp(event: ReactPointerEvent<HTMLCanvasElement>) {
     const canvas = canvasRef.current;
+    const point = canvas ? getCanvasPoint(canvas, event, width, height) : null;
+    const currentDragState = dragStateRef.current;
     if (canvas?.hasPointerCapture(event.pointerId)) {
       canvas.releasePointerCapture(event.pointerId);
     }
 
-    if (dragState?.kind === 'mask-freehand') {
+    if (currentDragState?.kind === 'mask-freehand') {
       setDraftMaskFreehand((current) => {
-        if (current.length >= MASK_FREEHAND_MIN_POINTS) {
-          setMaskRegions((regions) => [...regions, { kind: 'freehand', points: current }]);
+        const points = point ? [...current, point] : current;
+        if (points.length >= MASK_FREEHAND_MIN_POINTS) {
+          setMaskRegions((regions) => {
+            pushMaskHistoryFrom(regions);
+            return [...regions, { kind: 'freehand', points, value: currentDragState.value }];
+          });
         }
         return [];
       });
     }
-    if (dragState?.kind === 'mask-rect') {
-      setDraftMaskRect((current) => {
-        if (current && current.width >= MASK_RECT_MIN_SIZE && current.height >= MASK_RECT_MIN_SIZE) {
-          setMaskRegions((regions) => [...regions, current]);
-        }
-        return null;
-      });
+
+    if (currentDragState?.kind === 'mask-rect') {
+      const nextRect = point ? getMaskRectFromPoints(currentDragState.start, point, currentDragState.value) : draftMaskRect;
+      if (nextRect && nextRect.width >= MASK_RECT_MIN_SIZE && nextRect.height >= MASK_RECT_MIN_SIZE) {
+        setMaskRegions((regions) => {
+          pushMaskHistoryFrom(regions);
+          return [...regions, nextRect];
+        });
+      }
+      setDraftMaskRect(null);
     }
-    if (dragState?.kind === 'scribble') {
+
+    if (currentDragState?.kind === 'select-rect') {
+      const nextRect = point ? getMaskRectFromPoints(currentDragState.start, point, maskPaintValue) : draftSelectionRect;
+      if (nextRect && nextRect.width >= MASK_RECT_MIN_SIZE && nextRect.height >= MASK_RECT_MIN_SIZE) {
+        finishSelection(nextRect);
+      }
+      setDraftSelectionRect(null);
+    }
+
+    if (currentDragState?.kind === 'select-lasso') {
+      const points = point ? [...draftSelectionLasso, point] : draftSelectionLasso;
+      if (points.length >= SELECT_LASSO_MIN_POINTS) {
+        finishSelection({ kind: 'freehand', points, value: maskPaintValue });
+      }
+      setDraftSelectionLasso([]);
+    }
+
+    if (currentDragState?.kind === 'scribble') {
       setDraftScribble((current) => {
-        if (current && current.points.length > 0) {
-          setScribbleStrokes((strokes) => [...strokes, current]);
+        const stroke = current && point ? { ...current, points: [...current.points, point] } : current;
+        if (stroke && stroke.points.length > 0) {
+          setScribbleStrokes((strokes) => {
+            pushScribbleHistoryFrom(strokes);
+            return [...strokes, stroke];
+          });
         }
         return null;
       });
     }
-    setDragState(null);
+
+    replaceDragState(null);
     setHoverResizeHandle(null);
   }
 
-  function deleteSelectedObject() {
-    if (!selectedObjectId) {
+  function undoImage() {
+    if (activeObjectRef.current) {
       return;
     }
 
-    setObjects((current) => {
-      const removedObject = current.find((object) => object.id === selectedObjectId);
-      if (removedObject) {
-        closeObjects([removedObject]);
+    const previousCanvas = imageHistoryRef.current[imageHistoryRef.current.length - 1];
+    if (!previousCanvas) {
+      return;
+    }
+    imageHistoryRef.current = imageHistoryRef.current.slice(0, -1);
+    setImageHistoryCount(imageHistoryRef.current.length);
+    replaceBaseImageCanvas(cloneCanvas(previousCanvas));
+  }
+
+  function undoMask() {
+    setMaskHistory((history) => {
+      const previousRegions = history[history.length - 1];
+      if (!previousRegions) {
+        return history;
       }
-      return current.filter((object) => object.id !== selectedObjectId);
+      setMaskRegions(previousRegions.map((region) => ({ ...region })));
+      setIsMaskVisualizationEnabled(true);
+      return history.slice(0, -1);
     });
-    setSelectedObjectId(null);
-  }
-
-  function resetSelectedObjectFeather() {
-    if (!selectedObjectId) {
-      return;
-    }
-
-    updateObject(selectedObjectId, (object) => {
-      if (!object.editCanvas) {
-        return object;
-      }
-      const nextObject = { ...object };
-      delete nextObject.editCanvas;
-      return nextObject;
-    });
-  }
-
-  function flipSelectedObjectX() {
-    if (!selectedObjectId) {
-      return;
-    }
-
-    updateObject(selectedObjectId, (object) => ({
-      ...object,
-      flipX: !object.flipX,
-    }));
-  }
-
-  function handleKeyDown(event: ReactKeyboardEvent<HTMLCanvasElement>) {
-    if (disabled || isGenerating || event.key !== 'Delete' || !selectedObjectId) {
-      return;
-    }
-
-    event.preventDefault();
-    deleteSelectedObject();
-  }
-
-  function clearLastMaskRegion() {
-    setMaskRegions((current) => current.slice(0, -1));
-  }
-
-  function clearAllMaskRegions() {
-    setMaskRegions([]);
     setDraftMaskFreehand([]);
     setDraftMaskRect(null);
   }
 
-  function undoLastScribble() {
-    setScribbleStrokes((current) => current.slice(0, -1));
+  function undoScribble() {
+    setScribbleHistory((history) => {
+      const previousStrokes = history[history.length - 1];
+      if (!previousStrokes) {
+        return history;
+      }
+      setScribbleStrokes(previousStrokes.map((stroke) => ({
+        ...stroke,
+        points: stroke.points.map((point) => ({ ...point })),
+      })));
+      return history.slice(0, -1);
+    });
     setDraftScribble(null);
   }
 
+  function clearAllMaskRegions() {
+    setMaskRegions((current) => {
+      if (current.length > 0) {
+        pushMaskHistoryFrom(current);
+      }
+      return [];
+    });
+    setDraftMaskFreehand([]);
+    setDraftMaskRect(null);
+    setIsMaskVisualizationEnabled(true);
+  }
+
   function clearAllScribbles() {
-    setScribbleStrokes([]);
+    setScribbleStrokes((current) => {
+      if (current.length > 0) {
+        pushScribbleHistoryFrom(current);
+      }
+      return [];
+    });
     setDraftScribble(null);
+  }
+
+  function deleteActiveObject() {
+    if (!activeObjectRef.current) {
+      return;
+    }
+    discardActiveObject();
+  }
+
+  function flipActiveObjectX() {
+    if (!activeObjectRef.current) {
+      return;
+    }
+    setActiveObjectValue((object) => ({
+      ...object,
+      flipX: !object.flipX,
+      dirty: true,
+    }));
+  }
+
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLCanvasElement>) {
+    if (disabled || isGenerating) {
+      return;
+    }
+
+    if (event.key === 'Delete' && activeObjectRef.current) {
+      event.preventDefault();
+      deleteActiveObject();
+      return;
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+      event.preventDefault();
+      if (mode === 'mask') {
+        undoMask();
+      } else if (mode === 'scribble') {
+        undoScribble();
+      } else {
+        undoImage();
+      }
+    }
   }
 
   function updateControlGuidanceStart(value: number) {
@@ -1293,10 +1694,23 @@ export const SceneImageInpaintEditor = forwardRef<
         throw new Error('이미지 편집기가 아직 준비되지 않았습니다.');
       }
 
+      const imageCanvas = renderImageCanvas(
+        width,
+        height,
+        baseImageCanvasRef.current,
+        activeObjectRef.current,
+      );
+      if (activeObjectRef.current) {
+        if (activeObjectRef.current.dirty && baseImageCanvasRef.current) {
+          pushImageHistory(baseImageCanvasRef.current);
+          replaceBaseImageCanvas(cloneCanvas(imageCanvas));
+        }
+        replaceActiveObject(null);
+      }
+
       const finalScribbleStrokes = draftScribble?.points.length
         ? [...scribbleStrokes, draftScribble]
         : scribbleStrokes;
-      const imageCanvas = renderCompositeCanvas(width, height, objectsRef.current);
       const maskCanvas = renderMaskCanvas(width, height, maskRegions);
       const scribbleCanvas = renderScribbleCanvas(width, height, finalScribbleStrokes);
       const hasScribble = finalScribbleStrokes.length > 0;
@@ -1332,27 +1746,27 @@ export const SceneImageInpaintEditor = forwardRef<
           <Button
             className={TOOL_BUTTON_CLASS}
             variant={mode === 'select' ? 'primary' : 'default'}
-            onClick={() => setMode('select')}
+            onClick={() => switchMode('select')}
             disabled={disabled || isGenerating}
-            aria-label="선택 및 이동"
-            title="선택 및 이동"
+            aria-label="선택 및 object 편집"
+            title="선택 및 object 편집"
           >
             ✋
           </Button>
           <Button
             className={TOOL_BUTTON_CLASS}
             variant={mode === 'mask' ? 'primary' : 'default'}
-            onClick={() => setMode('mask')}
+            onClick={() => switchMode('mask')}
             disabled={disabled || isGenerating}
-            aria-label="Mask 보존 영역"
-            title="Mask 보존 영역"
+            aria-label="Mask 편집"
+            title="Mask 편집"
           >
             ➰
           </Button>
           <Button
             className={TOOL_BUTTON_CLASS}
             variant={mode === 'feather' ? 'primary' : 'default'}
-            onClick={() => setMode('feather')}
+            onClick={() => switchMode('feather')}
             disabled={disabled || isGenerating}
             aria-label="Feather 브러시"
             title="Feather 브러시"
@@ -1362,7 +1776,7 @@ export const SceneImageInpaintEditor = forwardRef<
           <Button
             className={TOOL_BUTTON_CLASS}
             variant={mode === 'scribble' ? 'primary' : 'default'}
-            onClick={() => setMode('scribble')}
+            onClick={() => switchMode('scribble')}
             disabled={disabled || isGenerating}
             aria-label="Scribble ControlNet"
             title="Scribble ControlNet"
@@ -1374,19 +1788,107 @@ export const SceneImageInpaintEditor = forwardRef<
 
       <div className="flex min-h-8 min-w-0 flex-wrap items-center justify-end gap-2">
         {mode === 'select' ? (
-          <Button
-            className={TOOL_BUTTON_CLASS}
-            onClick={flipSelectedObjectX}
-            disabled={disabled || isGenerating || !selectedObject}
-            aria-label="선택 object 좌우반전"
-            title="선택 object 좌우반전"
-          >
-            ↔️
-          </Button>
+          <>
+            <Button
+              className={TOOL_BUTTON_CLASS}
+              variant={selectionTool === 'move' ? 'primary' : 'default'}
+              onClick={() => setSelectionTool('move')}
+              disabled={disabled || isGenerating}
+              aria-label="Object 이동"
+              title="Object 이동"
+            >
+              ↕
+            </Button>
+            <Button
+              className={TOOL_BUTTON_CLASS}
+              variant={selectionTool === 'rect' ? 'primary' : 'default'}
+              onClick={() => setSelectionTool('rect')}
+              disabled={disabled || isGenerating}
+              aria-label="사각형 선택"
+              title="사각형 선택"
+            >
+              ▭
+            </Button>
+            <Button
+              className={TOOL_BUTTON_CLASS}
+              variant={selectionTool === 'lasso' ? 'primary' : 'default'}
+              onClick={() => setSelectionTool('lasso')}
+              disabled={disabled || isGenerating}
+              aria-label="Lasso 선택"
+              title="Lasso 선택"
+            >
+              〰
+            </Button>
+            <Button
+              className={TOOL_BUTTON_CLASS}
+              onClick={flipActiveObjectX}
+              disabled={disabled || isGenerating || !activeObject}
+              aria-label="선택 object 좌우반전"
+              title="선택 object 좌우반전"
+            >
+              ↔
+            </Button>
+            <Button
+              className={TOOL_BUTTON_CLASS}
+              onClick={() => applyActiveObjectToMask('white')}
+              disabled={disabled || isGenerating || !activeObject}
+              aria-label="선택 object를 white mask로 적용"
+              title="선택 object를 white mask로 적용"
+            >
+              □
+            </Button>
+            <Button
+              className={TOOL_BUTTON_CLASS}
+              onClick={() => applyActiveObjectToMask('black')}
+              disabled={disabled || isGenerating || !activeObject}
+              aria-label="선택 object를 black mask로 적용"
+              title="선택 object를 black mask로 적용"
+            >
+              ■
+            </Button>
+            <Button
+              className={TOOL_BUTTON_CLASS}
+              onClick={undoImage}
+              disabled={disabled || isGenerating || Boolean(activeObject) || imageHistoryCount === 0}
+              aria-label="Image undo"
+              title="Image undo"
+            >
+              ↩
+            </Button>
+            <Button
+              className={TOOL_BUTTON_CLASS}
+              onClick={deleteActiveObject}
+              disabled={disabled || isGenerating || !activeObject}
+              aria-label="선택 object 삭제"
+              title="선택 object 삭제"
+            >
+              ⌫
+            </Button>
+          </>
         ) : null}
 
         {mode === 'mask' ? (
           <>
+            <Button
+              className={TOOL_BUTTON_CLASS}
+              variant={maskPaintValue === 'white' ? 'primary' : 'default'}
+              onClick={() => setMaskPaintValue('white')}
+              disabled={disabled || isGenerating}
+              aria-label="White mask 생성 허용"
+              title="White mask 생성 허용"
+            >
+              □
+            </Button>
+            <Button
+              className={TOOL_BUTTON_CLASS}
+              variant={maskPaintValue === 'black' ? 'primary' : 'default'}
+              onClick={() => setMaskPaintValue('black')}
+              disabled={disabled || isGenerating}
+              aria-label="Black mask 생성 금지"
+              title="Black mask 생성 금지"
+            >
+              ■
+            </Button>
             <Button
               className={TOOL_BUTTON_CLASS}
               variant={maskTool === 'freehand' ? 'primary' : 'default'}
@@ -1395,7 +1897,7 @@ export const SceneImageInpaintEditor = forwardRef<
               aria-label="Freehand mask"
               title="Freehand mask"
             >
-              〰️
+              〰
             </Button>
             <Button
               className={TOOL_BUTTON_CLASS}
@@ -1409,12 +1911,22 @@ export const SceneImageInpaintEditor = forwardRef<
             </Button>
             <Button
               className={TOOL_BUTTON_CLASS}
-              onClick={clearLastMaskRegion}
-              disabled={disabled || isGenerating || maskRegions.length === 0}
-              aria-label="마지막 mask 취소"
-              title="마지막 mask 취소"
+              variant={isMaskVisualizationEnabled ? 'primary' : 'default'}
+              onClick={() => setIsMaskVisualizationEnabled((value) => !value)}
+              disabled={disabled || isGenerating}
+              aria-label="Mask 시각화 토글"
+              title="Mask 시각화 토글"
             >
-              ↩️
+              ◐
+            </Button>
+            <Button
+              className={TOOL_BUTTON_CLASS}
+              onClick={undoMask}
+              disabled={disabled || isGenerating || maskHistory.length === 0}
+              aria-label="Mask undo"
+              title="Mask undo"
+            >
+              ↩
             </Button>
             <Button
               className={TOOL_BUTTON_CLASS}
@@ -1450,12 +1962,12 @@ export const SceneImageInpaintEditor = forwardRef<
             </label>
             <Button
               className={TOOL_BUTTON_CLASS}
-              onClick={resetSelectedObjectFeather}
-              disabled={disabled || isGenerating || !selectedObject?.editCanvas}
-              aria-label="Feather 편집 초기화"
-              title="Feather 편집 초기화"
+              onClick={undoImage}
+              disabled={disabled || isGenerating || Boolean(activeObject) || imageHistoryCount === 0}
+              aria-label="Image undo"
+              title="Image undo"
             >
-              🔄
+              ↩
             </Button>
           </>
         ) : null}
@@ -1532,12 +2044,12 @@ export const SceneImageInpaintEditor = forwardRef<
             </label>
             <Button
               className={TOOL_BUTTON_CLASS}
-              onClick={undoLastScribble}
-              disabled={disabled || isGenerating || scribbleStrokes.length === 0}
-              aria-label="마지막 scribble 취소"
-              title="마지막 scribble 취소"
+              onClick={undoScribble}
+              disabled={disabled || isGenerating || scribbleHistory.length === 0}
+              aria-label="Scribble undo"
+              title="Scribble undo"
             >
-              ↩️
+              ↩
             </Button>
             <Button
               className={TOOL_BUTTON_CLASS}
