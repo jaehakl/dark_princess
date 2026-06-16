@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db import Scene, SceneOption
 from models import GenerateSceneOptionRequestBase
 from settings import settings
-from utils.model_runtime import encode_scene_text
+from model_runtime import encode_scene_text
 from utils.vector import VECTOR_DIMENSION
 
 

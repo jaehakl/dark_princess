@@ -1,61 +1,16 @@
 from __future__ import annotations
 
 import asyncio
-import csv
 import gc
 import random
-from typing import Any, Callable
+from typing import Any
 
-
-_embedding_lock = asyncio.Lock()
-_embedding_model_name: str | None = None
-_embedding_model: Any | None = None
 
 _image_lock = asyncio.Lock()
 _image_ckpt_path: str | None = None
 _image_pipe_mode: str | None = None
 _image_controlnet_model_ids: tuple[str, ...] | None = None
 _image_pipe: Any | None = None
-
-_selection_lock = asyncio.Lock()
-_selection_model_file_url: str | None = None
-_selection_model: Any | None = None
-
-_wd14_lock = asyncio.Lock()
-_wd14_model_name: str | None = None
-_wd14_model: Any | None = None
-_wd14_transform: Any | None = None
-_wd14_device: str | None = None
-_wd14_tag_names: list[str] = []
-_wd14_rating_indexes: list[int] = []
-_wd14_general_indexes: list[int] = []
-_wd14_character_indexes: list[int] = []
-_WD14_KAOMOJIS = {
-    "0_0",
-    "(o)_(o)",
-    "+_+",
-    "+_-",
-    "._.",
-    "_",
-    "<|>_<|>",
-    "=_=",
-    ">_<",
-    "3_3",
-    "6_9",
-    ">_o",
-    "@_@",
-    "^_^",
-    "o_o",
-    "u_u",
-    "x_x",
-    "|_|",
-    "||_||",
-}
-
-
-async def encode_scene_text(model_name: str, text: str) -> list[float]:
-    async with _embedding_lock:
-        return await asyncio.to_thread(_encode_scene_text_locked, model_name, text)
 
 
 async def generate_images_batch(
@@ -112,190 +67,13 @@ async def generate_images_batch(
         )
 
 
-async def predict_target_scene_embedding(
-    model_file_url: str,
-    input_values: list[float],
-    *,
-    load_model_artifact: Callable[[str], dict[str, Any]],
-    build_model: Callable[[dict[str, Any]], Any],
-    load_torch: Callable[[], tuple[Any, Any]],
-) -> list[float]:
-    async with _selection_lock:
-        return await asyncio.to_thread(
-            _predict_target_scene_embedding_locked,
-            model_file_url,
-            input_values,
-            load_model_artifact,
-            build_model,
-            load_torch,
-        )
-
-
-async def update_selection_model(update_model: Callable[[], Any]) -> Any:
-    async with _selection_lock:
-        return await asyncio.to_thread(update_model)
-
-
-async def predict_wd14_tags(
-    model_name: str,
-    image: Any,
-    *,
-    general_threshold: float,
-    character_threshold: float,
-) -> dict[str, dict[str, float]]:
-    async with _wd14_lock:
-        return await asyncio.to_thread(
-            _predict_wd14_tags_locked,
-            model_name,
-            image,
-            general_threshold,
-            character_threshold,
-        )
-
-
-def reset_model_runtime_for_tests() -> None:
-    global _embedding_model_name, _embedding_model
+def _reset_image_runtime_for_tests() -> None:
     global _image_ckpt_path, _image_pipe_mode, _image_controlnet_model_ids, _image_pipe
-    global _selection_model_file_url, _selection_model
-    global _wd14_model_name, _wd14_model, _wd14_transform, _wd14_device
-    global _wd14_tag_names, _wd14_rating_indexes, _wd14_general_indexes, _wd14_character_indexes
 
-    _embedding_model_name = None
-    _embedding_model = None
     _image_ckpt_path = None
     _image_pipe_mode = None
     _image_controlnet_model_ids = None
     _image_pipe = None
-    _selection_model_file_url = None
-    _selection_model = None
-    _wd14_model_name = None
-    _wd14_model = None
-    _wd14_transform = None
-    _wd14_device = None
-    _wd14_tag_names = []
-    _wd14_rating_indexes = []
-    _wd14_general_indexes = []
-    _wd14_character_indexes = []
-
-
-def _encode_scene_text_locked(model_name: str, text: str) -> list[float]:
-    model = _get_embedding_model_locked(model_name)
-    raw_embedding = model.encode(text)
-    if hasattr(raw_embedding, "tolist"):
-        raw_embedding = raw_embedding.tolist()
-    return [float(value) for value in raw_embedding]
-
-
-def _get_embedding_model_locked(model_name: str) -> Any:
-    global _embedding_model_name, _embedding_model
-
-    if _embedding_model is None or _embedding_model_name != model_name:
-        from sentence_transformers import SentenceTransformer
-
-        _embedding_model = SentenceTransformer(model_name, device="cpu")
-        if hasattr(_embedding_model, "to"):
-            _embedding_model = _embedding_model.to("cpu")
-        _embedding_model_name = model_name
-    return _embedding_model
-
-
-def _predict_wd14_tags_locked(
-    model_name: str,
-    image: Any,
-    general_threshold: float,
-    character_threshold: float,
-) -> dict[str, dict[str, float]]:
-    torch = _load_image_torch()
-    model, transform, device = _get_wd14_model_locked(model_name, torch)
-    image = _prepare_wd14_image(image)
-    inputs = transform(image).unsqueeze(0)
-    inputs = inputs[:, [2, 1, 0]]
-    inputs = inputs.to(device)
-
-    with torch.inference_mode():
-        outputs = torch.sigmoid(model(inputs)).squeeze(0).detach().cpu().tolist()
-
-    rating_tags = _wd14_score_map(outputs, _wd14_rating_indexes, 0.0)
-    general_tags = _wd14_score_map(outputs, _wd14_general_indexes, general_threshold)
-    character_tags = _wd14_score_map(outputs, _wd14_character_indexes, character_threshold)
-    return {
-        "rating_tags": rating_tags,
-        "general_tags": general_tags,
-        "character_tags": character_tags,
-    }
-
-
-def _get_wd14_model_locked(model_name: str, torch: Any) -> tuple[Any, Any, str]:
-    global _wd14_model_name, _wd14_model, _wd14_transform, _wd14_device
-    global _wd14_tag_names, _wd14_rating_indexes, _wd14_general_indexes, _wd14_character_indexes
-
-    if _wd14_model is None or _wd14_model_name != model_name:
-        from huggingface_hub import hf_hub_download
-        import timm
-        from timm.data import create_transform, resolve_data_config
-
-        print(f"Loading WD14 tagger model: {model_name}", flush=True)
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        model = timm.create_model(f"hf_hub:{model_name}", pretrained=True)
-        model.eval()
-        model.to(device)
-        labels_path = hf_hub_download(repo_id=model_name, filename="selected_tags.csv")
-        tag_names, rating_indexes, general_indexes, character_indexes = _load_wd14_labels(labels_path)
-
-        _wd14_model = model
-        _wd14_transform = create_transform(**resolve_data_config(model.pretrained_cfg, model=model))
-        _wd14_device = device
-        _wd14_model_name = model_name
-        _wd14_tag_names = tag_names
-        _wd14_rating_indexes = rating_indexes
-        _wd14_general_indexes = general_indexes
-        _wd14_character_indexes = character_indexes
-    return _wd14_model, _wd14_transform, _wd14_device or "cpu"
-
-
-def _load_wd14_labels(labels_path: str) -> tuple[list[str], list[int], list[int], list[int]]:
-    tag_names: list[str] = []
-    rating_indexes: list[int] = []
-    general_indexes: list[int] = []
-    character_indexes: list[int] = []
-    with open(labels_path, newline="", encoding="utf-8") as labels_file:
-        for index, row in enumerate(csv.DictReader(labels_file)):
-            name = row.get("name") or ""
-            category = int(row.get("category") or -1)
-            tag_names.append(name if name in _WD14_KAOMOJIS else name.replace("_", " "))
-            if category == 9:
-                rating_indexes.append(index)
-            elif category == 0:
-                general_indexes.append(index)
-            elif category == 4:
-                character_indexes.append(index)
-    return tag_names, rating_indexes, general_indexes, character_indexes
-
-
-def _prepare_wd14_image(image: Any) -> Any:
-    from PIL import Image
-
-    if image.mode not in {"RGB", "RGBA"}:
-        image = image.convert("RGBA") if "transparency" in image.info else image.convert("RGB")
-    if image.mode == "RGBA":
-        canvas = Image.new("RGBA", image.size, (255, 255, 255, 255))
-        canvas.alpha_composite(image)
-        image = canvas.convert("RGB")
-
-    width, height = image.size
-    square_size = max(width, height)
-    padded_image = Image.new("RGB", (square_size, square_size), (255, 255, 255))
-    padded_image.paste(image, ((square_size - width) // 2, (square_size - height) // 2))
-    return padded_image
-
-
-def _wd14_score_map(scores: list[float], indexes: list[int], threshold: float) -> dict[str, float]:
-    selected = {
-        _wd14_tag_names[index]: float(scores[index])
-        for index in indexes
-        if float(scores[index]) > threshold
-    }
-    return dict(sorted(selected.items(), key=lambda item: item[1], reverse=True))
 
 
 def _generate_images_batch_locked(
@@ -516,37 +294,6 @@ def _get_image_pipe_locked(
         _image_pipe_mode = image_mode
         _image_controlnet_model_ids = next_controlnet_model_ids
     return _image_pipe
-
-
-def _predict_target_scene_embedding_locked(
-    model_file_url: str,
-    input_values: list[float],
-    load_model_artifact: Callable[[str], dict[str, Any]],
-    build_model: Callable[[dict[str, Any]], Any],
-    load_torch: Callable[[], tuple[Any, Any]],
-) -> list[float]:
-    model = _get_selection_model_locked(model_file_url, load_model_artifact, build_model)
-    torch, _nn = load_torch()
-    with torch.no_grad():
-        return model(torch.tensor([input_values], dtype=torch.float32, device="cpu")).squeeze(0).tolist()
-
-
-def _get_selection_model_locked(
-    model_file_url: str,
-    load_model_artifact: Callable[[str], dict[str, Any]],
-    build_model: Callable[[dict[str, Any]], Any],
-) -> Any:
-    global _selection_model_file_url, _selection_model
-
-    if _selection_model is None or _selection_model_file_url != model_file_url:
-        artifact = load_model_artifact(model_file_url)
-        model = build_model(artifact["parameters"])
-        model = model.to("cpu")
-        model.load_state_dict(artifact["state_dict"])
-        model.eval()
-        _selection_model = model
-        _selection_model_file_url = model_file_url
-    return _selection_model
 
 
 def _load_image_torch() -> Any:

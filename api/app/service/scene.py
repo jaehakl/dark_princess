@@ -46,7 +46,7 @@ from utils.local_storage import (
     public_file_url,
     upload_fileobj,
 )
-from utils.model_runtime import encode_scene_text, generate_images_batch
+from model_runtime import encode_scene_text, generate_images_batch
 from utils.vector import VECTOR_DIMENSION, validate_embedding
 
 

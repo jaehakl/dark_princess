@@ -10,13 +10,14 @@ from db import Scene
 from models import ImageGenerationSettingsBase, ImagePromptExtractionResponseBase, RecommendPromptItemBase
 from settings import settings
 from service.selection_model import cosine_distance
-from utils.llm import (
+from model_runtime import (
     analyze_scene_components,
+    encode_scene_text,
     extract_visual_keywords,
+    predict_wd14_tags,
     translate_korean_to_english,
     translate_visual_keywords_to_english,
 )
-from utils.model_runtime import encode_scene_text, predict_wd14_tags
 from utils.vector import VECTOR_DIMENSION, validate_embedding
 
 #GEN_IMAGE_POSITIVE_BASE = "score_7_up, source_anime, cinematic composition,"

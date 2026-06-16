@@ -1,0 +1,42 @@
+from __future__ import annotations
+
+import asyncio
+from typing import Any
+
+
+_embedding_lock = asyncio.Lock()
+_embedding_model_name: str | None = None
+_embedding_model: Any | None = None
+
+
+async def encode_scene_text(model_name: str, text: str) -> list[float]:
+    async with _embedding_lock:
+        return await asyncio.to_thread(_encode_scene_text_locked, model_name, text)
+
+
+def _reset_embedding_runtime_for_tests() -> None:
+    global _embedding_model_name, _embedding_model
+
+    _embedding_model_name = None
+    _embedding_model = None
+
+
+def _encode_scene_text_locked(model_name: str, text: str) -> list[float]:
+    model = _get_embedding_model_locked(model_name)
+    raw_embedding = model.encode(text)
+    if hasattr(raw_embedding, "tolist"):
+        raw_embedding = raw_embedding.tolist()
+    return [float(value) for value in raw_embedding]
+
+
+def _get_embedding_model_locked(model_name: str) -> Any:
+    global _embedding_model_name, _embedding_model
+
+    if _embedding_model is None or _embedding_model_name != model_name:
+        from sentence_transformers import SentenceTransformer
+
+        _embedding_model = SentenceTransformer(model_name, device="cpu")
+        if hasattr(_embedding_model, "to"):
+            _embedding_model = _embedding_model.to("cpu")
+        _embedding_model_name = model_name
+    return _embedding_model

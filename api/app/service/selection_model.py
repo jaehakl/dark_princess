@@ -14,8 +14,8 @@ from db import Scene, SelectionModel, Status
 from models import AdjustSelectionModelRequestBase, GenerateSelectionModelRequestBase
 from service.scene_option import make_scene_option_embedding
 from utils.local_storage import build_object_key, delete_object, get_object_path, object_key_from_public_url, public_file_url, upload_fileobj
-from utils.model_runtime import predict_target_scene_embedding as predict_target_scene_embedding_cached
-from utils.model_runtime import update_selection_model
+from model_runtime import predict_target_scene_embedding as predict_target_scene_embedding_cached
+from model_runtime import update_selection_model
 from utils.vector import VECTOR_DIMENSION, validate_embedding
 
 
