@@ -375,6 +375,25 @@ function drawFreehandPath(
   }
 }
 
+function drawOpenPathPreview(
+  context: CanvasRenderingContext2D,
+  points: Point[],
+  scale: number,
+) {
+  if (points.length === 0) {
+    return;
+  }
+  if (points.length === 1) {
+    context.beginPath();
+    context.arc(points[0].x, points[0].y, Math.max(3 * scale, 2), 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    return;
+  }
+  drawFreehandPath(context, points, false);
+  context.stroke();
+}
+
 function drawMaskRegionPath(
   context: CanvasRenderingContext2D,
   region: SceneImageMaskRegion,
@@ -697,6 +716,35 @@ function drawMaskPreview(
   context.restore();
 }
 
+function drawSelectionPreview(
+  context: CanvasRenderingContext2D,
+  selectionRect: SceneImageMaskRectRegion | null,
+  selectionLasso: Point[],
+  scale: number,
+) {
+  context.clearRect(0, 0, context.canvas.width, context.canvas.height);
+  if (selectionRect) {
+    context.save();
+    context.strokeStyle = 'rgba(255, 244, 220, 0.98)';
+    context.fillStyle = 'rgba(255, 226, 186, 0.14)';
+    context.lineWidth = 2 * scale;
+    context.setLineDash([8 * scale, 5 * scale]);
+    drawMaskRegionPath(context, selectionRect);
+    context.fill();
+    context.stroke();
+    context.restore();
+  }
+  if (selectionLasso.length > 0) {
+    context.save();
+    context.strokeStyle = 'rgba(255, 244, 220, 0.98)';
+    context.fillStyle = 'rgba(255, 226, 186, 0.22)';
+    context.lineWidth = 2 * scale;
+    context.setLineDash([8 * scale, 5 * scale]);
+    drawOpenPathPreview(context, selectionLasso, scale);
+    context.restore();
+  }
+}
+
 function shuffleAdjacentPixels(canvas: HTMLCanvasElement, point: Point, radius: number) {
   const context = get2dContext(canvas);
   const left = Math.max(0, Math.floor(point.x - radius));
@@ -821,9 +869,12 @@ export const SceneImageInpaintEditor = forwardRef<
   onReadyChange,
 }, ref) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const selectionOverlayRef = useRef<HTMLCanvasElement | null>(null);
   const baseImageCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const activeObjectRef = useRef<CanvasObject | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
+  const draftSelectionRectRef = useRef<SceneImageMaskRectRegion | null>(null);
+  const draftSelectionLassoRef = useRef<Point[]>([]);
   const imageHistoryRef = useRef<HTMLCanvasElement[]>([]);
   const [baseImageCanvas, setBaseImageCanvas] = useState<HTMLCanvasElement | null>(null);
   const [baseImageVersion, setBaseImageVersion] = useState(0);
@@ -840,8 +891,8 @@ export const SceneImageInpaintEditor = forwardRef<
   );
   const [scribbleHistory, setScribbleHistory] = useState<SceneImageScribbleStroke[][]>([]);
   const [draftScribble, setDraftScribble] = useState<SceneImageScribbleStroke | null>(null);
-  const [draftSelectionRect, setDraftSelectionRect] = useState<SceneImageMaskRectRegion | null>(null);
-  const [draftSelectionLasso, setDraftSelectionLasso] = useState<Point[]>([]);
+  const [, setDraftSelectionRect] = useState<SceneImageMaskRectRegion | null>(null);
+  const [, setDraftSelectionLasso] = useState<Point[]>([]);
   const [mode, setMode] = useState<EditorMode>('select');
   const [selectionTool, setSelectionTool] = useState<SelectionTool>('rect');
   const [maskTool, setMaskTool] = useState<MaskTool>('freehand');
@@ -901,8 +952,8 @@ export const SceneImageInpaintEditor = forwardRef<
     setDraftMaskFreehand([]);
     setDraftMaskRect(null);
     setDraftScribble(null);
-    setDraftSelectionRect(null);
-    setDraftSelectionLasso([]);
+    replaceDraftSelectionRect(null);
+    replaceDraftSelectionLasso([]);
     setIsMaskVisualizationEnabled(false);
   }, [initialEditorState]);
 
@@ -938,6 +989,38 @@ export const SceneImageInpaintEditor = forwardRef<
   function replaceDragState(nextDragState: DragState | null) {
     dragStateRef.current = nextDragState;
     setDragState(nextDragState);
+  }
+
+  function replaceDraftSelectionRect(nextRect: SceneImageMaskRectRegion | null) {
+    draftSelectionRectRef.current = nextRect;
+    setDraftSelectionRect(nextRect);
+  }
+
+  function replaceDraftSelectionLasso(nextPoints: Point[]) {
+    draftSelectionLassoRef.current = nextPoints;
+    setDraftSelectionLasso(nextPoints);
+  }
+
+  function redrawSelectionOverlay() {
+    const overlayCanvas = selectionOverlayRef.current;
+    if (!overlayCanvas) {
+      return;
+    }
+    const context = get2dContext(overlayCanvas);
+    drawSelectionPreview(
+      context,
+      draftSelectionRectRef.current,
+      draftSelectionLassoRef.current,
+      getViewScale(overlayCanvas),
+    );
+  }
+
+  function clearSelectionOverlay() {
+    const overlayCanvas = selectionOverlayRef.current;
+    if (!overlayCanvas) {
+      return;
+    }
+    get2dContext(overlayCanvas).clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
   }
 
   function pushImageHistory(canvas = baseImageCanvasRef.current) {
@@ -999,8 +1082,9 @@ export const SceneImageInpaintEditor = forwardRef<
       mergeActiveObject();
       setDraftMaskFreehand([]);
       setDraftMaskRect(null);
-      setDraftSelectionRect(null);
-      setDraftSelectionLasso([]);
+      replaceDraftSelectionRect(null);
+      replaceDraftSelectionLasso([]);
+      clearSelectionOverlay();
       setDraftScribble(null);
       replaceDragState(null);
       setHoverResizeHandle(null);
@@ -1021,8 +1105,9 @@ export const SceneImageInpaintEditor = forwardRef<
       setImageHistoryCount(0);
       setDraftMaskFreehand([]);
       setDraftMaskRect(null);
-      setDraftSelectionRect(null);
-      setDraftSelectionLasso([]);
+      replaceDraftSelectionRect(null);
+      replaceDraftSelectionLasso([]);
+      clearSelectionOverlay();
       setDraftScribble(null);
       replaceDragState(null);
       onError?.(null);
@@ -1074,9 +1159,12 @@ export const SceneImageInpaintEditor = forwardRef<
     }
 
     void baseImageVersion;
+    void activeObject;
 
     const context = get2dContext(canvas);
-    drawEditorImage(context, width, height, baseImageCanvas, activeObject);
+    const currentBaseImageCanvas = baseImageCanvasRef.current ?? baseImageCanvas;
+    const currentActiveObject = activeObjectRef.current;
+    drawEditorImage(context, width, height, currentBaseImageCanvas, currentActiveObject);
 
     if (isMaskVisualizationEnabled) {
       drawWhiteMaskVisualization(context, width, height, maskRegions);
@@ -1111,27 +1199,6 @@ export const SceneImageInpaintEditor = forwardRef<
       }
     }
 
-    if (mode === 'select') {
-      if (draftSelectionRect) {
-        context.save();
-        context.strokeStyle = 'rgba(255, 244, 220, 0.96)';
-        context.lineWidth = 2 * scale;
-        context.setLineDash([8 * scale, 5 * scale]);
-        drawMaskRegionPath(context, draftSelectionRect);
-        context.stroke();
-        context.restore();
-      }
-      if (draftSelectionLasso.length > 0) {
-        context.save();
-        context.strokeStyle = 'rgba(255, 244, 220, 0.96)';
-        context.lineWidth = 2 * scale;
-        context.setLineDash([8 * scale, 5 * scale]);
-        drawFreehandPath(context, draftSelectionLasso, false);
-        context.stroke();
-        context.restore();
-      }
-    }
-
     for (const stroke of scribbleStrokes) {
       drawScribbleStroke(context, stroke, 'rgba(0, 0, 0, 0.92)');
     }
@@ -1152,7 +1219,7 @@ export const SceneImageInpaintEditor = forwardRef<
       context.restore();
     }
 
-    if (!activeObject || mode !== 'select') {
+    if (!currentActiveObject || mode !== 'select') {
       return;
     }
 
@@ -1161,10 +1228,10 @@ export const SceneImageInpaintEditor = forwardRef<
     context.lineWidth = 2 * scale;
     context.setLineDash([7 * scale, 4 * scale]);
     const corners = [
-      getHandlePosition(activeObject, 'nw'),
-      getHandlePosition(activeObject, 'ne'),
-      getHandlePosition(activeObject, 'se'),
-      getHandlePosition(activeObject, 'sw'),
+      getHandlePosition(currentActiveObject, 'nw'),
+      getHandlePosition(currentActiveObject, 'ne'),
+      getHandlePosition(currentActiveObject, 'se'),
+      getHandlePosition(currentActiveObject, 'sw'),
     ];
     context.beginPath();
     context.moveTo(corners[0].x, corners[0].y);
@@ -1175,8 +1242,8 @@ export const SceneImageInpaintEditor = forwardRef<
     context.stroke();
     context.setLineDash([]);
 
-    const rotateHandle = getRotateHandlePosition(activeObject);
-    const topHandle = getHandlePosition(activeObject, 'n');
+    const rotateHandle = getRotateHandlePosition(currentActiveObject);
+    const topHandle = getHandlePosition(currentActiveObject, 'n');
     context.beginPath();
     context.moveTo(topHandle.x, topHandle.y);
     context.lineTo(rotateHandle.x, rotateHandle.y);
@@ -1187,7 +1254,7 @@ export const SceneImageInpaintEditor = forwardRef<
     context.lineWidth = 1.5 * scale;
     const handleSize = 9 * scale;
     for (const handle of HANDLE_DEFS) {
-      const point = getHandlePosition(activeObject, handle.key);
+      const point = getHandlePosition(currentActiveObject, handle.key);
       context.beginPath();
       context.rect(point.x - handleSize / 2, point.y - handleSize / 2, handleSize, handleSize);
       context.fill();
@@ -1205,8 +1272,6 @@ export const SceneImageInpaintEditor = forwardRef<
     draftMaskFreehand,
     draftMaskRect,
     draftScribble,
-    draftSelectionLasso,
-    draftSelectionRect,
     featherBrushSize,
     height,
     hoverPoint,
@@ -1220,6 +1285,7 @@ export const SceneImageInpaintEditor = forwardRef<
 
   useEffect(() => {
     redraw();
+    redrawSelectionOverlay();
   }, [redraw]);
 
   async function addImageBlob(imageBlob: Blob) {
@@ -1381,11 +1447,15 @@ export const SceneImageInpaintEditor = forwardRef<
 
     if (selectionTool === 'rect') {
       const nextRect = getMaskRectFromPoints(point, point, maskPaintValue);
-      setDraftSelectionRect(nextRect);
+      replaceDraftSelectionRect(nextRect);
+      replaceDraftSelectionLasso([]);
       replaceDragState({ kind: 'select-rect', start: point });
+      redrawSelectionOverlay();
     } else if (selectionTool === 'lasso') {
-      setDraftSelectionLasso([point]);
+      replaceDraftSelectionRect(null);
+      replaceDraftSelectionLasso([point]);
       replaceDragState({ kind: 'select-lasso' });
+      redrawSelectionOverlay();
     } else {
       replaceDragState(null);
     }
@@ -1421,12 +1491,14 @@ export const SceneImageInpaintEditor = forwardRef<
     }
 
     if (currentDragState.kind === 'select-rect') {
-      setDraftSelectionRect(getMaskRectFromPoints(currentDragState.start, point, maskPaintValue));
+      replaceDraftSelectionRect(getMaskRectFromPoints(currentDragState.start, point, maskPaintValue));
+      redrawSelectionOverlay();
       return;
     }
 
     if (currentDragState.kind === 'select-lasso') {
-      setDraftSelectionLasso((current) => [...current, point]);
+      replaceDraftSelectionLasso([...draftSelectionLassoRef.current, point]);
+      redrawSelectionOverlay();
       return;
     }
 
@@ -1540,19 +1612,23 @@ export const SceneImageInpaintEditor = forwardRef<
     }
 
     if (currentDragState?.kind === 'select-rect') {
-      const nextRect = point ? getMaskRectFromPoints(currentDragState.start, point, maskPaintValue) : draftSelectionRect;
+      const nextRect = point
+        ? getMaskRectFromPoints(currentDragState.start, point, maskPaintValue)
+        : draftSelectionRectRef.current;
       if (nextRect && nextRect.width >= MASK_RECT_MIN_SIZE && nextRect.height >= MASK_RECT_MIN_SIZE) {
         finishSelection(nextRect);
       }
-      setDraftSelectionRect(null);
+      replaceDraftSelectionRect(null);
+      clearSelectionOverlay();
     }
 
     if (currentDragState?.kind === 'select-lasso') {
-      const points = point ? [...draftSelectionLasso, point] : draftSelectionLasso;
+      const points = point ? [...draftSelectionLassoRef.current, point] : draftSelectionLassoRef.current;
       if (points.length >= SELECT_LASSO_MIN_POINTS) {
         finishSelection({ kind: 'freehand', points, value: maskPaintValue });
       }
-      setDraftSelectionLasso([]);
+      replaceDraftSelectionLasso([]);
+      clearSelectionOverlay();
     }
 
     if (currentDragState?.kind === 'scribble') {
@@ -2082,6 +2158,13 @@ export const SceneImageInpaintEditor = forwardRef<
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
           onPointerLeave={handlePointerLeave}
+        />
+        <canvas
+          ref={selectionOverlayRef}
+          width={width}
+          height={height}
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 h-full w-full"
         />
 
         {(isWorking || isGenerating) ? (
