@@ -86,8 +86,9 @@ const FETCH_SCENE_BY_ID_REQUEST: GetListRequest = {
 
 function createEmptyImageEditorState(): SceneImageInpaintEditorState {
   return {
-    maskRegions: [],
-    scribbleStrokes: [],
+    imageDataUrl: null,
+    maskDataUrl: null,
+    scribbleDataUrl: null,
   };
 }
 
