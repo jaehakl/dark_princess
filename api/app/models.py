@@ -57,6 +57,15 @@ class ImageGenerationSettingsBase(BaseModel):
     pose_guidance_end: Optional[float] = None
 
 
+class ImagePromptExtractionResponseBase(BaseModel):
+    model: str
+    prompt: str
+    general_tags: Dict[str, float]
+    character_tags: Dict[str, float]
+    rating_tags: Dict[str, float]
+    thresholds: Dict[str, float]
+
+
 class GenerateSceneRequestBase(BaseModel):
     scene_id: Optional[int] = None
     script: str = ""

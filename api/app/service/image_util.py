@@ -1,9 +1,13 @@
+from io import BytesIO
+from math import isfinite
+
 from fastapi import HTTPException, status
+from PIL import Image, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import Scene
-from models import ImageGenerationSettingsBase, RecommendPromptItemBase
+from models import ImageGenerationSettingsBase, ImagePromptExtractionResponseBase, RecommendPromptItemBase
 from settings import settings
 from service.selection_model import cosine_distance
 from utils.llm import (
@@ -12,7 +16,7 @@ from utils.llm import (
     translate_korean_to_english,
     translate_visual_keywords_to_english,
 )
-from utils.model_runtime import encode_scene_text
+from utils.model_runtime import encode_scene_text, predict_wd14_tags
 from utils.vector import VECTOR_DIMENSION, validate_embedding
 
 #GEN_IMAGE_POSITIVE_BASE = "score_7_up, source_anime, cinematic composition,"
@@ -45,6 +49,55 @@ RECOMMEND_PROMPT_DISTANCE_EPSILON = 1e-6
 GEN_IMAGE_ALLOWED_SAMPLERS = {"", "euler", "euler_a", "dpmpp_2m", "unipc"}
 GEN_IMAGE_ALLOWED_SCHEDULERS = {"", "karras"}
 SCENE_PROMPT_FIELDS = ("background", "subject", "object", "action", "detail")
+WD14_TAGGER_MODEL_ID = "SmilingWolf/wd-eva02-large-tagger-v3"
+WD14_DEFAULT_GENERAL_THRESHOLD = 0.35
+WD14_DEFAULT_CHARACTER_THRESHOLD = 0.85
+
+
+async def extract_prompt_from_image(
+    image_bytes: bytes,
+    *,
+    general_threshold: float = WD14_DEFAULT_GENERAL_THRESHOLD,
+    character_threshold: float = WD14_DEFAULT_CHARACTER_THRESHOLD,
+) -> ImagePromptExtractionResponseBase:
+    validate_wd14_threshold(general_threshold, "general_threshold")
+    validate_wd14_threshold(character_threshold, "character_threshold")
+
+    try:
+        with Image.open(BytesIO(image_bytes)) as opened_image:
+            image = opened_image.copy()
+    except UnidentifiedImageError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="image is not a supported image") from exc
+    except OSError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="image could not be read") from exc
+
+    tags = await predict_wd14_tags(
+        WD14_TAGGER_MODEL_ID,
+        image,
+        general_threshold=general_threshold,
+        character_threshold=character_threshold,
+    )
+    selected_tags = sorted(
+        [*tags["general_tags"].items(), *tags["character_tags"].items()],
+        key=lambda item: item[1],
+        reverse=True,
+    )
+    return ImagePromptExtractionResponseBase(
+        model=WD14_TAGGER_MODEL_ID,
+        prompt=", ".join(tag for tag, _score in selected_tags),
+        general_tags=tags["general_tags"],
+        character_tags=tags["character_tags"],
+        rating_tags=tags["rating_tags"],
+        thresholds={
+            "general": general_threshold,
+            "character": character_threshold,
+        },
+    )
+
+
+def validate_wd14_threshold(value: float, name: str) -> None:
+    if not isfinite(value) or value < 0 or value > 1:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{name} must be between 0 and 1")
 
 
 async def translate_comma_texts(texts: list[str]) -> list[str]:
