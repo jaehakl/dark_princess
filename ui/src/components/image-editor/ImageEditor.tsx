@@ -1042,7 +1042,6 @@ export function ImageEditor({
         height={height}
         canvasRef={canvasRef}
         cursor={canvasCursor}
-        poseFrame={tab === 'pose'}
         label="Image generator canvas"
         onPaste={handlePaste}
         onPointerDown={handlePointerDown}
