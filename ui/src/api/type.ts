@@ -69,6 +69,8 @@ export type GenerateSceneOptionRequest = {
 export type SceneRecord = {
   id?: number | null;
   image_url?: string | null;
+  scribble_url?: string | null;
+  pose_url?: string | null;
   script: string;
   status_change: Record<string, unknown>;
   background?: string | null;

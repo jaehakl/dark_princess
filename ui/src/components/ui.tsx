@@ -175,7 +175,7 @@ export function ImageFrame({ className, ...props }: HTMLAttributes<HTMLDivElemen
   return (
     <div
       className={cx(
-        'grid aspect-[1216/832] place-items-center overflow-hidden bg-[rgba(16,7,22,0.76)]',
+        'grid aspect-square place-items-center overflow-hidden bg-[rgba(16,7,22,0.76)]',
         className,
       )}
       {...props}

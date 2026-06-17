@@ -31,7 +31,7 @@ class CrudSpec(Generic[ModelT, SchemaT]):
     public_url_fields: tuple[str, ...] = field(default_factory=tuple)
 
 
-FILE_REFERENCE_COLUMNS = (Scene.image_url, SelectionModel.file_url)
+FILE_REFERENCE_COLUMNS = (Scene.image_url, Scene.scribble_url, Scene.pose_url, SelectionModel.file_url)
 
 
 def computed(*path: str, attr: str = "id") -> tuple[tuple[str, ...], str]:

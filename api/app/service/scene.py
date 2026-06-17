@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi import HTTPException, status
 from PIL import Image, UnidentifiedImageError
 from pydantic import ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.datastructures import FormData, UploadFile
 
@@ -42,7 +42,6 @@ from utils.local_storage import (
     build_object_key,
     delete_object,
     is_allowed_content_type,
-    object_key_from_public_url,
     public_file_url,
     upload_fileobj,
 )
@@ -59,8 +58,6 @@ async def generate_scene_from_form(db: AsyncSession, form: FormData) -> Scene:
         mask_image=mask,
         scribble_image=scribble_image,
         pose_image=pose_image,
-        image_mode="controlnet_inpaint",
-        image_label="image",
     )
 
 
@@ -71,44 +68,11 @@ async def parse_generate_scene_form(
     if not generate_request.generate_image:
         return generate_request, None, None, None, None
 
-    image = await read_image_upload(form, "image", required=True)
-    mask = await read_image_upload(form, "mask", required=True)
-    scribble_image = await read_image_upload(form, "scribble_image", required=True)
+    image = await read_image_upload(form, "image")
+    mask = await read_image_upload(form, "mask")
+    scribble_image = await read_image_upload(form, "scribble_image")
     pose_image = await read_image_upload(form, "pose_image")
     return generate_request, image, mask, scribble_image, pose_image
-
-
-async def generate_scene_t2i_from_form(db: AsyncSession, form: FormData) -> Scene:
-    generate_request = parse_generate_scene_payload(form)
-    return await generate_scene(db, generate_request, image_mode="t2i", force_generate_image=True)
-
-
-async def generate_scene_i2i_from_form(db: AsyncSession, form: FormData) -> Scene:
-    generate_request = parse_generate_scene_payload(form)
-    image = await read_image_upload(form, "image", required=True)
-    return await generate_scene(
-        db,
-        generate_request,
-        seed_image=image,
-        image_mode="i2i",
-        image_label="image",
-        force_generate_image=True,
-    )
-
-
-async def generate_scene_inpaint_from_form(db: AsyncSession, form: FormData) -> Scene:
-    generate_request = parse_generate_scene_payload(form)
-    image = await read_image_upload(form, "image", required=True)
-    mask = await read_image_upload(form, "mask", required=True)
-    return await generate_scene(
-        db,
-        generate_request,
-        seed_image=image,
-        mask_image=mask,
-        image_mode="inpaint",
-        image_label="image",
-        force_generate_image=True,
-    )
 
 
 def parse_generate_scene_payload(form: FormData) -> GenerateSceneRequestBase:
@@ -152,27 +116,25 @@ async def generate_scene(
     mask_image: bytes | None = None,
     scribble_image: bytes | None = None,
     pose_image: bytes | None = None,
-    image_mode: str = "i2i",
-    image_label: str = "seed image",
-    force_generate_image: bool = False,
 ) -> Scene:
-    should_generate_image = force_generate_image or request.generate_image
-    if should_generate_image and image_mode != "t2i" and seed_image is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="seed image is required")
-    if should_generate_image and image_mode in {"inpaint", "controlnet_inpaint"} and mask_image is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="mask image is required")
-    if should_generate_image and image_mode == "controlnet_inpaint" and scribble_image is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scribble image is required")
-
+    should_generate_image = request.generate_image
     scene = None
     old_image_url = None
+    old_scribble_url = None
+    old_pose_url = None
     image_url = None
     image_key = None
+    scribble_url = None
+    scribble_key = None
+    pose_url = None
+    pose_key = None
     if request.scene_id is not None:
         scene = await db.get(Scene, request.scene_id)
         if scene is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="scene not found")
         old_image_url = scene.image_url
+        old_scribble_url = scene.scribble_url
+        old_pose_url = scene.pose_url
 
     script = normalize_scene_script(request.script)
     column_values = {field: getattr(request, field) for field in SCENE_PROMPT_FIELDS}
@@ -182,16 +144,33 @@ async def generate_scene(
     embedding = await make_scene_embedding(visual_prompt, script)
     column_embeddings = await make_scene_column_embeddings(column_values)
     if should_generate_image:
-        image_url, image_key = await generate_scene_image(
-            visual_prompt,
-            seed_image,
-            request.image_settings,
-            image_mode=image_mode,
-            mask_image=mask_image,
-            scribble_image=scribble_image,
-            pose_image=pose_image,
-            image_label=image_label,
-        )
+        try:
+            image_url, image_key, has_active_scribble = await generate_scene_image(
+                visual_prompt,
+                seed_image,
+                request.image_settings,
+                mask_image=mask_image,
+                scribble_image=scribble_image,
+                pose_image=pose_image,
+            )
+            if has_active_scribble and scribble_image is not None:
+                scribble_url, scribble_key = upload_scene_control_image(
+                    scribble_image,
+                    "scene-controlnet-scribble.png",
+                )
+            if pose_image is not None:
+                pose_url, pose_key = upload_scene_control_image(
+                    pose_image,
+                    "scene-controlnet-openpose.png",
+                )
+        except Exception:
+            if image_key is not None:
+                delete_object(image_key)
+            if scribble_key is not None:
+                delete_object(scribble_key)
+            if pose_key is not None:
+                delete_object(pose_key)
+            raise
 
     try:
         if scene is None:
@@ -206,16 +185,29 @@ async def generate_scene(
             setattr(scene, f"{field}_embedding", column_embeddings[field])
         if image_url is not None:
             scene.image_url = image_url
+        if should_generate_image:
+            scene.scribble_url = scribble_url
+            scene.pose_url = pose_url
         await db.commit()
         await db.refresh(scene)
     except Exception:
         await db.rollback()
         if image_key is not None:
             delete_object(image_key)
+        if scribble_key is not None:
+            delete_object(scribble_key)
+        if pose_key is not None:
+            delete_object(pose_key)
         raise
 
-    if image_url is not None:
-        await cleanup_old_scene_image(db, old_image_url, image_url)
+    orphan_candidates = []
+    if should_generate_image and image_url != old_image_url:
+        orphan_candidates.append(old_image_url)
+    if should_generate_image and scribble_url != old_scribble_url:
+        orphan_candidates.append(old_scribble_url)
+    if should_generate_image and pose_url != old_pose_url:
+        orphan_candidates.append(old_pose_url)
+    await cleanup_orphaned_object_keys(db, orphan_candidates)
     return scene
 
 
@@ -239,6 +231,8 @@ async def upsert_scenes(db: AsyncSession, items: list[SceneBase]) -> list[Upsert
                 db.add(scene)
 
             old_image_url = scene.image_url
+            old_scribble_url = scene.scribble_url
+            old_pose_url = scene.pose_url
             script = normalize_scene_script(item.script)
             column_values = {field: getattr(item, field) for field in SCENE_PROMPT_FIELDS}
             visual_prompt = build_scene_visual_prompt(column_values)
@@ -247,6 +241,8 @@ async def upsert_scenes(db: AsyncSession, items: list[SceneBase]) -> list[Upsert
             column_embeddings = await make_scene_column_embeddings(column_values)
 
             scene.image_url = item.image_url
+            scene.scribble_url = item.scribble_url
+            scene.pose_url = item.pose_url
             scene.script = script
             scene.status_change = item.status_change
             scene.embedding = await make_scene_embedding(visual_prompt, script)
@@ -256,6 +252,10 @@ async def upsert_scenes(db: AsyncSession, items: list[SceneBase]) -> list[Upsert
 
             if old_image_url != item.image_url:
                 orphan_candidates.append(old_image_url)
+            if old_scribble_url != item.scribble_url:
+                orphan_candidates.append(old_scribble_url)
+            if old_pose_url != item.pose_url:
+                orphan_candidates.append(old_pose_url)
             pending_results.append(scene)
 
         await db.flush()
@@ -373,17 +373,22 @@ def build_scene_embedding_input(visual_prompt: str, script: str) -> str:
     return f"passage: {visual_prompt}\n{script}"
 
 
+def upload_scene_control_image(image_bytes: bytes, filename: str) -> tuple[str, str]:
+    object_key = build_object_key(kind="image", filename=filename)
+    image_file = BytesIO(image_bytes)
+    upload_fileobj(image_file, object_key, "image/png")
+    return public_file_url(object_key), object_key
+
+
 async def generate_scene_image(
     visual_prompt: str,
     seed_image: bytes | None,
     image_settings: ImageGenerationSettingsBase | None = None,
     *,
-    image_mode: str = "i2i",
     mask_image: bytes | None = None,
     scribble_image: bytes | None = None,
     pose_image: bytes | None = None,
-    image_label: str = "seed image",
-) -> tuple[str, str]:
+) -> tuple[str, str, bool]:
     model_path_value = settings.stable_diffusion_model_path.strip()
     if not model_path_value:
         raise HTTPException(
@@ -411,28 +416,25 @@ async def generate_scene_image(
     init_mask = None
     controlnet_images: list[Image.Image] = []
     controlnet_model_ids: list[str] = []
+    has_active_scribble = False
     scribble_scales: list[float] = []
     scribble_guidance_starts: list[float] = []
     scribble_guidance_ends: list[float] = []
     pose_scales: list[float] = []
     pose_guidance_starts: list[float] = []
     pose_guidance_ends: list[float] = []
-    if image_mode in {"i2i", "inpaint", "controlnet_inpaint"}:
-        if seed_image is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{image_label} is required")
+    if seed_image is not None:
         init_image = decode_generation_image(
             seed_image,
-            image_label,
+            "seed image",
             "RGB",
             target_size,
             Image.Resampling.LANCZOS,
         )
-    elif image_mode != "t2i":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unsupported scene image generation mode")
 
-    if image_mode in {"inpaint", "controlnet_inpaint"}:
-        if mask_image is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="mask image is required")
+    if mask_image is not None:
+        if init_image is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="mask image requires seed image")
         init_mask = decode_generation_image(
             mask_image,
             "mask",
@@ -440,9 +442,8 @@ async def generate_scene_image(
             target_size,
             Image.Resampling.NEAREST,
         )
-    if image_mode == "controlnet_inpaint":
-        if scribble_image is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scribble image is required")
+
+    if scribble_image is not None:
         init_scribble = decode_generation_image(
             scribble_image,
             "scribble image",
@@ -451,42 +452,50 @@ async def generate_scene_image(
             Image.Resampling.LANCZOS,
         )
         if not is_solid_rgb_image(init_scribble, 255, 255, 255):
+            has_active_scribble = True
             controlnet_images.append(init_scribble)
             controlnet_model_ids.append(settings.CONTROLNET_SCRIBBLE_MODEL_ID)
             scribble_scales.append(resolved_settings.scribble_scale)
             scribble_guidance_starts.append(resolved_settings.scribble_guidance_start)
             scribble_guidance_ends.append(resolved_settings.scribble_guidance_end)
-        if pose_image is not None:
-            init_pose = decode_generation_image(
-                pose_image,
-                "pose image",
-                "RGB",
-                target_size,
-                Image.Resampling.LANCZOS,
-            )
-            controlnet_images.append(init_pose)
-            controlnet_model_ids.append(settings.CONTROLNET_OPENPOSE_MODEL_ID)
-            pose_scales.append(resolved_settings.pose_scale)
-            pose_guidance_starts.append(resolved_settings.pose_guidance_start)
-            pose_guidance_ends.append(resolved_settings.pose_guidance_end)
-        if not controlnet_images:
-            controlnet_images.append(init_scribble)
-            controlnet_model_ids.append(settings.CONTROLNET_SCRIBBLE_MODEL_ID)
-            scribble_scales.append(0.0)
-            scribble_guidance_starts.append(resolved_settings.scribble_guidance_start)
-            scribble_guidance_ends.append(resolved_settings.scribble_guidance_end)
+    if pose_image is not None:
+        init_pose = decode_generation_image(
+            pose_image,
+            "pose image",
+            "RGB",
+            target_size,
+            Image.Resampling.LANCZOS,
+        )
+        controlnet_images.append(init_pose)
+        controlnet_model_ids.append(settings.CONTROLNET_OPENPOSE_MODEL_ID)
+        pose_scales.append(resolved_settings.pose_scale)
+        pose_guidance_starts.append(resolved_settings.pose_guidance_start)
+        pose_guidance_ends.append(resolved_settings.pose_guidance_end)
 
     positive_prompt_parts = [
         (resolved_settings.positive_base or "").strip().strip(","),
         visual_prompt.strip().strip(","),
     ]
     seed = random.randint(GEN_IMAGE_SEED_MIN, GEN_IMAGE_SEED_MAX)
+    if controlnet_images:
+        if init_image is None:
+            runtime_image_mode = "controlnet_t2i"
+        elif init_mask is None:
+            runtime_image_mode = "controlnet_i2i"
+        else:
+            runtime_image_mode = "controlnet_inpaint"
+    elif init_image is None:
+        runtime_image_mode = "t2i"
+    elif init_mask is None:
+        runtime_image_mode = "i2i"
+    else:
+        runtime_image_mode = "inpaint"
     controlnet_conditioning_scales = scribble_scales + pose_scales
     control_guidance_starts = scribble_guidance_starts + pose_guidance_starts
     control_guidance_ends = scribble_guidance_ends + pose_guidance_ends
     images, _seeds = await generate_images_batch(
         str(model_path),
-        image_mode,
+        runtime_image_mode,
         [", ".join(part for part in positive_prompt_parts if part)],
         [resolved_settings.negative_prompt or ""],
         [init_image] if init_image is not None else [],
@@ -531,7 +540,7 @@ async def generate_scene_image(
     )
     image_bytes.seek(0)
     upload_fileobj(image_bytes, image_key, _image_content_type(GEN_IMAGE_OUTPUT_FORMAT))
-    return public_file_url(image_key), image_key
+    return public_file_url(image_key), image_key, has_active_scribble
 
 
 def decode_generation_image(
@@ -567,25 +576,6 @@ def _image_content_type(output_format: str) -> str:
     if normalized_format == "webp":
         return "image/webp"
     return "image/jpeg"
-
-
-async def cleanup_old_scene_image(
-    db: AsyncSession,
-    old_image_url: str | None,
-    new_image_url: str,
-) -> None:
-    if not old_image_url or old_image_url == new_image_url:
-        return
-
-    old_image_key = object_key_from_public_url(old_image_url)
-    if old_image_key is None:
-        return
-
-    reference_count = (
-        await db.execute(select(func.count()).select_from(Scene).where(Scene.image_url == old_image_url))
-    ).scalar_one()
-    if reference_count == 0:
-        delete_object(old_image_key)
 
 
 def update_context_embedding(

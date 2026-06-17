@@ -80,6 +80,8 @@ async def api_get_next_scene(
     return SceneBase(
         id=next_scene.id,
         image_url=next_scene.image_url,
+        scribble_url=next_scene.scribble_url,
+        pose_url=next_scene.pose_url,
         script=next_scene.script,
         status_change=next_scene.status_change,
         background=next_scene.background,

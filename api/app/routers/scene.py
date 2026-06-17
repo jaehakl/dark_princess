@@ -14,9 +14,6 @@ from models import (
 )
 from service.scene import (
     generate_scene_from_form,
-    generate_scene_i2i_from_form,
-    generate_scene_inpaint_from_form,
-    generate_scene_t2i_from_form,
     get_similar_scenes,
     update_scene_context,
     upsert_scenes,
@@ -54,37 +51,12 @@ async def api_generate_scene(
     return scene_to_base(scene)
 
 
-@router.post("/generate/t2i", response_model=SceneBase)
-async def api_generate_scene_t2i(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-):
-    scene = await generate_scene_t2i_from_form(db, await request.form())
-    return scene_to_base(scene)
-
-
-@router.post("/generate/i2i", response_model=SceneBase)
-async def api_generate_scene_i2i(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-):
-    scene = await generate_scene_i2i_from_form(db, await request.form())
-    return scene_to_base(scene)
-
-
-@router.post("/generate/inpaint", response_model=SceneBase)
-async def api_generate_scene_inpaint(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-):
-    scene = await generate_scene_inpaint_from_form(db, await request.form())
-    return scene_to_base(scene)
-
-
 def scene_to_base(scene: Scene) -> SceneBase:
     return SceneBase(
         id=scene.id,
         image_url=scene.image_url,
+        scribble_url=scene.scribble_url,
+        pose_url=scene.pose_url,
         script=scene.script,
         status_change=scene.status_change,
         background=scene.background,
@@ -105,6 +77,8 @@ async def api_get_similar_scenes(
         SceneBase(
             id=scene.id,
             image_url=scene.image_url,
+            scribble_url=scene.scribble_url,
+            pose_url=scene.pose_url,
             script=scene.script,
             status_change=scene.status_change,
             background=scene.background,
@@ -144,5 +118,5 @@ async def api_delete_scene_list(
     ids: List[int] = Body(...),
     db: AsyncSession = Depends(get_db),
 ):
-    await delete_items(db, SCENE_CRUD_SPEC, ids, cleanup_fields=("image_url",))
+    await delete_items(db, SCENE_CRUD_SPEC, ids, cleanup_fields=("image_url", "scribble_url", "pose_url"))
     return None

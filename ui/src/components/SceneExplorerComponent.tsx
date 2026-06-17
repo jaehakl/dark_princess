@@ -213,7 +213,7 @@ export function SceneExplorerComponent({
                 key={sceneId ?? `scene-${index}`}
                 type="button"
                 className={cx(
-                  'grid aspect-[1216/832] min-w-0 place-items-stretch rounded-[8px] border border-[rgba(255,208,222,0.24)] bg-[linear-gradient(135deg,rgba(255,229,238,0.1),transparent_58%),rgba(12,5,18,0.58)] p-1 text-left transition-[transform,border-color,background] hover:-translate-y-px hover:border-[rgba(255,224,180,0.84)] hover:bg-[linear-gradient(135deg,rgba(255,225,191,0.16),transparent_58%),rgba(50,15,47,0.82)]',
+                  'grid aspect-square min-w-0 place-items-stretch rounded-[8px] border border-[rgba(255,208,222,0.24)] bg-[linear-gradient(135deg,rgba(255,229,238,0.1),transparent_58%),rgba(12,5,18,0.58)] p-1 text-left transition-[transform,border-color,background] hover:-translate-y-px hover:border-[rgba(255,224,180,0.84)] hover:bg-[linear-gradient(135deg,rgba(255,225,191,0.16),transparent_58%),rgba(50,15,47,0.82)]',
                   isCurrentScene && 'border-[rgba(255,232,183,0.82)] shadow-[0_0_26px_rgba(240,179,95,0.16)]',
                   !isSelectable && 'cursor-not-allowed opacity-60 hover:translate-y-0',
                 )}
@@ -226,12 +226,12 @@ export function SceneExplorerComponent({
                 title={`${sceneLabel}\n${scriptSummary}`}
                 aria-label={`${sceneLabel}: ${scriptSummary}`}
               >
-                <ImageFrame className="h-full w-full rounded-[6px] border border-[rgba(255,218,228,0.22)] bg-[linear-gradient(135deg,rgba(255,224,235,0.12),transparent_46%),rgba(12,5,18,0.82)]">
+                <ImageFrame className="relative h-full w-full rounded-[6px] border border-[rgba(255,218,228,0.22)] bg-[linear-gradient(135deg,rgba(255,224,235,0.12),transparent_46%),rgba(12,5,18,0.82)]">
                   {scene.image_url ? (
                     <img
                       src={scene.image_url}
                       alt={sceneLabel}
-                      className="block h-full w-full object-cover"
+                      className="absolute inset-0 h-full w-full object-contain"
                     />
                   ) : (
                     null

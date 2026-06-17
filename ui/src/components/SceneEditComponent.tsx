@@ -59,7 +59,12 @@ const EMPTY_RECOMMENDATIONS: RecommendPromptColumns = {
   detail: [],
 };
 
-const QUICK_IMAGE_STRENGTHS = [0.5, 0.75, 1.0];
+const QUICK_IMAGE_STRENGTHS = [0.5, 0.75, 0.85, 0.95, 1];
+const QUICK_IMAGE_RESOLUTIONS = [
+  { width: 768, height: 1024, label: '768x1024' },
+  { width: 1024, height: 1024, label: '1024x1024' },
+  { width: 1024, height: 768, label: '1024x768' },
+];
 
 const STATUS_CHANGE_FIELDS = [
   { key: 'cash', label: '현금' },
@@ -443,6 +448,18 @@ export function SceneEditComponent({
     setImageEditorError(null);
   }
 
+  function updateImageResolution(width: number, height: number) {
+    if (!imageSettings) {
+      return;
+    }
+
+    const nextImageSettings = { ...imageSettings, width, height };
+    setImageSettings(nextImageSettings);
+    setImageSettingsDraft(imageSettingsToDraft(nextImageSettings));
+    sessionStorage.setItem(IMAGE_SETTINGS_SESSION_KEY, JSON.stringify(nextImageSettings));
+    setImageEditorError(null);
+  }
+
   function openImageSettings() {
     if (!imageSettings) {
       setError('이미지 설정 기본값을 불러오는 중입니다.');
@@ -655,7 +672,9 @@ export function SceneEditComponent({
       if (isImageSave && imagePayload) {
         formData.append('image', imagePayload.image, 'scene-inpaint-image.png');
         formData.append('mask', imagePayload.mask, 'scene-inpaint-mask.png');
-        formData.append('scribble_image', imagePayload.scribble, 'scene-controlnet-scribble.png');
+        if (imagePayload.hasScribble) {
+          formData.append('scribble_image', imagePayload.scribble, 'scene-controlnet-scribble.png');
+        }
         if (imagePayload.pose) {
           formData.append('pose_image', imagePayload.pose, 'scene-controlnet-openpose.png');
         }
@@ -717,6 +736,8 @@ export function SceneEditComponent({
     onDuplicate({
       id: null,
       image_url: activeScene.image_url ?? null,
+      scribble_url: activeScene.scribble_url ?? null,
+      pose_url: activeScene.pose_url ?? null,
       script,
       status_change: { ...statusChange },
       background: promptDraft.background,
@@ -933,20 +954,38 @@ export function SceneEditComponent({
               <aside className="min-w-0 space-y-3">
                 <div className="space-y-3">
                   <div className="space-y-2">
-                    <label className="flex items-center justify-between gap-2 text-xs font-semibold text-[var(--app-muted)]">
-                      <span>strength</span>
-                      <FormControl
-                        type="number"
-                        min="0.01"
-                        max="1"
-                        step="0.01"
-                        value={strengthControlValue}
-                        onChange={(event) => updateImageStrength(event.target.value)}
-                        className="h-8 w-24 px-2 text-right text-xs"
-                        disabled={isLoadingScene || Boolean(savingMode) || !imageSettings}
-                      />
-                    </label>
-                    <div className="flex min-w-0 flex-wrap justify-end gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs font-semibold text-[var(--app-muted)]">
+                      <span className="mr-auto">resolution</span>
+                      {QUICK_IMAGE_RESOLUTIONS.map((resolution) => (
+                        <Button
+                          key={resolution.label}
+                          className="h-7 px-2.5 py-0 text-xs"
+                          variant={
+                            imageSettings?.width === resolution.width && imageSettings?.height === resolution.height
+                              ? 'primary'
+                              : 'default'
+                          }
+                          onClick={() => updateImageResolution(resolution.width, resolution.height)}
+                          disabled={isLoadingScene || Boolean(savingMode) || !imageSettings}
+                        >
+                          {resolution.label}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <label className="flex items-center gap-2 text-xs font-semibold text-[var(--app-muted)]">
+                        <span>strength</span>
+                        <FormControl
+                          type="number"
+                          min="0.01"
+                          max="1"
+                          step="0.01"
+                          value={strengthControlValue}
+                          onChange={(event) => updateImageStrength(event.target.value)}
+                          className="h-8 w-24 px-2 text-right text-xs"
+                          disabled={isLoadingScene || Boolean(savingMode) || !imageSettings}
+                        />
+                      </label>
                       {QUICK_IMAGE_STRENGTHS.map((strength) => (
                         <Button
                           key={strength}
@@ -966,6 +1005,8 @@ export function SceneEditComponent({
                         width={imageSettings.width}
                         height={imageSettings.height}
                         sourceImageUrl={activeScene?.image_url ?? null}
+                        sourceScribbleUrl={activeScene?.scribble_url ?? null}
+                        sourcePoseUrl={activeScene?.pose_url ?? null}
                         disabled={isLoadingScene || Boolean(savingMode)}
                         isGenerating={savingMode === 'image'}
                         altText={composedPrompt || 'Scene inpaint image'}
@@ -981,7 +1022,7 @@ export function SceneEditComponent({
                         onReadyChange={setIsImageEditorReady}
                       />
                     ) : (
-                      <div className="grid aspect-[1216/832] min-h-72 w-full place-items-center rounded-[8px] border border-[rgba(255,218,228,0.22)] bg-[rgba(15,5,20,0.78)] p-6 text-center text-[0.95rem] text-[var(--app-muted)]">
+                      <div className="grid aspect-square min-h-72 w-full place-items-center rounded-[8px] border border-[rgba(255,218,228,0.22)] bg-[rgba(15,5,20,0.78)] p-6 text-center text-[0.95rem] text-[var(--app-muted)]">
                         이미지 설정을 불러오는 중
                       </div>
                     )}

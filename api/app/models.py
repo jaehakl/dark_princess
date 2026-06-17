@@ -114,6 +114,8 @@ class AdjustSelectionModelRequestBase(NextSceneRequestBase):
 class SceneBase(BaseModel):
     id: Optional[int] = None
     image_url: Optional[str] = None
+    scribble_url: Optional[str] = None
+    pose_url: Optional[str] = None
     script: str = ""
     status_change: Dict[str, Any] = Field(default_factory=dict)
     background: Optional[str] = None

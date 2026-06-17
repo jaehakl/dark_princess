@@ -12,994 +12,102 @@ import type {
   PointerEvent as ReactPointerEvent,
   WheelEvent as ReactWheelEvent,
 } from 'react';
-import { API_URL } from '../api/api';
-import { Button, FieldLabel, ImageFrame, Spinner } from './ui';
-
-type Point = {
-  x: number;
-  y: number;
-};
-
-type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
-type EditorMode = 'select' | 'feather' | 'scribble' | 'openpose';
-type SelectionTool = 'move' | 'rect' | 'lasso';
-type MaskPaintValue = 'white' | 'black';
-
-type RectSelection = {
-  kind: 'rect';
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
-
-type LassoSelection = {
-  kind: 'lasso';
-  points: Point[];
-};
-
-type SelectionRegion = RectSelection | LassoSelection;
-
-type CanvasObject = {
-  id: string;
-  canvas: HTMLCanvasElement;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  rotation: number;
-  flipX: boolean;
-  dirty: boolean;
-  maskPath: Point[];
-};
-
-type CanvasObjectSnapshot = Pick<CanvasObject, 'x' | 'y' | 'width' | 'height' | 'rotation'>;
-
-export type SceneImageInpaintEditorState = {
-  imageDataUrl: string | null;
-  maskDataUrl: string | null;
-  scribbleDataUrl: string | null;
-  poseImageDataUrl: string | null;
-  poseOffsetX: number | null;
-  poseOffsetY: number | null;
-  poseZoom: number | null;
-  isMaskVisualizationEnabled: boolean | null;
-  featherBrushSize: number | null;
-  scribbleBrushSize: number | null;
-  scribblePreviewOpacity: number | null;
-  scribbleScale: number | null;
-  scribbleGuidanceStart: number | null;
-  scribbleGuidanceEnd: number | null;
-  poseScale: number | null;
-  poseGuidanceStart: number | null;
-  poseGuidanceEnd: number | null;
-};
-
-type ControlNetEditorSettings = {
-  scribble_scale: number;
-  scribble_guidance_start: number;
-  scribble_guidance_end: number;
-  pose_scale: number;
-  pose_guidance_start: number;
-  pose_guidance_end: number;
-};
-
-type DragState =
-  | {
-    kind: 'move';
-    start: Point;
-    original: CanvasObjectSnapshot;
-  }
-  | {
-    kind: 'resize';
-    handle: ResizeHandle;
-    original: CanvasObjectSnapshot;
-  }
-  | {
-    kind: 'rotate';
-    startAngle: number;
-    original: CanvasObjectSnapshot;
-  }
-  | {
-    kind: 'select-rect';
-    start: Point;
-  }
-  | {
-    kind: 'select-lasso';
-  }
-  | {
-    kind: 'feather';
-    lastPoint: Point;
-  }
-  | {
-    kind: 'scribble';
-    lastPoint: Point;
-  }
-  | {
-    kind: 'pose';
-    start: Point;
-    originalOffset: Point;
-  };
-
-export type SceneImageInpaintEditorHandle = {
-  renderImageAndMask: () => Promise<{
-    image: Blob;
-    mask: Blob;
-    scribble: Blob;
-    pose: Blob | null;
-    hasScribble: boolean;
-    hasPose: boolean;
-    controlSettings: ControlNetEditorSettings;
-  }>;
-};
-
-type SceneImageInpaintEditorProps = {
-  width: number;
-  height: number;
-  sourceImageUrl?: string | null;
-  disabled?: boolean;
-  isGenerating?: boolean;
-  altText?: string;
-  scribbleScale?: number;
-  scribbleGuidanceStart?: number;
-  scribbleGuidanceEnd?: number;
-  poseScale?: number;
-  poseGuidanceStart?: number;
-  poseGuidanceEnd?: number;
-  initialEditorState?: SceneImageInpaintEditorState;
-  onEditorStateChange?: (state: SceneImageInpaintEditorState) => void;
-  onError?: (message: string | null) => void;
-  onReadyChange?: (isReady: boolean) => void;
-};
-
-const HANDLE_DEFS: Array<{ key: ResizeHandle; x: number; y: number }> = [
-  { key: 'nw', x: -0.5, y: -0.5 },
-  { key: 'n', x: 0, y: -0.5 },
-  { key: 'ne', x: 0.5, y: -0.5 },
-  { key: 'e', x: 0.5, y: 0 },
-  { key: 'se', x: 0.5, y: 0.5 },
-  { key: 's', x: 0, y: 0.5 },
-  { key: 'sw', x: -0.5, y: 0.5 },
-  { key: 'w', x: -0.5, y: 0 },
-];
-const HISTORY_LIMIT = 10;
-const MIN_OBJECT_SIZE = 24;
-const ROTATE_HANDLE_OFFSET = 42;
-const MIN_SELECTION_SIZE = 3;
-const LASSO_MIN_POINTS = 3;
-const MASK_MIN_POINTS = 3;
-const DEFAULT_FEATHER_BRUSH_SIZE = 64;
-const DEFAULT_SCRIBBLE_BRUSH_SIZE = 80;
-const DEFAULT_SCRIBBLE_PREVIEW_OPACITY = 0.5;
-const DEFAULT_SCRIBBLE_SCALE = 1;
-const DEFAULT_SCRIBBLE_GUIDANCE_START = 0;
-const DEFAULT_SCRIBBLE_GUIDANCE_END = 1;
-const DEFAULT_POSE_SCALE = 1;
-const DEFAULT_POSE_GUIDANCE_START = 0;
-const DEFAULT_POSE_GUIDANCE_END = 1;
-const MIN_POSE_ZOOM = 0.25;
-const MAX_POSE_ZOOM = 4;
-const TOOL_BUTTON_CLASS = 'grid h-8 w-8 place-items-center px-0 py-0 text-base leading-none';
-
-function createObjectId() {
-  return `image-object-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return '이미지 편집 요청에 실패했습니다.';
-}
-
-function createRenderCanvas(width: number, height: number) {
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(width));
-  canvas.height = Math.max(1, Math.round(height));
-  return canvas;
-}
-
-function get2dContext(canvas: HTMLCanvasElement) {
-  const context = canvas.getContext('2d');
-  if (!context) {
-    throw new Error('canvas를 사용할 수 없습니다.');
-  }
-  return context;
-}
-
-function createFilledCanvas(width: number, height: number, color: string) {
-  const canvas = createRenderCanvas(width, height);
-  const context = get2dContext(canvas);
-  context.fillStyle = color;
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  return canvas;
-}
-
-function createBlankImageCanvas(width: number, height: number) {
-  return createFilledCanvas(width, height, '#ffffff');
-}
-
-function createDefaultMaskCanvas(width: number, height: number) {
-  return createFilledCanvas(width, height, '#ffffff');
-}
-
-function createBlankScribbleCanvas(width: number, height: number) {
-  return createFilledCanvas(width, height, '#ffffff');
-}
-
-function cloneCanvas(canvas: HTMLCanvasElement) {
-  const nextCanvas = createRenderCanvas(canvas.width, canvas.height);
-  get2dContext(nextCanvas).drawImage(canvas, 0, 0);
-  return nextCanvas;
-}
-
-function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) {
-        resolve(blob);
-      } else {
-        reject(new Error('이미지를 생성하지 못했습니다.'));
-      }
-    }, 'image/png');
-  });
-}
-
-function canvasToDataUrl(canvas: HTMLCanvasElement | null) {
-  return canvas ? canvas.toDataURL('image/png') : null;
-}
-
-function resolveImageFetchUrl(imageUrl: string) {
-  try {
-    const parsedImageUrl = new URL(imageUrl, window.location.href);
-    const parsedApiUrl = new URL(API_URL, window.location.href);
-    if (parsedImageUrl.origin === parsedApiUrl.origin && parsedImageUrl.pathname.startsWith('/uploads/')) {
-      return `${parsedImageUrl.pathname}${parsedImageUrl.search}`;
-    }
-  } catch {
-    return imageUrl;
-  }
-  return imageUrl;
-}
-
-async function createBitmapFromUrl(imageUrl: string) {
-  const response = await fetch(resolveImageFetchUrl(imageUrl), { cache: 'no-store' });
-  if (!response.ok) {
-    throw new Error('기존 이미지를 불러오지 못했습니다.');
-  }
-  return await createImageBitmap(await response.blob());
-}
-
-async function createBitmapFromDataUrl(dataUrl: string) {
-  const response = await fetch(dataUrl);
-  if (!response.ok) {
-    throw new Error('편집 레이어를 불러오지 못했습니다.');
-  }
-  return await createImageBitmap(await response.blob());
-}
-
-async function drawDataUrlToCanvas(dataUrl: string | null | undefined, canvas: HTMLCanvasElement) {
-  if (!dataUrl) {
-    return;
-  }
-  const bitmap = await createBitmapFromDataUrl(dataUrl);
-  try {
-    get2dContext(canvas).drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  } finally {
-    try {
-      bitmap.close();
-    } catch {
-      // Bitmap cleanup is best-effort.
-    }
-  }
-}
-
-function hasEditorStateData(state: SceneImageInpaintEditorState | undefined) {
-  return Boolean(state?.imageDataUrl || state?.maskDataUrl || state?.scribbleDataUrl || state?.poseImageDataUrl);
-}
-
-function createCanvasFromBitmap(bitmap: ImageBitmap) {
-  const canvas = createRenderCanvas(bitmap.width, bitmap.height);
-  get2dContext(canvas).drawImage(bitmap, 0, 0);
-  return canvas;
-}
-
-function clampNumber(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function coerceNullableNumber(
-  value: number | null | undefined,
-  fallback: number,
-  min: number,
-  max: number,
-) {
-  return Number.isFinite(value) ? clampNumber(Number(value), min, max) : fallback;
-}
-
-function rotatePoint(point: Point, rotation: number): Point {
-  const cos = Math.cos(rotation);
-  const sin = Math.sin(rotation);
-  return {
-    x: point.x * cos - point.y * sin,
-    y: point.x * sin + point.y * cos,
-  };
-}
-
-function toObjectLocal(point: Point, object: CanvasObject | CanvasObjectSnapshot): Point {
-  return rotatePoint(
-    {
-      x: point.x - object.x,
-      y: point.y - object.y,
-    },
-    -object.rotation,
-  );
-}
-
-function objectLocalToCanvas(object: CanvasObject | CanvasObjectSnapshot, localX: number, localY: number): Point {
-  const rotated = rotatePoint({ x: localX, y: localY }, object.rotation);
-  return {
-    x: object.x + rotated.x,
-    y: object.y + rotated.y,
-  };
-}
-
-function isPointInObject(point: Point, object: CanvasObject) {
-  const local = toObjectLocal(point, object);
-  return Math.abs(local.x) <= object.width / 2 && Math.abs(local.y) <= object.height / 2;
-}
-
-function getHandlePosition(object: CanvasObject | CanvasObjectSnapshot, handle: ResizeHandle) {
-  const definition = HANDLE_DEFS.find((item) => item.key === handle);
-  if (!definition) {
-    return { x: object.x, y: object.y };
-  }
-  return objectLocalToCanvas(
-    object,
-    object.width * definition.x,
-    object.height * definition.y,
-  );
-}
-
-function getRotateHandlePosition(object: CanvasObject | CanvasObjectSnapshot) {
-  return objectLocalToCanvas(object, 0, -object.height / 2 - ROTATE_HANDLE_OFFSET);
-}
-
-function getResizeCursor(handle: ResizeHandle) {
-  if (handle === 'n' || handle === 's') {
-    return 'ns-resize';
-  }
-  if (handle === 'e' || handle === 'w') {
-    return 'ew-resize';
-  }
-  if (handle === 'ne' || handle === 'sw') {
-    return 'nesw-resize';
-  }
-  return 'nwse-resize';
-}
-
-function fitObjectSize(canvas: HTMLCanvasElement, width: number, height: number) {
-  const scale = Math.min(1, width / canvas.width, height / canvas.height);
-  return {
-    width: Math.max(1, Math.round(canvas.width * scale)),
-    height: Math.max(1, Math.round(canvas.height * scale)),
-  };
-}
-
-function getCoverDrawSize(canvas: HTMLCanvasElement, width: number, height: number, zoom = 1) {
-  const scale = Math.max(width / canvas.width, height / canvas.height) * zoom;
-  return {
-    width: Math.max(1, Math.round(canvas.width * scale)),
-    height: Math.max(1, Math.round(canvas.height * scale)),
-  };
-}
-
-function getCenteredCoverOffset(canvas: HTMLCanvasElement, width: number, height: number, zoom = 1): Point {
-  const drawSize = getCoverDrawSize(canvas, width, height, zoom);
-  return {
-    x: Math.round((width - drawSize.width) / 2),
-    y: Math.round((height - drawSize.height) / 2),
-  };
-}
-
-function clampCoverAxisOffset(offset: number, drawLength: number, canvasLength: number) {
-  if (drawLength <= canvasLength) {
-    return clampNumber(offset, 0, canvasLength - drawLength);
-  }
-  return clampNumber(offset, canvasLength - drawLength, 0);
-}
-
-function clampCoverOffset(offset: Point, canvas: HTMLCanvasElement, width: number, height: number, zoom = 1): Point {
-  const drawSize = getCoverDrawSize(canvas, width, height, zoom);
-  return {
-    x: clampCoverAxisOffset(offset.x, drawSize.width, width),
-    y: clampCoverAxisOffset(offset.y, drawSize.height, height),
-  };
-}
-
-function drawCoverImage(
-  context: CanvasRenderingContext2D,
-  canvas: HTMLCanvasElement,
-  offset: Point,
-  width: number,
-  height: number,
-  zoom = 1,
-) {
-  const drawSize = getCoverDrawSize(canvas, width, height, zoom);
-  context.drawImage(canvas, offset.x, offset.y, drawSize.width, drawSize.height);
-}
-
-function renderPoseConditionCanvas(
-  sourceCanvas: HTMLCanvasElement | null,
-  offset: Point,
-  zoom: number,
-  width: number,
-  height: number,
-) {
-  if (!sourceCanvas) {
-    return null;
-  }
-  const poseCanvas = createFilledCanvas(width, height, '#000000');
-  drawCoverImage(get2dContext(poseCanvas), sourceCanvas, offset, width, height, zoom);
-  return poseCanvas;
-}
-
-function getCanvasPoint(
-  canvas: HTMLCanvasElement,
-  event: ReactPointerEvent<HTMLCanvasElement>,
-  width: number,
-  height: number,
-): Point {
-  const rect = canvas.getBoundingClientRect();
-  return {
-    x: ((event.clientX - rect.left) / rect.width) * width,
-    y: ((event.clientY - rect.top) / rect.height) * height,
-  };
-}
-
-function getCanvasWheelPoint(
-  canvas: HTMLCanvasElement,
-  event: ReactWheelEvent<HTMLCanvasElement>,
-  width: number,
-  height: number,
-): Point {
-  const rect = canvas.getBoundingClientRect();
-  return {
-    x: ((event.clientX - rect.left) / rect.width) * width,
-    y: ((event.clientY - rect.top) / rect.height) * height,
-  };
-}
-
-function getViewScale(canvas: HTMLCanvasElement) {
-  const rect = canvas.getBoundingClientRect();
-  return rect.width > 0 ? canvas.width / rect.width : 1;
-}
-
-function drawObject(context: CanvasRenderingContext2D, object: CanvasObject) {
-  context.save();
-  context.translate(object.x, object.y);
-  context.rotate(object.rotation);
-  if (object.flipX) {
-    context.scale(-1, 1);
-  }
-  context.drawImage(
-    object.canvas,
-    -object.width / 2,
-    -object.height / 2,
-    object.width,
-    object.height,
-  );
-  context.restore();
-}
-
-function getObjectMaskPath(object: CanvasObject) {
-  const bounds = getBoundsFromPoints(object.maskPath);
-  const pathWidth = Math.max(1, bounds.right - bounds.left);
-  const pathHeight = Math.max(1, bounds.bottom - bounds.top);
-  const scaleX = object.width / pathWidth;
-  const scaleY = object.height / pathHeight;
-  return object.maskPath.map((point) => objectLocalToCanvas(
-    object,
-    (object.flipX ? -point.x : point.x) * scaleX,
-    point.y * scaleY,
-  ));
-}
-
-function drawPointPath(context: CanvasRenderingContext2D, points: Point[], closePath: boolean) {
-  if (points.length === 0) {
-    return;
-  }
-  context.beginPath();
-  context.moveTo(points[0].x, points[0].y);
-  for (const point of points.slice(1)) {
-    context.lineTo(point.x, point.y);
-  }
-  if (closePath) {
-    context.closePath();
-  }
-}
-
-function drawSelectionPath(context: CanvasRenderingContext2D, selection: SelectionRegion) {
-  if (selection.kind === 'rect') {
-    context.beginPath();
-    context.rect(selection.x, selection.y, selection.width, selection.height);
-    return;
-  }
-  drawPointPath(context, selection.points, true);
-}
-
-function drawOpenPathPreview(context: CanvasRenderingContext2D, points: Point[], scale: number) {
-  if (points.length === 0) {
-    return;
-  }
-  if (points.length === 1) {
-    context.beginPath();
-    context.arc(points[0].x, points[0].y, Math.max(3 * scale, 2), 0, Math.PI * 2);
-    context.fill();
-    context.stroke();
-    return;
-  }
-  drawPointPath(context, points, false);
-  context.stroke();
-}
-
-function getRectFromPoints(start: Point, end: Point): RectSelection {
-  const x = Math.min(start.x, end.x);
-  const y = Math.min(start.y, end.y);
-  return {
-    kind: 'rect',
-    x,
-    y,
-    width: Math.abs(end.x - start.x),
-    height: Math.abs(end.y - start.y),
-  };
-}
-
-function getBoundsFromPoints(points: Point[]) {
-  let left = Number.POSITIVE_INFINITY;
-  let top = Number.POSITIVE_INFINITY;
-  let right = Number.NEGATIVE_INFINITY;
-  let bottom = Number.NEGATIVE_INFINITY;
-
-  for (const point of points) {
-    left = Math.min(left, point.x);
-    top = Math.min(top, point.y);
-    right = Math.max(right, point.x);
-    bottom = Math.max(bottom, point.y);
-  }
-
-  return { left, top, right, bottom };
-}
-
-function getSelectionBounds(selection: SelectionRegion) {
-  if (selection.kind === 'rect') {
-    return {
-      left: selection.x,
-      top: selection.y,
-      right: selection.x + selection.width,
-      bottom: selection.y + selection.height,
-    };
-  }
-  return getBoundsFromPoints(selection.points);
-}
-
-function createObjectFromCanvas(
-  canvas: HTMLCanvasElement,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  dirty: boolean,
-  maskPath: Point[],
-): CanvasObject {
-  return {
-    id: createObjectId(),
-    canvas,
-    x,
-    y,
-    width,
-    height,
-    rotation: 0,
-    flipX: false,
-    dirty,
-    maskPath,
-  };
-}
-
-function createObjectFromBitmap(bitmap: ImageBitmap, width: number, height: number) {
-  const objectCanvas = createRenderCanvas(bitmap.width, bitmap.height);
-  get2dContext(objectCanvas).drawImage(bitmap, 0, 0);
-  const fittedSize = fitObjectSize(objectCanvas, width, height);
-  const maskPath = [
-    { x: -fittedSize.width / 2, y: -fittedSize.height / 2 },
-    { x: fittedSize.width / 2, y: -fittedSize.height / 2 },
-    { x: fittedSize.width / 2, y: fittedSize.height / 2 },
-    { x: -fittedSize.width / 2, y: fittedSize.height / 2 },
-  ];
-  return createObjectFromCanvas(
-    objectCanvas,
-    width / 2,
-    height / 2,
-    fittedSize.width,
-    fittedSize.height,
-    true,
-    maskPath,
-  );
-}
-
-function createObjectFromSelection(sourceCanvas: HTMLCanvasElement, selection: SelectionRegion) {
-  const bounds = getSelectionBounds(selection);
-  const left = Math.max(0, Math.floor(bounds.left));
-  const top = Math.max(0, Math.floor(bounds.top));
-  const right = Math.min(sourceCanvas.width, Math.ceil(bounds.right));
-  const bottom = Math.min(sourceCanvas.height, Math.ceil(bounds.bottom));
-  const selectionWidth = right - left;
-  const selectionHeight = bottom - top;
-
-  if (selectionWidth < MIN_SELECTION_SIZE || selectionHeight < MIN_SELECTION_SIZE) {
-    return null;
-  }
-
-  const selectionCanvas = createRenderCanvas(selectionWidth, selectionHeight);
-  const selectionContext = get2dContext(selectionCanvas);
-
-  if (selection.kind === 'lasso') {
-    selectionContext.save();
-    selectionContext.beginPath();
-    selectionContext.moveTo(selection.points[0].x - left, selection.points[0].y - top);
-    for (const point of selection.points.slice(1)) {
-      selectionContext.lineTo(point.x - left, point.y - top);
-    }
-    selectionContext.closePath();
-    selectionContext.clip();
-    selectionContext.drawImage(sourceCanvas, -left, -top);
-    selectionContext.restore();
-  } else {
-    selectionContext.drawImage(
-      sourceCanvas,
-      left,
-      top,
-      selectionWidth,
-      selectionHeight,
-      0,
-      0,
-      selectionWidth,
-      selectionHeight,
-    );
-  }
-
-  const centerX = left + selectionWidth / 2;
-  const centerY = top + selectionHeight / 2;
-  const maskPath = selection.kind === 'lasso'
-    ? selection.points.map((point) => ({ x: point.x - centerX, y: point.y - centerY }))
-    : [
-      { x: -selectionWidth / 2, y: -selectionHeight / 2 },
-      { x: selectionWidth / 2, y: -selectionHeight / 2 },
-      { x: selectionWidth / 2, y: selectionHeight / 2 },
-      { x: -selectionWidth / 2, y: selectionHeight / 2 },
-    ];
-
-  return createObjectFromCanvas(
-    selectionCanvas,
-    centerX,
-    centerY,
-    selectionWidth,
-    selectionHeight,
-    false,
-    maskPath,
-  );
-}
-
-function objectSnapshot(object: CanvasObject): CanvasObjectSnapshot {
-  return {
-    x: object.x,
-    y: object.y,
-    width: object.width,
-    height: object.height,
-    rotation: object.rotation,
-  };
-}
-
-function findResizeHandle(point: Point, object: CanvasObject, threshold: number) {
-  for (const handle of HANDLE_DEFS) {
-    const handlePoint = getHandlePosition(object, handle.key);
-    if (Math.abs(point.x - handlePoint.x) <= threshold && Math.abs(point.y - handlePoint.y) <= threshold) {
-      return handle.key;
-    }
-  }
-  return null;
-}
-
-function drawSelectionPreview(
-  context: CanvasRenderingContext2D,
-  selectionRect: RectSelection | null,
-  selectionLasso: Point[],
-  scale: number,
-) {
-  if (selectionRect) {
-    context.save();
-    context.strokeStyle = 'rgba(255, 244, 220, 0.98)';
-    context.fillStyle = 'rgba(255, 226, 186, 0.14)';
-    context.lineWidth = 2 * scale;
-    context.setLineDash([8 * scale, 5 * scale]);
-    drawSelectionPath(context, selectionRect);
-    context.fill();
-    context.stroke();
-    context.restore();
-  }
-  if (selectionLasso.length > 0) {
-    context.save();
-    context.strokeStyle = 'rgba(255, 244, 220, 0.98)';
-    context.fillStyle = 'rgba(255, 226, 186, 0.22)';
-    context.lineWidth = 2 * scale;
-    context.setLineDash([8 * scale, 5 * scale]);
-    drawOpenPathPreview(context, selectionLasso, scale);
-    context.restore();
-  }
-}
-
-function drawWhiteMaskVisualization(
-  context: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  maskCanvas: HTMLCanvasElement | null,
-) {
-  if (!maskCanvas) {
-    return;
-  }
-
-  const sampleCanvas = createRenderCanvas(width, height);
-  get2dContext(sampleCanvas).drawImage(maskCanvas, 0, 0, width, height);
-  const sampleData = get2dContext(sampleCanvas).getImageData(0, 0, width, height);
-  const overlayCanvas = createRenderCanvas(width, height);
-  const overlayContext = get2dContext(overlayCanvas);
-  const overlayData = overlayContext.createImageData(width, height);
-
-  for (let index = 0; index < sampleData.data.length; index += 4) {
-    const brightness = (
-      sampleData.data[index]
-      + sampleData.data[index + 1]
-      + sampleData.data[index + 2]
-    ) / 3;
-    overlayData.data[index] = 255;
-    overlayData.data[index + 1] = 255;
-    overlayData.data[index + 2] = 255;
-    overlayData.data[index + 3] = Math.round((brightness / 255) * 184);
-  }
-  overlayContext.putImageData(overlayData, 0, 0);
-
-  context.save();
-  context.drawImage(overlayCanvas, 0, 0, width, height);
-  context.restore();
-}
-
-function drawScribblePreview(
-  context: CanvasRenderingContext2D,
-  scribbleCanvas: HTMLCanvasElement | null,
-  opacity: number,
-) {
-  if (!scribbleCanvas) {
-    return;
-  }
-  context.save();
-  context.globalAlpha = Math.max(0, Math.min(1, opacity));
-  context.globalCompositeOperation = 'multiply';
-  context.drawImage(scribbleCanvas, 0, 0);
-  context.restore();
-}
-
-function drawObjectHandles(
-  context: CanvasRenderingContext2D,
-  object: CanvasObject,
-  scale: number,
-) {
-  context.save();
-  context.strokeStyle = 'rgba(255, 244, 220, 0.96)';
-  context.lineWidth = 2 * scale;
-  context.setLineDash([7 * scale, 4 * scale]);
-  const corners = [
-    getHandlePosition(object, 'nw'),
-    getHandlePosition(object, 'ne'),
-    getHandlePosition(object, 'se'),
-    getHandlePosition(object, 'sw'),
-  ];
-  context.beginPath();
-  context.moveTo(corners[0].x, corners[0].y);
-  for (const corner of corners.slice(1)) {
-    context.lineTo(corner.x, corner.y);
-  }
-  context.closePath();
-  context.stroke();
-  context.setLineDash([]);
-
-  const rotateHandle = getRotateHandlePosition(object);
-  const topHandle = getHandlePosition(object, 'n');
-  context.beginPath();
-  context.moveTo(topHandle.x, topHandle.y);
-  context.lineTo(rotateHandle.x, rotateHandle.y);
-  context.stroke();
-
-  context.fillStyle = 'rgba(255, 245, 232, 0.94)';
-  context.strokeStyle = 'rgba(74, 18, 54, 0.92)';
-  context.lineWidth = 1.5 * scale;
-  const handleSize = 9 * scale;
-  for (const handle of HANDLE_DEFS) {
-    const point = getHandlePosition(object, handle.key);
-    context.beginPath();
-    context.rect(point.x - handleSize / 2, point.y - handleSize / 2, handleSize, handleSize);
-    context.fill();
-    context.stroke();
-  }
-  context.beginPath();
-  context.arc(rotateHandle.x, rotateHandle.y, 6 * scale, 0, Math.PI * 2);
-  context.fill();
-  context.stroke();
-  context.restore();
-}
-
-function fillMaskPath(
-  maskCanvas: HTMLCanvasElement,
-  points: Point[],
-  value: MaskPaintValue,
-) {
-  if (points.length < MASK_MIN_POINTS) {
-    return;
-  }
-  const context = get2dContext(maskCanvas);
-  context.save();
-  context.fillStyle = value === 'white' ? '#ffffff' : '#000000';
-  drawPointPath(context, points, true);
-  context.fill();
-  context.restore();
-}
-
-function fillWholeMask(maskCanvas: HTMLCanvasElement, value: MaskPaintValue) {
-  const context = get2dContext(maskCanvas);
-  context.fillStyle = value === 'white' ? '#ffffff' : '#000000';
-  context.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
-}
-
-function drawRoundStroke(
-  canvas: HTMLCanvasElement,
-  startPoint: Point | null,
-  endPoint: Point,
-  brushSize: number,
-  color: string,
-) {
-  const context = get2dContext(canvas);
-  context.save();
-  context.strokeStyle = color;
-  context.fillStyle = color;
-  context.lineWidth = brushSize;
-  context.lineCap = 'round';
-  context.lineJoin = 'round';
-  if (!startPoint) {
-    context.beginPath();
-    context.arc(endPoint.x, endPoint.y, brushSize / 2, 0, Math.PI * 2);
-    context.fill();
-  } else {
-    context.beginPath();
-    context.moveTo(startPoint.x, startPoint.y);
-    context.lineTo(endPoint.x, endPoint.y);
-    context.stroke();
-  }
-  context.restore();
-}
-
-function shuffleAdjacentPixels(canvas: HTMLCanvasElement, point: Point, radius: number) {
-  const context = get2dContext(canvas);
-  const left = Math.max(0, Math.floor(point.x - radius));
-  const top = Math.max(0, Math.floor(point.y - radius));
-  const right = Math.min(canvas.width, Math.ceil(point.x + radius));
-  const bottom = Math.min(canvas.height, Math.ceil(point.y + radius));
-  const width = right - left;
-  const height = bottom - top;
-
-  if (width <= 0 || height <= 0) {
-    return;
-  }
-
-  const imageData = context.getImageData(left, top, width, height);
-  const pixelOffsets: number[] = [];
-  const includedPixels = new Set<number>();
-  const radiusSquared = radius * radius;
-
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const dx = left + x - point.x;
-      const dy = top + y - point.y;
-      if (dx * dx + dy * dy <= radiusSquared) {
-        const pixelIndex = y * width + x;
-        includedPixels.add(pixelIndex);
-        pixelOffsets.push(pixelIndex * 4);
-      }
-    }
-  }
-
-  for (let index = pixelOffsets.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [pixelOffsets[index], pixelOffsets[swapIndex]] = [pixelOffsets[swapIndex], pixelOffsets[index]];
-  }
-
-  const neighborDeltas = [
-    [-1, -1],
-    [0, -1],
-    [1, -1],
-    [-1, 0],
-    [1, 0],
-    [-1, 1],
-    [0, 1],
-    [1, 1],
-  ];
-
-  for (const pixelOffset of pixelOffsets) {
-    const pixelIndex = pixelOffset / 4;
-    const x = pixelIndex % width;
-    const y = Math.floor(pixelIndex / width);
-    const neighborOffsets: number[] = [];
-
-    for (const [deltaX, deltaY] of neighborDeltas) {
-      const neighborX = x + deltaX;
-      const neighborY = y + deltaY;
-      if (neighborX < 0 || neighborX >= width || neighborY < 0 || neighborY >= height) {
-        continue;
-      }
-
-      const neighborIndex = neighborY * width + neighborX;
-      if (includedPixels.has(neighborIndex)) {
-        neighborOffsets.push(neighborIndex * 4);
-      }
-    }
-
-    if (neighborOffsets.length === 0) {
-      continue;
-    }
-
-    const neighborOffset = neighborOffsets[Math.floor(Math.random() * neighborOffsets.length)];
-    for (let channel = 0; channel < 4; channel += 1) {
-      const currentValue = imageData.data[pixelOffset + channel];
-      imageData.data[pixelOffset + channel] = imageData.data[neighborOffset + channel];
-      imageData.data[neighborOffset + channel] = currentValue;
-    }
-  }
-
-  context.putImageData(imageData, left, top);
-}
-
-function applyFeatherStrokeToImage(
-  imageCanvas: HTMLCanvasElement,
-  startPoint: Point | null,
-  endPoint: Point,
-  brushSize: number,
-) {
-  const distance = startPoint ? Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y) : 0;
-  const steps = Math.max(1, Math.ceil(distance / Math.max(1, brushSize / 4)));
-
-  for (let step = 0; step <= steps; step += 1) {
-    const progress = steps === 0 ? 1 : step / steps;
-    const point = startPoint
-      ? {
-        x: startPoint.x + (endPoint.x - startPoint.x) * progress,
-        y: startPoint.y + (endPoint.y - startPoint.y) * progress,
-      }
-      : endPoint;
-    shuffleAdjacentPixels(imageCanvas, point, Math.max(1, brushSize / 2));
-  }
-}
-
-function pushCapped<T>(items: T[], item: T) {
-  return [...items.slice(-(HISTORY_LIMIT - 1)), item];
-}
-
-function isCanvasSolidColor(canvas: HTMLCanvasElement, red: number, green: number, blue: number) {
-  const { data } = get2dContext(canvas).getImageData(0, 0, canvas.width, canvas.height);
-  for (let index = 0; index < data.length; index += 4) {
-    if (data[index] !== red || data[index + 1] !== green || data[index + 2] !== blue) {
-      return false;
-    }
-  }
-  return true;
-}
+import { ImageFrame, Spinner } from './ui';
+import {
+  CONTROL_GUIDANCE_MAX,
+  CONTROL_GUIDANCE_MIN,
+  CONTROL_SCALE_MAX,
+  CONTROL_SCALE_MIN,
+  DEFAULT_FEATHER_BRUSH_SIZE,
+  DEFAULT_POSE_GUIDANCE_END,
+  DEFAULT_POSE_GUIDANCE_START,
+  DEFAULT_POSE_SCALE,
+  DEFAULT_SCRIBBLE_BRUSH_SIZE,
+  DEFAULT_SCRIBBLE_GUIDANCE_END,
+  DEFAULT_SCRIBBLE_GUIDANCE_START,
+  DEFAULT_SCRIBBLE_PREVIEW_OPACITY,
+  DEFAULT_SCRIBBLE_SCALE,
+  FEATHER_BRUSH_MAX,
+  FEATHER_BRUSH_MIN,
+  LASSO_MIN_POINTS,
+  MAX_POSE_ZOOM,
+  MIN_OBJECT_SIZE,
+  MIN_POSE_ZOOM,
+  MIN_SELECTION_SIZE,
+  SCRIBBLE_BRUSH_MAX,
+  SCRIBBLE_BRUSH_MIN,
+  SCRIBBLE_PREVIEW_OPACITY_MAX,
+  SCRIBBLE_PREVIEW_OPACITY_MIN,
+} from './scene-image-inpaint-editor/constants';
+import {
+  canvasToDataUrl,
+  canvasToPngBlob,
+  cloneCanvas,
+  createBitmapFromDataUrl,
+  createBitmapFromUrl,
+  createBlankImageCanvas,
+  createBlankScribbleCanvas,
+  createCanvasFromBitmap,
+  createDefaultMaskCanvas,
+  drawContainedBitmapToCanvas,
+  drawDataUrlToCanvas,
+  get2dContext,
+  getErrorMessage,
+  hasDifferentAspectRatio,
+  pushCapped,
+} from './scene-image-inpaint-editor/canvas';
+import {
+  applyFeatherStrokeToImage,
+  drawObject,
+  drawObjectHandles,
+  drawRoundStroke,
+  drawScribblePreview,
+  drawSelectionPreview,
+  drawWhiteMaskVisualization,
+  fillMaskPath,
+  fillWholeMask,
+  isCanvasSolidColor,
+} from './scene-image-inpaint-editor/drawing';
+import {
+  clampCoverOffset,
+  clampNumber,
+  coerceNullableNumber,
+  getCanvasPoint,
+  getCanvasWheelPoint,
+  getCenteredCoverOffset,
+  getCoverDrawSize,
+  getResizeCursor,
+  getRotateHandlePosition,
+  getViewScale,
+  isPointInObject,
+  renderPoseConditionCanvas,
+  toObjectLocal,
+} from './scene-image-inpaint-editor/geometry';
+import {
+  createObjectFromBitmap,
+  createObjectFromSelection,
+  findResizeHandle,
+  getObjectMaskPath,
+  getRectFromPoints,
+  objectSnapshot,
+} from './scene-image-inpaint-editor/objects';
+import { SceneImageInpaintToolbar } from './scene-image-inpaint-editor/SceneImageInpaintToolbar';
+import type {
+  CanvasObject,
+  DragState,
+  EditorMode,
+  MaskPaintValue,
+  Point,
+  RectSelection,
+  ResizeHandle,
+  SceneImageInpaintEditorHandle,
+  SceneImageInpaintEditorProps,
+  SceneImageInpaintEditorState,
+  SelectionRegion,
+  SelectionTool,
+} from './scene-image-inpaint-editor/types';
+
+export type { SceneImageInpaintEditorHandle, SceneImageInpaintEditorState } from './scene-image-inpaint-editor/types';
 
 export const SceneImageInpaintEditor = forwardRef<
   SceneImageInpaintEditorHandle,
@@ -1008,6 +116,8 @@ export const SceneImageInpaintEditor = forwardRef<
   width,
   height,
   sourceImageUrl,
+  sourceScribbleUrl,
+  sourcePoseUrl,
   disabled = false,
   isGenerating = false,
   altText,
@@ -1037,7 +147,8 @@ export const SceneImageInpaintEditor = forwardRef<
   const draftSelectionRectRef = useRef<RectSelection | null>(null);
   const draftSelectionLassoRef = useRef<Point[]>([]);
   const initialEditorStateRef = useRef<SceneImageInpaintEditorState | undefined>(initialEditorState);
-  const hasLoadedOnceRef = useRef(false);
+  const onErrorRef = useRef<SceneImageInpaintEditorProps['onError']>(onError);
+  const publishEditorStateRef = useRef<() => void>(() => {});
 
   const [layersReady, setLayersReady] = useState(false);
   const [renderVersion, setRenderVersion] = useState(0);
@@ -1126,6 +237,14 @@ export const SceneImageInpaintEditor = forwardRef<
       poseGuidanceEnd: editorSettings.poseGuidanceEnd,
     });
   }, [onEditorStateChange]);
+
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
+
+  useEffect(() => {
+    publishEditorStateRef.current = publishEditorState;
+  }, [publishEditorState]);
 
   function requestRedraw() {
     setRenderVersion((version) => version + 1);
@@ -1276,23 +395,23 @@ export const SceneImageInpaintEditor = forwardRef<
   ]);
 
   useEffect(() => {
-    setScribbleScale(Math.max(0, Math.min(2, initialScribbleScale)));
+    setScribbleScale(clampNumber(initialScribbleScale, CONTROL_SCALE_MIN, CONTROL_SCALE_MAX));
   }, [initialScribbleScale]);
 
   useEffect(() => {
-    const nextStart = Math.max(0, Math.min(1, initialScribbleGuidanceStart));
-    const nextEnd = Math.max(nextStart, Math.min(1, initialScribbleGuidanceEnd));
+    const nextStart = clampNumber(initialScribbleGuidanceStart, CONTROL_GUIDANCE_MIN, CONTROL_GUIDANCE_MAX);
+    const nextEnd = Math.max(nextStart, clampNumber(initialScribbleGuidanceEnd, CONTROL_GUIDANCE_MIN, CONTROL_GUIDANCE_MAX));
     setScribbleGuidanceStart(nextStart);
     setScribbleGuidanceEnd(nextEnd);
   }, [initialScribbleGuidanceEnd, initialScribbleGuidanceStart]);
 
   useEffect(() => {
-    setPoseScale(Math.max(0, Math.min(2, initialPoseScale)));
+    setPoseScale(clampNumber(initialPoseScale, CONTROL_SCALE_MIN, CONTROL_SCALE_MAX));
   }, [initialPoseScale]);
 
   useEffect(() => {
-    const nextStart = Math.max(0, Math.min(1, initialPoseGuidanceStart));
-    const nextEnd = Math.max(nextStart, Math.min(1, initialPoseGuidanceEnd));
+    const nextStart = clampNumber(initialPoseGuidanceStart, CONTROL_GUIDANCE_MIN, CONTROL_GUIDANCE_MAX);
+    const nextEnd = Math.max(nextStart, clampNumber(initialPoseGuidanceEnd, CONTROL_GUIDANCE_MIN, CONTROL_GUIDANCE_MAX));
     setPoseGuidanceStart(nextStart);
     setPoseGuidanceEnd(nextEnd);
   }, [initialPoseGuidanceEnd, initialPoseGuidanceStart]);
@@ -1315,7 +434,7 @@ export const SceneImageInpaintEditor = forwardRef<
       setImageHistoryCount(0);
       setMaskHistoryCount(0);
       setScribbleHistoryCount(0);
-      onError?.(null);
+      onErrorRef.current?.(null);
 
       try {
         const nextImageCanvas = createBlankImageCanvas(width, height);
@@ -1325,57 +444,66 @@ export const SceneImageInpaintEditor = forwardRef<
         let nextPoseOffset: Point = { x: 0, y: 0 };
         let nextPoseZoom = 1;
         const state = initialEditorStateRef.current;
-        const shouldRestoreImageLayer = !hasLoadedOnceRef.current && hasEditorStateData(state);
+        const hasExistingLayers = Boolean(
+          imageCanvasRef.current
+            && maskCanvasRef.current
+            && scribbleCanvasRef.current,
+        );
+        const hasSavedMask = Boolean(state?.maskDataUrl);
+        const shouldRestoreImageFromSnapshot = Boolean(
+          state?.imageDataUrl && (!sourceImageUrl || !hasExistingLayers),
+        );
+        let autoMaskRect: ReturnType<typeof drawContainedBitmapToCanvas> | null = null;
         const restoredIsMaskVisualizationEnabled = state?.isMaskVisualizationEnabled ?? false;
         const restoredFeatherBrushSize = coerceNullableNumber(
           state?.featherBrushSize,
           DEFAULT_FEATHER_BRUSH_SIZE,
-          12,
-          180,
+          FEATHER_BRUSH_MIN,
+          FEATHER_BRUSH_MAX,
         );
         const restoredScribbleBrushSize = coerceNullableNumber(
           state?.scribbleBrushSize,
           DEFAULT_SCRIBBLE_BRUSH_SIZE,
-          2,
-          96,
+          SCRIBBLE_BRUSH_MIN,
+          SCRIBBLE_BRUSH_MAX,
         );
         const restoredScribblePreviewOpacity = coerceNullableNumber(
           state?.scribblePreviewOpacity,
           DEFAULT_SCRIBBLE_PREVIEW_OPACITY,
-          0.1,
-          1,
+          SCRIBBLE_PREVIEW_OPACITY_MIN,
+          SCRIBBLE_PREVIEW_OPACITY_MAX,
         );
         const restoredScribbleScale = coerceNullableNumber(
           state?.scribbleScale,
           initialScribbleScale,
-          0,
-          2,
+          CONTROL_SCALE_MIN,
+          CONTROL_SCALE_MAX,
         );
         const restoredScribbleGuidanceStart = coerceNullableNumber(
           state?.scribbleGuidanceStart,
           initialScribbleGuidanceStart,
-          0,
-          1,
+          CONTROL_GUIDANCE_MIN,
+          CONTROL_GUIDANCE_MAX,
         );
         const restoredScribbleGuidanceEnd = Math.max(
           restoredScribbleGuidanceStart,
-          coerceNullableNumber(state?.scribbleGuidanceEnd, initialScribbleGuidanceEnd, 0, 1),
+          coerceNullableNumber(state?.scribbleGuidanceEnd, initialScribbleGuidanceEnd, CONTROL_GUIDANCE_MIN, CONTROL_GUIDANCE_MAX),
         );
         const restoredPoseScale = coerceNullableNumber(
           state?.poseScale,
           initialPoseScale,
-          0,
-          2,
+          CONTROL_SCALE_MIN,
+          CONTROL_SCALE_MAX,
         );
         const restoredPoseGuidanceStart = coerceNullableNumber(
           state?.poseGuidanceStart,
           initialPoseGuidanceStart,
-          0,
-          1,
+          CONTROL_GUIDANCE_MIN,
+          CONTROL_GUIDANCE_MAX,
         );
         const restoredPoseGuidanceEnd = Math.max(
           restoredPoseGuidanceStart,
-          coerceNullableNumber(state?.poseGuidanceEnd, initialPoseGuidanceEnd, 0, 1),
+          coerceNullableNumber(state?.poseGuidanceEnd, initialPoseGuidanceEnd, CONTROL_GUIDANCE_MIN, CONTROL_GUIDANCE_MAX),
         );
 
         editorSettingsRef.current = {
@@ -1401,7 +529,7 @@ export const SceneImageInpaintEditor = forwardRef<
         setPoseGuidanceStart(restoredPoseGuidanceStart);
         setPoseGuidanceEnd(restoredPoseGuidanceEnd);
 
-        if (shouldRestoreImageLayer && state?.imageDataUrl) {
+        if (shouldRestoreImageFromSnapshot && state?.imageDataUrl) {
           await drawDataUrlToCanvas(state.imageDataUrl, nextImageCanvas);
         } else if (sourceImageUrl) {
           const bitmap = await createBitmapFromUrl(sourceImageUrl);
@@ -1409,7 +537,10 @@ export const SceneImageInpaintEditor = forwardRef<
             if (isCancelled) {
               return;
             }
-            get2dContext(nextImageCanvas).drawImage(bitmap, 0, 0, width, height);
+            const drawRect = drawContainedBitmapToCanvas(bitmap, nextImageCanvas);
+            if (!hasSavedMask && hasDifferentAspectRatio(bitmap, width, height)) {
+              autoMaskRect = drawRect;
+            }
           } finally {
             try {
               bitmap.close();
@@ -1419,11 +550,41 @@ export const SceneImageInpaintEditor = forwardRef<
           }
         }
 
+        // Saved mask state always wins; auto mask is only an initialization fallback.
         if (state?.maskDataUrl) {
           await drawDataUrlToCanvas(state.maskDataUrl, nextMaskCanvas);
+        } else if (autoMaskRect) {
+          const maskContext = get2dContext(nextMaskCanvas);
+          maskContext.fillStyle = '#000000';
+          maskContext.fillRect(
+            autoMaskRect.x,
+            autoMaskRect.y,
+            autoMaskRect.width,
+            autoMaskRect.height,
+          );
         }
         if (state?.scribbleDataUrl) {
           await drawDataUrlToCanvas(state.scribbleDataUrl, nextScribbleCanvas);
+        } else if (sourceScribbleUrl) {
+          const scribbleBitmap = await createBitmapFromUrl(sourceScribbleUrl);
+          try {
+            if (isCancelled) {
+              return;
+            }
+            get2dContext(nextScribbleCanvas).drawImage(
+              scribbleBitmap,
+              0,
+              0,
+              nextScribbleCanvas.width,
+              nextScribbleCanvas.height,
+            );
+          } finally {
+            try {
+              scribbleBitmap.close();
+            } catch {
+              // Bitmap cleanup is best-effort.
+            }
+          }
         }
         if (state?.poseImageDataUrl) {
           const poseBitmap = await createBitmapFromDataUrl(state.poseImageDataUrl);
@@ -1443,6 +604,23 @@ export const SceneImageInpaintEditor = forwardRef<
               // Bitmap cleanup is best-effort.
             }
           }
+        } else if (sourcePoseUrl) {
+          const poseBitmap = await createBitmapFromUrl(sourcePoseUrl);
+          try {
+            if (isCancelled) {
+              return;
+            }
+            const poseSourceCanvas = createCanvasFromBitmap(poseBitmap);
+            nextPoseSourceCanvas = poseSourceCanvas;
+            nextPoseZoom = 1;
+            nextPoseOffset = getCenteredCoverOffset(poseSourceCanvas, width, height, nextPoseZoom);
+          } finally {
+            try {
+              poseBitmap.close();
+            } catch {
+              // Bitmap cleanup is best-effort.
+            }
+          }
         }
 
         if (!isCancelled) {
@@ -1450,11 +628,10 @@ export const SceneImageInpaintEditor = forwardRef<
           maskCanvasRef.current = nextMaskCanvas;
           scribbleCanvasRef.current = nextScribbleCanvas;
           replacePoseLayer(nextPoseSourceCanvas, nextPoseOffset, nextPoseZoom);
-          hasLoadedOnceRef.current = true;
           setLayersReady(true);
           refreshLayerFlags();
           requestRedraw();
-          publishEditorState();
+          publishEditorStateRef.current();
         }
       } catch (error) {
         if (!isCancelled) {
@@ -1462,12 +639,11 @@ export const SceneImageInpaintEditor = forwardRef<
           maskCanvasRef.current = createDefaultMaskCanvas(width, height);
           scribbleCanvasRef.current = createBlankScribbleCanvas(width, height);
           replacePoseLayer(null);
-          hasLoadedOnceRef.current = true;
           setLayersReady(true);
           refreshLayerFlags();
           requestRedraw();
-          publishEditorState();
-          onError?.(getErrorMessage(error));
+          publishEditorStateRef.current();
+          onErrorRef.current?.(getErrorMessage(error));
         }
       } finally {
         if (!isCancelled) {
@@ -1480,7 +656,7 @@ export const SceneImageInpaintEditor = forwardRef<
     return () => {
       isCancelled = true;
     };
-  }, [height, onError, publishEditorState, sourceImageUrl, width]);
+  }, [sourceImageUrl, sourcePoseUrl, sourceScribbleUrl, width, height]);
 
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -2117,23 +1293,23 @@ export const SceneImageInpaintEditor = forwardRef<
   }
 
   function updateScribbleGuidanceStart(value: number) {
-    const nextValue = Math.max(0, Math.min(1, value));
+    const nextValue = clampNumber(value, CONTROL_GUIDANCE_MIN, CONTROL_GUIDANCE_MAX);
     setScribbleGuidanceStart(nextValue);
     setScribbleGuidanceEnd((currentEnd) => Math.max(currentEnd, nextValue));
   }
 
   function updateScribbleGuidanceEnd(value: number) {
-    setScribbleGuidanceEnd(Math.max(scribbleGuidanceStart, Math.min(1, value)));
+    setScribbleGuidanceEnd(Math.max(scribbleGuidanceStart, clampNumber(value, CONTROL_GUIDANCE_MIN, CONTROL_GUIDANCE_MAX)));
   }
 
   function updatePoseGuidanceStart(value: number) {
-    const nextValue = Math.max(0, Math.min(1, value));
+    const nextValue = clampNumber(value, CONTROL_GUIDANCE_MIN, CONTROL_GUIDANCE_MAX);
     setPoseGuidanceStart(nextValue);
     setPoseGuidanceEnd((currentEnd) => Math.max(currentEnd, nextValue));
   }
 
   function updatePoseGuidanceEnd(value: number) {
-    setPoseGuidanceEnd(Math.max(poseGuidanceStart, Math.min(1, value)));
+    setPoseGuidanceEnd(Math.max(poseGuidanceStart, clampNumber(value, CONTROL_GUIDANCE_MIN, CONTROL_GUIDANCE_MAX)));
   }
 
   useImperativeHandle(ref, () => ({
@@ -2188,334 +1364,47 @@ export const SceneImageInpaintEditor = forwardRef<
 
   return (
     <div className="space-y-2">
-      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-        <FieldLabel>INPAINT 이미지</FieldLabel>
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <Button
-            className={TOOL_BUTTON_CLASS}
-            variant={mode === 'select' ? 'primary' : 'default'}
-            onClick={() => switchMode('select')}
-            disabled={disabled || isGenerating}
-            aria-label="선택 및 object 편집"
-            title="선택 및 object 편집"
-          >
-            ✋
-          </Button>
-          <Button
-            className={TOOL_BUTTON_CLASS}
-            variant={mode === 'feather' ? 'primary' : 'default'}
-            onClick={() => switchMode('feather')}
-            disabled={disabled || isGenerating}
-            aria-label="Feather 브러시"
-            title="Feather 브러시"
-          >
-            🖌️
-          </Button>
-          <Button
-            className={TOOL_BUTTON_CLASS}
-            variant={mode === 'scribble' ? 'primary' : 'default'}
-            onClick={() => switchMode('scribble')}
-            disabled={disabled || isGenerating}
-            aria-label="Scribble ControlNet"
-            title="Scribble ControlNet"
-          >
-            ✏️
-          </Button>
-          <Button
-            className={TOOL_BUTTON_CLASS}
-            variant={mode === 'openpose' ? 'primary' : 'default'}
-            onClick={() => switchMode('openpose')}
-            disabled={disabled || isGenerating}
-            aria-label="OpenPose ControlNet"
-            title="OpenPose ControlNet"
-          >
-            OP
-          </Button>
-          <Button
-            className={TOOL_BUTTON_CLASS}
-            variant={isMaskVisualizationEnabled ? 'primary' : 'default'}
-            onClick={() => setIsMaskVisualizationEnabled((value) => !value)}
-            disabled={disabled || isGenerating}
-            aria-label="Mask 시각화 토글"
-            title="Mask 시각화 토글"
-          >
-            ◐
-          </Button>
-        </div>
-      </div>
-
-      <div className="flex min-h-8 min-w-0 flex-wrap items-center justify-end gap-2">
-        {mode === 'select' ? (
-          <>
-            <Button
-              className={TOOL_BUTTON_CLASS}
-              variant={selectionTool === 'rect' ? 'primary' : 'default'}
-              onClick={() => changeSelectionTool('rect')}
-              disabled={disabled || isGenerating}
-              aria-label="사각형 선택"
-              title="사각형 선택"
-            >
-              ▭
-            </Button>
-            <Button
-              className={TOOL_BUTTON_CLASS}
-              variant={selectionTool === 'lasso' ? 'primary' : 'default'}
-              onClick={() => changeSelectionTool('lasso')}
-              disabled={disabled || isGenerating}
-              aria-label="Lasso 선택"
-              title="Lasso 선택"
-            >
-              〰
-            </Button>
-            <Button
-              className={TOOL_BUTTON_CLASS}
-              onClick={flipActiveObjectX}
-              disabled={disabled || isGenerating || !activeObject}
-              aria-label="선택 object 좌우반전"
-              title="선택 object 좌우반전"
-            >
-              ↔
-            </Button>
-            <Button
-              className={TOOL_BUTTON_CLASS}
-              onClick={undoImage}
-              disabled={disabled || isGenerating || Boolean(activeObject) || imageHistoryCount === 0}
-              aria-label="Image undo"
-              title="Image undo"
-            >
-              ↩
-            </Button>
-            <Button
-              className={TOOL_BUTTON_CLASS}
-              onClick={() => applyActiveObjectToMask('white')}
-              disabled={disabled || isGenerating}
-              aria-label="선택 object를 white mask로 적용"
-              title="선택 object를 white mask로 적용"
-            >
-              ■
-            </Button>
-            <Button
-              className={TOOL_BUTTON_CLASS}
-              onClick={() => applyActiveObjectToMask('black')}
-              disabled={disabled || isGenerating}
-              aria-label="선택 object를 black mask로 적용"
-              title="선택 object를 black mask로 적용"
-            >
-              □
-            </Button>
-            <Button
-              className={TOOL_BUTTON_CLASS}
-              onClick={undoMask}
-              disabled={disabled || isGenerating || maskHistoryCount === 0}
-              aria-label="Mask undo"
-              title="Mask undo"
-            >
-              ↩
-            </Button>
-          </>
-        ) : null}
-
-        {mode === 'feather' ? (
-          <>
-            <label className="flex min-w-0 items-center gap-2 text-xs font-semibold text-[var(--app-muted)]">
-              brush
-              <input
-                type="range"
-                min="12"
-                max="180"
-                step="2"
-                value={featherBrushSize}
-                onChange={(event) => setFeatherBrushSize(Number(event.target.value))}
-                disabled={disabled || isGenerating}
-                className="w-24 accent-[#ffe2ba]"
-              />
-              <span className="w-10 text-right">{featherBrushSize}px</span>
-            </label>
-            <Button
-              className={TOOL_BUTTON_CLASS}
-              onClick={undoImage}
-              disabled={disabled || isGenerating || Boolean(activeObject) || imageHistoryCount === 0}
-              aria-label="Image undo"
-              title="Image undo"
-            >
-              ↩
-            </Button>
-          </>
-        ) : null}
-
-        {mode === 'scribble' ? (
-          <>
-            <label className="flex min-w-0 items-center gap-2 text-xs font-semibold text-[var(--app-muted)]">
-              brush
-              <input
-                type="range"
-                min="2"
-                max="100"
-                step="1"
-                value={scribbleBrushSize}
-                onChange={(event) => setScribbleBrushSize(Number(event.target.value))}
-                disabled={disabled || isGenerating}
-                className="w-20 accent-[#ffe2ba]"
-              />
-              <span className="w-9 text-right">{scribbleBrushSize}px</span>
-            </label>
-            <label className="flex min-w-0 items-center gap-2 text-xs font-semibold text-[var(--app-muted)]">
-              opacity
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value={scribblePreviewOpacity}
-                onChange={(event) => setScribblePreviewOpacity(Number(event.target.value))}
-                disabled={disabled || isGenerating}
-                className="w-20 accent-[#ffe2ba]"
-              />
-              <span className="w-10 text-right">{Math.round(scribblePreviewOpacity * 100)}%</span>
-            </label>
-            <label className="flex min-w-0 items-center gap-1 text-xs font-semibold text-[var(--app-muted)]">
-              scale
-              <input
-                type="number"
-                min="0"
-                max="2"
-                step="0.05"
-                value={scribbleScale}
-                onChange={(event) => {
-                  const nextValue = Number(event.target.value);
-                  if (Number.isFinite(nextValue)) {
-                    setScribbleScale(Math.max(0, Math.min(2, nextValue)));
-                  }
-                }}
-                disabled={disabled || isGenerating}
-                className="h-8 w-16 rounded-[8px] border border-[rgba(255,218,228,0.26)] bg-[rgba(16,8,24,0.72)] px-2 text-right text-xs text-[#fff7ef] outline-none focus:border-[#ffe2ba]"
-              />
-            </label>
-            <label className="flex min-w-0 items-center gap-1 text-xs font-semibold text-[var(--app-muted)]">
-              start
-              <input
-                type="number"
-                min="0"
-                max="1"
-                step="0.05"
-                value={scribbleGuidanceStart}
-                onChange={(event) => {
-                  const nextValue = Number(event.target.value);
-                  if (Number.isFinite(nextValue)) {
-                    updateScribbleGuidanceStart(nextValue);
-                  }
-                }}
-                disabled={disabled || isGenerating}
-                className="h-8 w-16 rounded-[8px] border border-[rgba(255,218,228,0.26)] bg-[rgba(16,8,24,0.72)] px-2 text-right text-xs text-[#fff7ef] outline-none focus:border-[#ffe2ba]"
-              />
-            </label>
-            <label className="flex min-w-0 items-center gap-1 text-xs font-semibold text-[var(--app-muted)]">
-              end
-              <input
-                type="number"
-                min="0"
-                max="1"
-                step="0.05"
-                value={scribbleGuidanceEnd}
-                onChange={(event) => {
-                  const nextValue = Number(event.target.value);
-                  if (Number.isFinite(nextValue)) {
-                    updateScribbleGuidanceEnd(nextValue);
-                  }
-                }}
-                disabled={disabled || isGenerating}
-                className="h-8 w-16 rounded-[8px] border border-[rgba(255,218,228,0.26)] bg-[rgba(16,8,24,0.72)] px-2 text-right text-xs text-[#fff7ef] outline-none focus:border-[#ffe2ba]"
-              />
-            </label>
-            <Button
-              className={TOOL_BUTTON_CLASS}
-              onClick={undoScribble}
-              disabled={disabled || isGenerating || scribbleHistoryCount === 0}
-              aria-label="Scribble undo"
-              title="Scribble undo"
-            >
-              ↩
-            </Button>
-            <Button
-              className={TOOL_BUTTON_CLASS}
-              onClick={clearScribble}
-              disabled={disabled || isGenerating || !hasScribbleEdits}
-              aria-label="Scribble 모두 지우기"
-              title="Scribble 모두 지우기"
-            >
-              🧹
-            </Button>
-          </>
-        ) : null}
-
-        {mode === 'openpose' ? (
-          <>
-            <label className="flex min-w-0 items-center gap-1 text-xs font-semibold text-[var(--app-muted)]">
-              scale
-              <input
-                type="number"
-                min="0"
-                max="2"
-                step="0.05"
-                value={poseScale}
-                onChange={(event) => {
-                  const nextValue = Number(event.target.value);
-                  if (Number.isFinite(nextValue)) {
-                    setPoseScale(Math.max(0, Math.min(2, nextValue)));
-                  }
-                }}
-                disabled={disabled || isGenerating}
-                className="h-8 w-16 rounded-[8px] border border-[rgba(255,218,228,0.26)] bg-[rgba(16,8,24,0.72)] px-2 text-right text-xs text-[#fff7ef] outline-none focus:border-[#ffe2ba]"
-              />
-            </label>
-            <label className="flex min-w-0 items-center gap-1 text-xs font-semibold text-[var(--app-muted)]">
-              start
-              <input
-                type="number"
-                min="0"
-                max="1"
-                step="0.05"
-                value={poseGuidanceStart}
-                onChange={(event) => {
-                  const nextValue = Number(event.target.value);
-                  if (Number.isFinite(nextValue)) {
-                    updatePoseGuidanceStart(nextValue);
-                  }
-                }}
-                disabled={disabled || isGenerating}
-                className="h-8 w-16 rounded-[8px] border border-[rgba(255,218,228,0.26)] bg-[rgba(16,8,24,0.72)] px-2 text-right text-xs text-[#fff7ef] outline-none focus:border-[#ffe2ba]"
-              />
-            </label>
-            <label className="flex min-w-0 items-center gap-1 text-xs font-semibold text-[var(--app-muted)]">
-              end
-              <input
-                type="number"
-                min="0"
-                max="1"
-                step="0.05"
-                value={poseGuidanceEnd}
-                onChange={(event) => {
-                  const nextValue = Number(event.target.value);
-                  if (Number.isFinite(nextValue)) {
-                    updatePoseGuidanceEnd(nextValue);
-                  }
-                }}
-                disabled={disabled || isGenerating}
-                className="h-8 w-16 rounded-[8px] border border-[rgba(255,218,228,0.26)] bg-[rgba(16,8,24,0.72)] px-2 text-right text-xs text-[#fff7ef] outline-none focus:border-[#ffe2ba]"
-              />
-            </label>
-            <Button
-              className={TOOL_BUTTON_CLASS}
-              onClick={clearPoseImage}
-              disabled={disabled || isGenerating || !hasPoseImage}
-              aria-label="OpenPose 이미지 지우기"
-              title="OpenPose 이미지 지우기"
-            >
-              ×
-            </Button>
-          </>
-        ) : null}
-      </div>
+      <SceneImageInpaintToolbar
+        mode={mode}
+        selectionTool={selectionTool}
+        disabled={disabled}
+        isGenerating={isGenerating}
+        isMaskVisualizationEnabled={isMaskVisualizationEnabled}
+        hasActiveObject={Boolean(activeObject)}
+        imageHistoryCount={imageHistoryCount}
+        maskHistoryCount={maskHistoryCount}
+        featherBrushSize={featherBrushSize}
+        scribbleBrushSize={scribbleBrushSize}
+        scribblePreviewOpacity={scribblePreviewOpacity}
+        scribbleScale={scribbleScale}
+        scribbleGuidanceStart={scribbleGuidanceStart}
+        scribbleGuidanceEnd={scribbleGuidanceEnd}
+        scribbleHistoryCount={scribbleHistoryCount}
+        hasScribbleEdits={hasScribbleEdits}
+        poseScale={poseScale}
+        poseGuidanceStart={poseGuidanceStart}
+        poseGuidanceEnd={poseGuidanceEnd}
+        hasPoseImage={hasPoseImage}
+        onModeChange={switchMode}
+        onSelectionToolChange={changeSelectionTool}
+        onToggleMaskVisualization={() => setIsMaskVisualizationEnabled((value) => !value)}
+        onFlipActiveObjectX={flipActiveObjectX}
+        onUndoImage={undoImage}
+        onApplyActiveObjectToMask={applyActiveObjectToMask}
+        onUndoMask={undoMask}
+        onFeatherBrushSizeChange={setFeatherBrushSize}
+        onScribbleBrushSizeChange={setScribbleBrushSize}
+        onScribblePreviewOpacityChange={setScribblePreviewOpacity}
+        onScribbleScaleChange={setScribbleScale}
+        onScribbleGuidanceStartChange={updateScribbleGuidanceStart}
+        onScribbleGuidanceEndChange={updateScribbleGuidanceEnd}
+        onUndoScribble={undoScribble}
+        onClearScribble={clearScribble}
+        onPoseScaleChange={setPoseScale}
+        onPoseGuidanceStartChange={updatePoseGuidanceStart}
+        onPoseGuidanceEndChange={updatePoseGuidanceEnd}
+        onClearPoseImage={clearPoseImage}
+      />
 
       <ImageFrame
         className="relative mx-auto w-[min(100%,32rem)] rounded-[8px] border border-[rgba(255,218,228,0.22)] focus-within:ring-2 focus-within:ring-[rgba(255,226,186,0.55)] max-[960px]:w-[min(100%,28rem)]"
@@ -2526,7 +1415,7 @@ export const SceneImageInpaintEditor = forwardRef<
           width={width}
           height={height}
           aria-label={altText || 'Scene inpaint image editor'}
-          className="block h-full w-full touch-none focus:outline-none"
+          className="absolute inset-0 h-full w-full touch-none object-contain focus:outline-none"
           style={{ cursor: canvasCursor }}
           tabIndex={0}
           onKeyDown={handleKeyDown}

@@ -174,23 +174,31 @@ def _generate_images_batch_locked(
             call_kwargs["height"] = height
             call_kwargs["width"] = width
             call_kwargs["strength"] = strength
-        elif normalized_image_mode == "controlnet_inpaint":
+        elif normalized_image_mode in {"controlnet_t2i", "controlnet_i2i", "controlnet_inpaint"}:
             if not controlnet_model_ids:
-                raise ValueError("controlnet_inpaint requires at least one ControlNet model")
+                raise ValueError(f"{normalized_image_mode} requires at least one ControlNet model")
             if len(controlnet_model_ids) > 1 and chunk_size > 1:
                 raise ValueError("multiple ControlNets support only a single image per generation chunk")
+            if len(controlnet_image_chunk) != chunk_size:
+                raise ValueError("control image batch size must match prompt batch size")
             if any(len(controlnet_images) != len(controlnet_model_ids) for controlnet_images in controlnet_image_chunk):
                 raise ValueError("control image count must match ControlNet model count")
-            call_kwargs["image"] = init_image_chunk
-            call_kwargs["mask_image"] = mask_image_chunk
-            call_kwargs["control_image"] = (
+            if normalized_image_mode in {"controlnet_i2i", "controlnet_inpaint"}:
+                call_kwargs["image"] = init_image_chunk
+                call_kwargs["strength"] = strength
+            if normalized_image_mode == "controlnet_inpaint":
+                call_kwargs["mask_image"] = mask_image_chunk
+            control_image_arg = (
                 [controlnet_images[0] for controlnet_images in controlnet_image_chunk]
                 if len(controlnet_model_ids) == 1
                 else controlnet_image_chunk[0]
             )
+            if normalized_image_mode == "controlnet_t2i":
+                call_kwargs["image"] = control_image_arg
+            else:
+                call_kwargs["control_image"] = control_image_arg
             call_kwargs["height"] = height
             call_kwargs["width"] = width
-            call_kwargs["strength"] = strength
             call_kwargs["controlnet_conditioning_scale"] = (
                 controlnet_conditioning_scales[0]
                 if len(controlnet_model_ids) == 1
@@ -225,7 +233,8 @@ def _get_image_pipe_locked(
 ) -> Any:
     global _image_ckpt_path, _image_pipe_mode, _image_controlnet_model_ids, _image_pipe
 
-    next_controlnet_model_ids = tuple(controlnet_model_ids) if image_mode == "controlnet_inpaint" else None
+    is_controlnet_mode = image_mode.startswith("controlnet_")
+    next_controlnet_model_ids = tuple(controlnet_model_ids) if is_controlnet_mode else None
     if (
         _image_pipe is not None
         and (
@@ -253,11 +262,16 @@ def _get_image_pipe_locked(
             from diffusers import StableDiffusionXLInpaintPipeline
 
             pipeline_cls = StableDiffusionXLInpaintPipeline
-        elif image_mode == "controlnet_inpaint":
-            from diffusers import ControlNetModel, StableDiffusionXLControlNetInpaintPipeline
+        elif is_controlnet_mode:
+            from diffusers import (
+                ControlNetModel,
+                StableDiffusionXLControlNetImg2ImgPipeline,
+                StableDiffusionXLControlNetInpaintPipeline,
+                StableDiffusionXLControlNetPipeline,
+            )
 
             if not controlnet_model_ids:
-                raise ValueError("controlnet_inpaint requires at least one ControlNet model")
+                raise ValueError(f"{image_mode} requires at least one ControlNet model")
             controlnets = [
                 ControlNetModel.from_pretrained(
                     model_id,
@@ -266,12 +280,19 @@ def _get_image_pipe_locked(
                 for model_id in controlnet_model_ids
             ]
             controlnet = controlnets[0] if len(controlnets) == 1 else controlnets
-            pipeline_cls = StableDiffusionXLControlNetInpaintPipeline
+            if image_mode == "controlnet_t2i":
+                pipeline_cls = StableDiffusionXLControlNetPipeline
+            elif image_mode == "controlnet_i2i":
+                pipeline_cls = StableDiffusionXLControlNetImg2ImgPipeline
+            elif image_mode == "controlnet_inpaint":
+                pipeline_cls = StableDiffusionXLControlNetInpaintPipeline
+            else:
+                raise ValueError(f"unsupported image generation mode: {image_mode}")
         else:
             raise ValueError(f"unsupported image generation mode: {image_mode}")
 
         print(f"Loading Stable Diffusion {image_mode} checkpoint: {ckpt_path}", flush=True)
-        if image_mode == "controlnet_inpaint":
+        if is_controlnet_mode:
             print(f"Loading ControlNet model(s): {', '.join(controlnet_model_ids)}", flush=True)
             pipe = pipeline_cls.from_single_file(
                 ckpt_path,

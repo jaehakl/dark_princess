@@ -862,7 +862,7 @@ export function PlayPage() {
           <SectionBody className="grid place-items-center p-0">
             <ImageFrame
               className={cx(
-                'mx-auto w-full rounded-[8px] border border-[rgba(255,218,228,0.22)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_24px_80px_rgba(5,0,10,0.46)]',
+                'relative mx-auto w-full rounded-[8px] border border-[rgba(255,218,228,0.22)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_24px_80px_rgba(5,0,10,0.46)]',
                 canNavigateScript && 'cursor-pointer',
               )}
               role={canAdvanceScript ? 'button' : undefined}
@@ -881,7 +881,7 @@ export function PlayPage() {
                 <img
                   src={scene.image_url}
                   alt="현재 Scene 이미지"
-                  className="block h-full w-full object-cover"
+                  className="absolute inset-0 h-full w-full object-contain"
                 />
               ) : (
                 <div className="grid h-full min-h-72 w-full place-items-center gap-3 bg-[linear-gradient(145deg,rgba(255,231,238,0.1),transparent_42%),rgba(15,5,20,0.78)] p-6 text-center text-[0.95rem] text-[var(--app-muted)]">

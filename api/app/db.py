@@ -65,6 +65,8 @@ class Scene(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     image_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    scribble_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    pose_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     embedding: Mapped[Optional[List[float]]] = mapped_column(JSON, nullable=True)
     script: Mapped[str] = mapped_column(Text, nullable=False, default="")
     status_change: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)

@@ -49,9 +49,18 @@ def server():
         app.state.progress = 0
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            await ensure_scene_control_image_columns(conn)
         print("service is started.")
 
     def shutdown():
         print("service is stopped.")
 
     return app
+
+
+async def ensure_scene_control_image_columns(conn):
+    columns = (await conn.execute(text("PRAGMA table_info(scenes)"))).all()
+    existing_column_names = {row[1] for row in columns}
+    for column_name in ("scribble_url", "pose_url"):
+        if column_name not in existing_column_names:
+            await conn.execute(text(f"ALTER TABLE scenes ADD COLUMN {column_name} TEXT"))
