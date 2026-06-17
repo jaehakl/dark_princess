@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { dbTables } from '../api/api';
 import type {
   GenerateSceneRequest,
@@ -16,13 +16,8 @@ import {
   readSessionImageSettings,
 } from '../lib/scene-image';
 import type { ImageGenerationSettingsDraft } from '../lib/scene-image';
-import {
-  SceneImageInpaintEditor,
-} from './SceneImageInpaintEditor';
-import type {
-  SceneImageInpaintEditorHandle,
-  SceneImageInpaintEditorState,
-} from './SceneImageInpaintEditor';
+import { ImageEditor } from './image-editor';
+import type { ImageEditorSubmitPayload } from './image-editor';
 import {
   Button,
   FieldLabel,
@@ -60,12 +55,6 @@ const EMPTY_RECOMMENDATIONS: RecommendPromptColumns = {
 };
 
 const QUICK_IMAGE_STRENGTHS = [0.5, 0.75, 0.85, 0.95, 1];
-const QUICK_IMAGE_RESOLUTIONS = [
-  { width: 768, height: 1024, label: '768x1024' },
-  { width: 1024, height: 1024, label: '1024x1024' },
-  { width: 1024, height: 768, label: '1024x768' },
-];
-
 const STATUS_CHANGE_FIELDS = [
   { key: 'cash', label: '현금' },
   { key: 'strength', label: '힘' },
@@ -88,28 +77,6 @@ const FETCH_SCENE_BY_ID_REQUEST: GetListRequest = {
   filter: {},
   sort: null,
 };
-
-function createEmptyImageEditorState(): SceneImageInpaintEditorState {
-  return {
-    imageDataUrl: null,
-    maskDataUrl: null,
-    scribbleDataUrl: null,
-    poseImageDataUrl: null,
-    poseOffsetX: null,
-    poseOffsetY: null,
-    poseZoom: null,
-    isMaskVisualizationEnabled: null,
-    featherBrushSize: null,
-    scribbleBrushSize: null,
-    scribblePreviewOpacity: null,
-    scribbleScale: null,
-    scribbleGuidanceStart: null,
-    scribbleGuidanceEnd: null,
-    poseScale: null,
-    poseGuidanceStart: null,
-    poseGuidanceEnd: null,
-  };
-}
 
 type SaveMode =
   | 'text'
@@ -185,13 +152,6 @@ export function SceneEditComponent({
   const [recommendations, setRecommendations] = useState<RecommendPromptColumns>({
     ...EMPTY_RECOMMENDATIONS,
   });
-  const imageEditorRef = useRef<SceneImageInpaintEditorHandle | null>(null);
-  const preserveImageEditorStateSceneIdRef = useRef<number | null>(null);
-  const [imageEditorState, setImageEditorState] = useState<SceneImageInpaintEditorState>(
-    () => createEmptyImageEditorState(),
-  );
-  const [isImageEditorReady, setIsImageEditorReady] = useState(false);
-  const [imageEditorError, setImageEditorError] = useState<string | null>(null);
   const [imageSettingsDefaults, setImageSettingsDefaults] = useState<ImageGenerationSettings | null>(null);
   const [imageSettings, setImageSettings] = useState<ImageGenerationSettings | null>(null);
   const [imageSettingsDraft, setImageSettingsDraft] = useState<ImageGenerationSettingsDraft | null>(null);
@@ -216,7 +176,6 @@ export function SceneEditComponent({
   const canEdit = Boolean(activeScene);
   const canSaveText = canEdit && composedPrompt.length > 0 && !isBusy;
   const canDelete = sceneId !== null && !isBusy;
-  const canSaveImage = canSaveText && Boolean(imageSettings) && isImageEditorReady;
   const canRefreshRecommendations =
     canEdit && script.trim().length > 0 && !isRecommending && !isTranslatingPromptColumns && !savingMode;
   const canTranslatePromptColumns =
@@ -236,19 +195,13 @@ export function SceneEditComponent({
     setStatusChangeValues(statusChangeToValues(scene.status_change));
     setRecommendations({ ...EMPTY_RECOMMENDATIONS });
     setError(null);
-    setImageEditorError(null);
   }, []);
 
   useEffect(() => {
-    const shouldPreserveImageEditorState =
-      sceneId !== null && preserveImageEditorStateSceneIdRef.current === sceneId;
-
     if (sceneId === null) {
-      preserveImageEditorStateSceneIdRef.current = null;
       setIsLoadingScene(false);
       setIsDeleting(false);
       setSavingMode(null);
-      setImageEditorState(createEmptyImageEditorState());
       applySceneDraft({ ...initialScene, id: null });
       return;
     }
@@ -257,15 +210,11 @@ export function SceneEditComponent({
     let isCancelled = false;
 
     async function loadScene() {
-      if (!shouldPreserveImageEditorState) {
-        setImageEditorState(createEmptyImageEditorState());
-      }
       setIsLoadingScene(true);
       setIsDeleting(false);
       setSavingMode(null);
       setActiveScene(null);
       setError(null);
-      setImageEditorError(null);
       try {
         const sceneResponse = await dbTables.Scene.listRows({
           ...FETCH_SCENE_BY_ID_REQUEST,
@@ -277,13 +226,9 @@ export function SceneEditComponent({
         }
         if (!isCancelled) {
           applySceneDraft(loadedScene);
-          if (shouldPreserveImageEditorState) {
-            preserveImageEditorStateSceneIdRef.current = null;
-          }
         }
       } catch (loadError) {
         if (!isCancelled) {
-          preserveImageEditorStateSceneIdRef.current = null;
           setActiveScene(null);
           setPromptDraft({ ...EMPTY_PROMPT_DRAFT });
           setTranslationDraft({ ...EMPTY_PROMPT_DRAFT });
@@ -437,27 +382,19 @@ export function SceneEditComponent({
 
     const strength = Number(value);
     if (!Number.isFinite(strength) || strength <= 0 || strength > 1) {
-      setImageEditorError('strength는 0보다 크고 1 이하인 숫자로 입력해 주세요.');
+      setError('strength는 0보다 크고 1 이하인 숫자로 입력해 주세요.');
       return;
     }
 
-    const nextImageSettings = { ...imageSettings, strength };
-    setImageSettings(nextImageSettings);
-    setImageSettingsDraft(imageSettingsToDraft(nextImageSettings));
-    sessionStorage.setItem(IMAGE_SETTINGS_SESSION_KEY, JSON.stringify(nextImageSettings));
-    setImageEditorError(null);
+    updateImageParameters({ ...imageSettings, strength });
   }
 
-  function updateImageResolution(width: number, height: number) {
-    if (!imageSettings) {
-      return;
-    }
-
-    const nextImageSettings = { ...imageSettings, width, height };
+  function updateImageParameters(nextImageSettings: ImageGenerationSettings) {
     setImageSettings(nextImageSettings);
     setImageSettingsDraft(imageSettingsToDraft(nextImageSettings));
+    setStrengthControlValue(String(nextImageSettings.strength));
     sessionStorage.setItem(IMAGE_SETTINGS_SESSION_KEY, JSON.stringify(nextImageSettings));
-    setImageEditorError(null);
+    setError(null);
   }
 
   function openImageSettings() {
@@ -589,10 +526,7 @@ export function SceneEditComponent({
       pose_guidance_start: poseGuidanceStart,
       pose_guidance_end: poseGuidanceEnd,
     };
-    setImageSettings(nextImageSettings);
-    setImageSettingsDraft(imageSettingsToDraft(nextImageSettings));
-    setStrengthControlValue(String(nextImageSettings.strength));
-    sessionStorage.setItem(IMAGE_SETTINGS_SESSION_KEY, JSON.stringify(nextImageSettings));
+    updateImageParameters(nextImageSettings);
     setImageSettingsError(null);
     setIsImageSettingsOpen(false);
   }
@@ -613,7 +547,7 @@ export function SceneEditComponent({
     return statusChange;
   }
 
-  async function saveScene(mode: SaveMode) {
+  async function saveScene(mode: SaveMode, imagePayload: ImageEditorSubmitPayload | null = null) {
     const isImageSave = mode === 'image';
     const targetSceneId = sceneId ?? null;
     const trimmedPrompt = composedPrompt.trim();
@@ -631,12 +565,17 @@ export function SceneEditComponent({
     setSavingMode(mode);
     setError(null);
     try {
+      if (isImageSave && !imagePayload) {
+        throw new Error('이미지 생성 payload를 확인할 수 없습니다.');
+      }
+
+      const imagePromptColumns = imagePayload?.promptColumns ?? promptDraft;
       const sceneColumns = {
-        background: promptDraft.background.trim() || null,
-        subject: promptDraft.subject.trim() || null,
-        object: promptDraft.object.trim() || null,
-        action: promptDraft.action.trim() || null,
-        detail: promptDraft.detail.trim() || null,
+        background: imagePromptColumns.background.trim() || null,
+        subject: imagePromptColumns.subject.trim() || null,
+        object: imagePromptColumns.object.trim() || null,
+        action: imagePromptColumns.action.trim() || null,
+        detail: imagePromptColumns.detail.trim() || null,
       };
 
       const payload: GenerateSceneRequest = {
@@ -647,21 +586,9 @@ export function SceneEditComponent({
         ...sceneColumns,
       };
       const formData = new FormData();
-      let imagePayload: Awaited<ReturnType<SceneImageInpaintEditorHandle['renderImageAndMask']>> | null = null;
 
-      if (isImageSave) {
-        if (!imageEditorRef.current) {
-          throw new Error(imageEditorError ?? '이미지 편집기를 준비해 주세요.');
-        }
-
-        imagePayload = await imageEditorRef.current.renderImageAndMask();
-      }
-
-      const imageSettingsForPayload = isImageSave && imageSettings
-        ? {
-          ...imageSettings,
-          ...(imagePayload?.controlSettings ?? {}),
-        }
+      const imageSettingsForPayload = isImageSave && imagePayload
+        ? imagePayload.parameters
         : imageSettings;
       formData.append('payload', JSON.stringify(
         isImageSave
@@ -670,13 +597,17 @@ export function SceneEditComponent({
       ));
 
       if (isImageSave && imagePayload) {
-        formData.append('image', imagePayload.image, 'scene-inpaint-image.png');
-        formData.append('mask', imagePayload.mask, 'scene-inpaint-mask.png');
-        if (imagePayload.hasScribble) {
-          formData.append('scribble_image', imagePayload.scribble, 'scene-controlnet-scribble.png');
+        if (imagePayload.image) {
+          formData.append('image', imagePayload.image, 'scene-inpaint-image.png');
         }
-        if (imagePayload.pose) {
-          formData.append('pose_image', imagePayload.pose, 'scene-controlnet-openpose.png');
+        if (imagePayload.mask) {
+          formData.append('mask', imagePayload.mask, 'scene-inpaint-mask.png');
+        }
+        if (imagePayload.scribbleImage) {
+          formData.append('scribble_image', imagePayload.scribbleImage, 'scene-controlnet-scribble.png');
+        }
+        if (imagePayload.poseImage) {
+          formData.append('pose_image', imagePayload.poseImage, 'scene-controlnet-openpose.png');
         }
       }
 
@@ -686,9 +617,6 @@ export function SceneEditComponent({
         throw new Error('Scene 저장 결과를 확인할 수 없습니다.');
       }
 
-      if (targetSceneId !== generatedSceneId) {
-        preserveImageEditorStateSceneIdRef.current = generatedSceneId;
-      }
       applySceneDraft(generatedScene);
       onSaved(generatedSceneId);
     } catch (saveError) {
@@ -696,6 +624,10 @@ export function SceneEditComponent({
     } finally {
       setSavingMode(null);
     }
+  }
+
+  async function saveGeneratedImage(imagePayload: ImageEditorSubmitPayload) {
+    await saveScene('image', imagePayload);
   }
 
   async function deleteScene() {
@@ -801,17 +733,6 @@ export function SceneEditComponent({
             >
               {savingMode === 'text' ? <Spinner aria-hidden="true" /> : null}
               텍스트만 저장
-            </Button>
-            <Button
-              className="inline-flex items-center gap-2 px-3 py-2 text-xs"
-              onClick={() =>
-                confirmAction('저장하고 이미지를 새로 생성할까요?', () => {
-                  void saveScene('image');
-                })}
-              disabled={!canSaveImage}
-            >
-              {savingMode === 'image' ? <Spinner aria-hidden="true" /> : null}
-              이미지 생성 저장
             </Button>
             <Button
               className="px-3 py-2 text-base leading-none"
@@ -954,24 +875,6 @@ export function SceneEditComponent({
               <aside className="min-w-0 space-y-3">
                 <div className="space-y-3">
                   <div className="space-y-2">
-                    <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs font-semibold text-[var(--app-muted)]">
-                      <span className="mr-auto">resolution</span>
-                      {QUICK_IMAGE_RESOLUTIONS.map((resolution) => (
-                        <Button
-                          key={resolution.label}
-                          className="h-7 px-2.5 py-0 text-xs"
-                          variant={
-                            imageSettings?.width === resolution.width && imageSettings?.height === resolution.height
-                              ? 'primary'
-                              : 'default'
-                          }
-                          onClick={() => updateImageResolution(resolution.width, resolution.height)}
-                          disabled={isLoadingScene || Boolean(savingMode) || !imageSettings}
-                        >
-                          {resolution.label}
-                        </Button>
-                      ))}
-                    </div>
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <label className="flex items-center gap-2 text-xs font-semibold text-[var(--app-muted)]">
                         <span>strength</span>
@@ -1000,36 +903,22 @@ export function SceneEditComponent({
                     </div>
 
                     {imageSettings ? (
-                      <SceneImageInpaintEditor
-                        ref={imageEditorRef}
-                        width={imageSettings.width}
-                        height={imageSettings.height}
-                        sourceImageUrl={activeScene?.image_url ?? null}
-                        sourceScribbleUrl={activeScene?.scribble_url ?? null}
-                        sourcePoseUrl={activeScene?.pose_url ?? null}
-                        disabled={isLoadingScene || Boolean(savingMode)}
-                        isGenerating={savingMode === 'image'}
-                        altText={composedPrompt || 'Scene inpaint image'}
-                        scribbleScale={imageSettings.scribble_scale}
-                        scribbleGuidanceStart={imageSettings.scribble_guidance_start}
-                        scribbleGuidanceEnd={imageSettings.scribble_guidance_end}
-                        poseScale={imageSettings.pose_scale}
-                        poseGuidanceStart={imageSettings.pose_guidance_start}
-                        poseGuidanceEnd={imageSettings.pose_guidance_end}
-                        initialEditorState={imageEditorState}
-                        onEditorStateChange={setImageEditorState}
-                        onError={setImageEditorError}
-                        onReadyChange={setIsImageEditorReady}
+                      <ImageEditor
+                        parameters={imageSettings}
+                        promptColumns={promptDraft}
+                        baseImageUrl={activeScene?.image_url ?? null}
+                        scribbleImageUrl={activeScene?.scribble_url ?? null}
+                        poseImageUrl={activeScene?.pose_url ?? null}
+                        disabled={!canSaveText || isLoadingScene}
+                        isSubmitting={savingMode === 'image'}
+                        onParameterUpdated={updateImageParameters}
+                        onSubmit={saveGeneratedImage}
                       />
                     ) : (
                       <div className="grid aspect-square min-h-72 w-full place-items-center rounded-[8px] border border-[rgba(255,218,228,0.22)] bg-[rgba(15,5,20,0.78)] p-6 text-center text-[0.95rem] text-[var(--app-muted)]">
                         이미지 설정을 불러오는 중
                       </div>
                     )}
-
-                    {imageEditorError ? (
-                      <p className="text-sm font-semibold text-[#ff9ab8]">{imageEditorError}</p>
-                    ) : null}
                   </div>
                 </div>
 
