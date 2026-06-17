@@ -1,5 +1,6 @@
 from io import BytesIO
 from math import isfinite
+from pathlib import Path
 
 from fastapi import HTTPException, status
 from PIL import Image, UnidentifiedImageError
@@ -8,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import Scene
 from models import ImageGenerationSettingsBase, ImagePromptExtractionResponseBase, RecommendPromptItemBase
-from settings import settings
+from settings import API_ROOT, settings
 from service.selection_model import cosine_distance
 from model_runtime import (
     analyze_scene_components,
@@ -49,6 +50,7 @@ GEN_IMAGE_SEED_MAX = 1_000_000
 RECOMMEND_PROMPT_DISTANCE_EPSILON = 1e-6
 GEN_IMAGE_ALLOWED_SAMPLERS = {"", "euler", "euler_a", "dpmpp_2m", "unipc"}
 GEN_IMAGE_ALLOWED_SCHEDULERS = {"", "karras"}
+GEN_IMAGE_MODEL_FILE_EXTENSIONS = {".safetensors", ".ckpt"}
 SCENE_PROMPT_FIELDS = ("background", "subject", "object", "action", "detail")
 WD14_TAGGER_MODEL_ID = "SmilingWolf/wd-eva02-large-tagger-v3"
 WD14_DEFAULT_GENERAL_THRESHOLD = 0.35
@@ -291,7 +293,12 @@ async def generate_prompt(
 
 
 def get_default_image_generation_settings() -> ImageGenerationSettingsBase:
+    model_path = _get_configured_stable_diffusion_model_path(required=False)
+    model_filename = model_path.name if model_path is not None else ""
+    model_filenames = _get_stable_diffusion_model_filenames(model_path)
     return ImageGenerationSettingsBase(
+        model_filename=model_filename,
+        model_filenames=model_filenames,
         positive_base=GEN_IMAGE_POSITIVE_BASE,
         negative_prompt=GEN_IMAGE_NEGATIVE_PROMPT,
         steps=GEN_IMAGE_STEPS,
@@ -319,6 +326,8 @@ def resolve_image_generation_settings(
         return _validate_image_generation_settings(defaults)
 
     resolved = ImageGenerationSettingsBase(
+        model_filename=defaults.model_filename if image_settings.model_filename is None else image_settings.model_filename,
+        model_filenames=defaults.model_filenames,
         positive_base=defaults.positive_base if image_settings.positive_base is None else image_settings.positive_base,
         negative_prompt=defaults.negative_prompt if image_settings.negative_prompt is None else image_settings.negative_prompt,
         steps=defaults.steps if image_settings.steps is None else image_settings.steps,
@@ -445,6 +454,8 @@ def _validate_image_generation_settings(
         )
 
     return ImageGenerationSettingsBase(
+        model_filename=(image_settings.model_filename or "").strip(),
+        model_filenames=image_settings.model_filenames or [],
         positive_base=(image_settings.positive_base or "").strip(),
         negative_prompt=(image_settings.negative_prompt or "").strip(),
         steps=steps,
@@ -462,3 +473,91 @@ def _validate_image_generation_settings(
         pose_guidance_start=pose_guidance_start,
         pose_guidance_end=pose_guidance_end,
     )
+
+
+def resolve_image_generation_model_path(image_settings: ImageGenerationSettingsBase) -> Path:
+    model_path = _get_configured_stable_diffusion_model_path(required=True)
+    assert model_path is not None
+    model_filename = (image_settings.model_filename or model_path.name).strip()
+    selected_path = Path(model_filename)
+
+    if (
+        not model_filename
+        or "/" in model_filename
+        or "\\" in model_filename
+        or selected_path.is_absolute()
+        or selected_path.drive
+        or selected_path.name != model_filename
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="stable diffusion model filename is invalid",
+        )
+
+    model_filenames = set(_get_stable_diffusion_model_filenames(model_path))
+    if model_filename not in model_filenames:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="stable diffusion model filename is not available",
+        )
+
+    candidate_path = model_path.parent / model_filename
+    try:
+        resolved_path = candidate_path.resolve(strict=True)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"stable diffusion model file not found: {candidate_path}",
+        ) from exc
+
+    try:
+        model_directory = model_path.parent.resolve(strict=True)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"stable diffusion model directory not found: {model_path.parent}",
+        ) from exc
+
+    if resolved_path.parent != model_directory or not resolved_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="stable diffusion model filename is invalid",
+        )
+    return resolved_path
+
+
+def _get_configured_stable_diffusion_model_path(*, required: bool) -> Path | None:
+    model_path_value = settings.stable_diffusion_model_path.strip()
+    if not model_path_value:
+        if required:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="stable diffusion model path is required",
+            )
+        return None
+
+    model_path = Path(model_path_value).expanduser()
+    if not model_path.is_absolute():
+        model_path = API_ROOT / model_path
+    return model_path
+
+
+def _get_stable_diffusion_model_filenames(model_path: Path | None) -> list[str]:
+    if model_path is None:
+        return []
+
+    model_filenames: list[str] = []
+    try:
+        if model_path.parent.is_dir():
+            model_filenames = [
+                item.name
+                for item in model_path.parent.iterdir()
+                if item.is_file() and item.suffix.lower() in GEN_IMAGE_MODEL_FILE_EXTENSIONS
+            ]
+    except OSError:
+        model_filenames = []
+
+    default_filename = model_path.name
+    if default_filename and default_filename not in model_filenames:
+        model_filenames.append(default_filename)
+    return sorted(model_filenames, key=str.lower)

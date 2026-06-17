@@ -137,7 +137,7 @@ export function renderBaseOnlyMask(width: number, height: number, baseImage: Bas
   const baseRect = getContainedRect(baseImage.canvas.width, baseImage.canvas.height, width, height);
   const context = get2dContext(canvas);
   context.fillStyle = '#000000';
-  context.fillRect(baseRect.x, baseRect.y, baseRect.width, baseRect.height);
+  context.fillRect(baseRect.x, baseRect.y, baseRect.width-5, baseRect.height-5);
   return canvas;
 }
 

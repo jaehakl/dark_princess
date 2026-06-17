@@ -19,6 +19,8 @@ export type UpsertResponse = {
 };
 
 export type ImageGenerationSettings = {
+  model_filename: string;
+  model_filenames: string[];
   positive_base: string;
   negative_prompt: string;
   steps: number;

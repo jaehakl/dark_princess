@@ -16,6 +16,7 @@ export type SeedImageState = {
 };
 
 export type ImageGenerationSettingsDraft = {
+  model_filename: string;
   positive_base: string;
   negative_prompt: string;
   steps: string;
@@ -36,6 +37,7 @@ export type ImageGenerationSettingsDraft = {
 
 export function imageSettingsToDraft(settings: ImageGenerationSettings): ImageGenerationSettingsDraft {
   return {
+    model_filename: settings.model_filename,
     positive_base: settings.positive_base,
     negative_prompt: settings.negative_prompt,
     steps: String(settings.steps),
@@ -70,7 +72,14 @@ export function readSessionImageSettings(defaults: ImageGenerationSettings): Ima
     const legacyScale = parsedSettings.controlnet_conditioning_scale;
     const legacyGuidanceStart = parsedSettings.control_guidance_start;
     const legacyGuidanceEnd = parsedSettings.control_guidance_end;
+    const modelFilenames = defaults.model_filenames;
+    const parsedModelFilename = parsedSettings.model_filename ?? defaults.model_filename;
+    const modelFilename = modelFilenames.includes(parsedModelFilename)
+      ? parsedModelFilename
+      : defaults.model_filename;
     return {
+      model_filename: modelFilename,
+      model_filenames: modelFilenames,
       positive_base: parsedSettings.positive_base ?? defaults.positive_base,
       negative_prompt: parsedSettings.negative_prompt ?? defaults.negative_prompt,
       steps: parsedSettings.steps ?? defaults.steps,

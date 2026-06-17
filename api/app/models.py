@@ -39,6 +39,8 @@ class UpdateSceneContextRequestBase(BaseModel):
 
 
 class ImageGenerationSettingsBase(BaseModel):
+    model_filename: Optional[str] = None
+    model_filenames: Optional[List[str]] = None
     positive_base: Optional[str] = None
     negative_prompt: Optional[str] = None
     steps: Optional[int] = None

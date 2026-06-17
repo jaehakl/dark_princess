@@ -181,6 +181,7 @@ export function SceneEditComponent({
   const canTranslatePromptColumns =
     canEdit && !isBusy && PROMPT_COLUMNS.some((column) => translationDraft[column.key].trim().length > 0);
   const canDuplicate = Boolean(modalLayout && onDuplicate && sceneId !== null && canEdit && !isBusy);
+  const imageModelFilenameOptions = imageSettings?.model_filenames ?? imageSettingsDefaults?.model_filenames ?? [];
   const selectedLabel = sceneId === null
     ? '새 Scene 생성'
     : isLoadingScene
@@ -442,6 +443,7 @@ export function SceneEditComponent({
       : Number(imageSettingsDraft.clip_skip);
     const sampler = imageSettingsDraft.sampler.trim().toLowerCase();
     const scheduler = imageSettingsDraft.scheduler.trim().toLowerCase();
+    const modelFilename = imageSettingsDraft.model_filename.trim();
 
     if (!Number.isInteger(steps) || steps < 1) {
       setImageSettingsError('steps는 1 이상의 정수로 입력해 주세요.');
@@ -508,7 +510,14 @@ export function SceneEditComponent({
       return;
     }
 
-    const nextImageSettings = {
+    if (!imageModelFilenameOptions.includes(modelFilename)) {
+      setImageSettingsError('Unsupported model file.');
+      return;
+    }
+
+    const nextImageSettings: ImageGenerationSettings = {
+      model_filename: modelFilename,
+      model_filenames: imageModelFilenameOptions,
       positive_base: imageSettingsDraft.positive_base.trim(),
       negative_prompt: imageSettingsDraft.negative_prompt.trim(),
       steps,
@@ -986,6 +995,20 @@ export function SceneEditComponent({
             </PanelHeader>
 
             <SectionBody className="flex flex-col gap-3">
+              <div className="flex min-w-0 flex-col gap-1">
+                <FieldLabel>model</FieldLabel>
+                <FormControl
+                  as="select"
+                  value={imageSettingsDraft.model_filename}
+                  onChange={(event) => updateImageSettingsDraft('model_filename', event.target.value)}
+                  className="h-10 w-full px-3 text-sm"
+                >
+                  {imageModelFilenameOptions.map((modelFilename) => (
+                    <option key={modelFilename} value={modelFilename}>{modelFilename}</option>
+                  ))}
+                </FormControl>
+              </div>
+
               <div className="flex min-w-0 flex-col gap-1">
                 <FieldLabel>positive base</FieldLabel>
                 <FormControl

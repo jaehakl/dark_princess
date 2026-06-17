@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import random
 from io import BytesIO
-from pathlib import Path
 
 from fastapi import HTTPException, status
 from PIL import Image, UnidentifiedImageError
@@ -20,7 +19,7 @@ from models import (
     UpsertResponseBase,
     SceneBase,
 )
-from settings import API_ROOT, settings
+from settings import settings
 from service.selection_model import cosine_distance
 from service.image_util import (
     GEN_IMAGE_CFG,
@@ -35,6 +34,7 @@ from service.image_util import (
     GEN_IMAGE_STEPS,
     GEN_IMAGE_WIDTH,
     SCENE_PROMPT_FIELDS,
+    resolve_image_generation_model_path,
     resolve_image_generation_settings,
 )
 from utils.crud_helpers import cleanup_orphaned_object_keys
@@ -402,25 +402,8 @@ async def generate_scene_image(
     scribble_image: bytes | None = None,
     pose_image: bytes | None = None,
 ) -> tuple[str, bool]:
-    model_path_value = settings.stable_diffusion_model_path.strip()
-    if not model_path_value:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="stable diffusion model path is required",
-        )
-
-    model_path = Path(model_path_value).expanduser()
-    if not model_path.is_absolute():
-        model_path = API_ROOT / model_path
-    try:
-        model_path = model_path.resolve(strict=True)
-    except OSError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"stable diffusion model file not found: {model_path}",
-        ) from exc
-
     resolved_settings = resolve_image_generation_settings(image_settings)
+    model_path = resolve_image_generation_model_path(resolved_settings)
     target_size = (
         resolved_settings.width or GEN_IMAGE_WIDTH,
         resolved_settings.height or GEN_IMAGE_HEIGHT,
