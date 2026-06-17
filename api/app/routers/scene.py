@@ -19,11 +19,16 @@ from service.scene import (
     upsert_scenes,
 )
 from utils.crud_helpers import CrudSpec, delete_items, get_list_response
+from utils.local_storage import public_file_url_from_reference
 
 router = APIRouter(prefix="/scene", tags=["scene"])
 
 
-SCENE_CRUD_SPEC = CrudSpec(model=Scene, schema=SceneBase)
+SCENE_CRUD_SPEC = CrudSpec(
+    model=Scene,
+    schema=SceneBase,
+    public_url_fields=("image_url", "scribble_url", "pose_url"),
+)
 
 
 @router.post("/list", response_model=GetListResponseBase)
@@ -54,9 +59,9 @@ async def api_generate_scene(
 def scene_to_base(scene: Scene) -> SceneBase:
     return SceneBase(
         id=scene.id,
-        image_url=scene.image_url,
-        scribble_url=scene.scribble_url,
-        pose_url=scene.pose_url,
+        image_url=public_file_url_from_reference(scene.image_url),
+        scribble_url=public_file_url_from_reference(scene.scribble_url),
+        pose_url=public_file_url_from_reference(scene.pose_url),
         script=scene.script,
         status_change=scene.status_change,
         background=scene.background,
@@ -73,22 +78,7 @@ async def api_get_similar_scenes(
     db: AsyncSession = Depends(get_db),
 ):
     scenes = await get_similar_scenes(db, text)
-    return [
-        SceneBase(
-            id=scene.id,
-            image_url=scene.image_url,
-            scribble_url=scene.scribble_url,
-            pose_url=scene.pose_url,
-            script=scene.script,
-            status_change=scene.status_change,
-            background=scene.background,
-            subject=scene.subject,
-            object=scene.object,
-            action=scene.action,
-            detail=scene.detail,
-        )
-        for scene in scenes
-    ]
+    return [scene_to_base(scene) for scene in scenes]
 
 
 @router.post("/update-context", response_model=StatusBase)

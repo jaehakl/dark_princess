@@ -69,6 +69,16 @@ def public_file_url(key: str) -> str:
     return f"{settings.API_BASE_URL.rstrip('/')}/uploads/{quoted_key}"
 
 
+def public_file_url_from_reference(value: str | None) -> str | None:
+    if not value:
+        return None
+
+    object_key = object_key_from_public_url(value)
+    if object_key is None:
+        raise ValueError("invalid upload object reference")
+    return public_file_url(object_key)
+
+
 def object_key_from_public_url(value: str | None) -> str | None:
     if not value:
         return None

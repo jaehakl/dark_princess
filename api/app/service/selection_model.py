@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db import Scene, SelectionModel, Status
 from models import AdjustSelectionModelRequestBase, GenerateSelectionModelRequestBase
 from service.scene_option import make_scene_option_embedding
-from utils.local_storage import build_object_key, delete_object, get_object_path, object_key_from_public_url, public_file_url, upload_fileobj
+from utils.local_storage import build_object_key, delete_object, get_object_path, object_key_from_public_url, upload_fileobj
 from model_runtime import predict_target_scene_embedding as predict_target_scene_embedding_cached
 from model_runtime import update_selection_model
 from utils.vector import VECTOR_DIMENSION, validate_embedding
@@ -74,14 +74,14 @@ async def generate_selection_model(
 
     parameters = normalize_model_parameters(request.parameters)
     artifact = create_model_artifact(parameters)
-    file_url, object_key = save_model_artifact(artifact)
+    object_key = save_model_artifact(artifact)
 
     try:
         if selection_model is None:
             selection_model = SelectionModel()
             db.add(selection_model)
         selection_model.name = name
-        selection_model.file_url = file_url
+        selection_model.file_url = object_key
         await db.commit()
         await db.refresh(selection_model)
     except Exception:
@@ -89,7 +89,7 @@ async def generate_selection_model(
         delete_object(object_key)
         raise
 
-    await cleanup_old_model_file(db, old_file_url, file_url)
+    await cleanup_old_model_file(db, old_file_url, object_key)
     return selection_model
 
 
@@ -144,10 +144,10 @@ async def adjust_selection_model(
             learn_rate,
         )
     )
-    file_url, object_key = save_model_artifact(artifact)
+    object_key = save_model_artifact(artifact)
 
     try:
-        selection_model.file_url = file_url
+        selection_model.file_url = object_key
         await db.commit()
         await db.refresh(selection_model)
     except Exception:
@@ -155,7 +155,7 @@ async def adjust_selection_model(
         delete_object(object_key)
         raise
 
-    await cleanup_old_model_file(db, old_file_url, file_url)
+    await cleanup_old_model_file(db, old_file_url, object_key)
     return selection_model
 
 
@@ -385,14 +385,14 @@ def create_model_artifact(parameters: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def save_model_artifact(artifact: dict[str, Any]) -> tuple[str, str]:
+def save_model_artifact(artifact: dict[str, Any]) -> str:
     torch, _nn = load_torch()
     object_key = build_object_key(kind="file", filename="selection-model.pt")
     model_bytes = BytesIO()
     torch.save(artifact, model_bytes)
     model_bytes.seek(0)
     upload_fileobj(model_bytes, object_key, "application/octet-stream")
-    return public_file_url(object_key), object_key
+    return object_key
 
 
 async def predict_target_scene_embedding(

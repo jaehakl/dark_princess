@@ -17,11 +17,16 @@ from models import (
 )
 from service.selection_model import adjust_selection_model, generate_selection_model, get_next_scene
 from utils.crud_helpers import CrudSpec, delete_items, get_list_response, upsert_items
+from utils.local_storage import public_file_url_from_reference
 
 router = APIRouter(prefix="/selection_model", tags=["selection_model"])
 
 
-SELECTION_MODEL_CRUD_SPEC = CrudSpec(model=SelectionModel, schema=SelectionModelBase)
+SELECTION_MODEL_CRUD_SPEC = CrudSpec(
+    model=SelectionModel,
+    schema=SelectionModelBase,
+    public_url_fields=("file_url",),
+)
 
 
 @router.post("/list", response_model=GetListResponseBase)
@@ -46,11 +51,7 @@ async def api_generate_selection_model(
     db: AsyncSession = Depends(get_db),
 ):
     selection_model = await generate_selection_model(db, request)
-    return SelectionModelBase(
-        id=selection_model.id,
-        name=selection_model.name,
-        file_url=selection_model.file_url,
-    )
+    return selection_model_to_base(selection_model)
 
 
 @router.post("/adjust", response_model=SelectionModelBase)
@@ -59,11 +60,7 @@ async def api_adjust_selection_model(
     db: AsyncSession = Depends(get_db),
 ):
     selection_model = await adjust_selection_model(db, request)
-    return SelectionModelBase(
-        id=selection_model.id,
-        name=selection_model.name,
-        file_url=selection_model.file_url,
-    )
+    return selection_model_to_base(selection_model)
 
 
 @router.post("/next", response_model=SceneBase)
@@ -77,18 +74,30 @@ async def api_get_next_scene(
         status_id=request.status_id,
         option_text=request.option_text,
     )
+    return scene_to_base(next_scene)
+
+
+def selection_model_to_base(selection_model: SelectionModel) -> SelectionModelBase:
+    return SelectionModelBase(
+        id=selection_model.id,
+        name=selection_model.name,
+        file_url=public_file_url_from_reference(selection_model.file_url),
+    )
+
+
+def scene_to_base(scene) -> SceneBase:
     return SceneBase(
-        id=next_scene.id,
-        image_url=next_scene.image_url,
-        scribble_url=next_scene.scribble_url,
-        pose_url=next_scene.pose_url,
-        script=next_scene.script,
-        status_change=next_scene.status_change,
-        background=next_scene.background,
-        subject=next_scene.subject,
-        object=next_scene.object,
-        action=next_scene.action,
-        detail=next_scene.detail,
+        id=scene.id,
+        image_url=public_file_url_from_reference(scene.image_url),
+        scribble_url=public_file_url_from_reference(scene.scribble_url),
+        pose_url=public_file_url_from_reference(scene.pose_url),
+        script=scene.script,
+        status_change=scene.status_change,
+        background=scene.background,
+        subject=scene.subject,
+        object=scene.object,
+        action=scene.action,
+        detail=scene.detail,
     )
 
 

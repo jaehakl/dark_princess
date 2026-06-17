@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar
 
+from fastapi import HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import Text, and_, cast, delete as sa_delete, func, inspect, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +15,12 @@ from sqlalchemy.orm import selectinload
 from db import Scene, SelectionModel
 from models import GetListResponseBase, UpsertResponseBase
 from utils.datetime_utils import db_datetime_to_utc, parse_api_datetime_to_utc
-from utils.local_storage import delete_object, object_key_from_public_url, public_file_url
+from utils.local_storage import (
+    delete_object,
+    object_key_from_public_url,
+    public_file_url,
+    public_file_url_from_reference,
+)
 
 
 ModelT = TypeVar("ModelT")
@@ -68,6 +74,21 @@ def _normalize_payload_value(model: type[Any], field_name: str, value: Any) -> A
     if _get_model_column_python_type(model, field_name) is datetime:
         return parse_api_datetime_to_utc(value)
     return value
+
+
+def _normalize_public_url_field(field_name: str, value: Any) -> Any:
+    if value in (None, ""):
+        return value
+    if not isinstance(value, str):
+        return value
+
+    object_key = object_key_from_public_url(value)
+    if object_key is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"{field_name} must be a local upload object key",
+        )
+    return object_key
 
 
 def _get_relationship_attr(model: type[Any], attr_name: str) -> Any | None:
@@ -422,7 +443,7 @@ async def get_list_response(
             if _get_column_python_type(field_name) is datetime and isinstance(field_value, datetime):
                 field_value = db_datetime_to_utc(field_value)
             if field_name in spec.public_url_fields and isinstance(field_value, str) and field_value:
-                field_value = public_file_url(field_value)
+                field_value = public_file_url_from_reference(field_value)
             item_data[field_name] = field_value
 
         items.append(spec.schema.model_validate(item_data))
@@ -475,7 +496,13 @@ async def upsert_items(
             {
                 "entity_id": getattr(item, "id", None),
                 "payload": {
-                    field_name: _normalize_payload_value(spec.model, field_name, value)
+                    field_name: _normalize_payload_value(
+                        spec.model,
+                        field_name,
+                        _normalize_public_url_field(field_name, value)
+                        if field_name in spec.public_url_fields
+                        else value,
+                    )
                     for field_name, value in item.model_dump(exclude=payload_excluded_fields).items()
                 },
                 "relation_ids_by_field": relation_ids_by_field,

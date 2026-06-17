@@ -42,7 +42,7 @@ from utils.local_storage import (
     build_object_key,
     delete_object,
     is_allowed_content_type,
-    public_file_url,
+    object_key_from_public_url,
     upload_fileobj,
 )
 from model_runtime import encode_scene_text, generate_images_batch
@@ -119,22 +119,19 @@ async def generate_scene(
 ) -> Scene:
     should_generate_image = request.generate_image
     scene = None
-    old_image_url = None
-    old_scribble_url = None
-    old_pose_url = None
-    image_url = None
+    old_image_key = None
+    old_scribble_key = None
+    old_pose_key = None
     image_key = None
-    scribble_url = None
     scribble_key = None
-    pose_url = None
     pose_key = None
     if request.scene_id is not None:
         scene = await db.get(Scene, request.scene_id)
         if scene is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="scene not found")
-        old_image_url = scene.image_url
-        old_scribble_url = scene.scribble_url
-        old_pose_url = scene.pose_url
+        old_image_key = scene.image_url
+        old_scribble_key = scene.scribble_url
+        old_pose_key = scene.pose_url
 
     script = normalize_scene_script(request.script)
     column_values = {field: getattr(request, field) for field in SCENE_PROMPT_FIELDS}
@@ -145,7 +142,7 @@ async def generate_scene(
     column_embeddings = await make_scene_column_embeddings(column_values)
     if should_generate_image:
         try:
-            image_url, image_key, has_active_scribble = await generate_scene_image(
+            image_key, has_active_scribble = await generate_scene_image(
                 visual_prompt,
                 seed_image,
                 request.image_settings,
@@ -154,12 +151,12 @@ async def generate_scene(
                 pose_image=pose_image,
             )
             if has_active_scribble and scribble_image is not None:
-                scribble_url, scribble_key = upload_scene_control_image(
+                scribble_key = upload_scene_control_image(
                     scribble_image,
                     "scene-controlnet-scribble.png",
                 )
             if pose_image is not None:
-                pose_url, pose_key = upload_scene_control_image(
+                pose_key = upload_scene_control_image(
                     pose_image,
                     "scene-controlnet-openpose.png",
                 )
@@ -183,11 +180,11 @@ async def generate_scene(
         for field in SCENE_PROMPT_FIELDS:
             setattr(scene, field, column_values[field])
             setattr(scene, f"{field}_embedding", column_embeddings[field])
-        if image_url is not None:
-            scene.image_url = image_url
+        if image_key is not None:
+            scene.image_url = image_key
         if should_generate_image:
-            scene.scribble_url = scribble_url
-            scene.pose_url = pose_url
+            scene.scribble_url = scribble_key
+            scene.pose_url = pose_key
         await db.commit()
         await db.refresh(scene)
     except Exception:
@@ -201,12 +198,12 @@ async def generate_scene(
         raise
 
     orphan_candidates = []
-    if should_generate_image and image_url != old_image_url:
-        orphan_candidates.append(old_image_url)
-    if should_generate_image and scribble_url != old_scribble_url:
-        orphan_candidates.append(old_scribble_url)
-    if should_generate_image and pose_url != old_pose_url:
-        orphan_candidates.append(old_pose_url)
+    if should_generate_image and image_key != old_image_key:
+        orphan_candidates.append(old_image_key)
+    if should_generate_image and scribble_key != old_scribble_key:
+        orphan_candidates.append(old_scribble_key)
+    if should_generate_image and pose_key != old_pose_key:
+        orphan_candidates.append(old_pose_key)
     await cleanup_orphaned_object_keys(db, orphan_candidates)
     return scene
 
@@ -233,6 +230,9 @@ async def upsert_scenes(db: AsyncSession, items: list[SceneBase]) -> list[Upsert
             old_image_url = scene.image_url
             old_scribble_url = scene.scribble_url
             old_pose_url = scene.pose_url
+            image_url = normalize_scene_upload_reference("image_url", item.image_url)
+            scribble_url = normalize_scene_upload_reference("scribble_url", item.scribble_url)
+            pose_url = normalize_scene_upload_reference("pose_url", item.pose_url)
             script = normalize_scene_script(item.script)
             column_values = {field: getattr(item, field) for field in SCENE_PROMPT_FIELDS}
             visual_prompt = build_scene_visual_prompt(column_values)
@@ -240,9 +240,9 @@ async def upsert_scenes(db: AsyncSession, items: list[SceneBase]) -> list[Upsert
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scene prompt component is required")
             column_embeddings = await make_scene_column_embeddings(column_values)
 
-            scene.image_url = item.image_url
-            scene.scribble_url = item.scribble_url
-            scene.pose_url = item.pose_url
+            scene.image_url = image_url
+            scene.scribble_url = scribble_url
+            scene.pose_url = pose_url
             scene.script = script
             scene.status_change = item.status_change
             scene.embedding = await make_scene_embedding(visual_prompt, script)
@@ -250,11 +250,11 @@ async def upsert_scenes(db: AsyncSession, items: list[SceneBase]) -> list[Upsert
                 setattr(scene, field, column_values[field])
                 setattr(scene, f"{field}_embedding", column_embeddings[field])
 
-            if old_image_url != item.image_url:
+            if old_image_url != image_url:
                 orphan_candidates.append(old_image_url)
-            if old_scribble_url != item.scribble_url:
+            if old_scribble_url != scribble_url:
                 orphan_candidates.append(old_scribble_url)
-            if old_pose_url != item.pose_url:
+            if old_pose_url != pose_url:
                 orphan_candidates.append(old_pose_url)
             pending_results.append(scene)
 
@@ -361,6 +361,19 @@ def normalize_scene_script(script: str) -> str:
     return script.replace("\r\n", "\n").replace("\r", "\n")
 
 
+def normalize_scene_upload_reference(field_name: str, value: str | None) -> str | None:
+    if value in (None, ""):
+        return value
+
+    object_key = object_key_from_public_url(value)
+    if object_key is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"{field_name} must be a local upload object key",
+        )
+    return object_key
+
+
 def build_scene_visual_prompt(column_values: dict[str, str | None]) -> str:
     return ", ".join(
         (column_values[field] or "").strip()
@@ -373,11 +386,11 @@ def build_scene_embedding_input(visual_prompt: str, script: str) -> str:
     return f"passage: {visual_prompt}\n{script}"
 
 
-def upload_scene_control_image(image_bytes: bytes, filename: str) -> tuple[str, str]:
+def upload_scene_control_image(image_bytes: bytes, filename: str) -> str:
     object_key = build_object_key(kind="image", filename=filename)
     image_file = BytesIO(image_bytes)
     upload_fileobj(image_file, object_key, "image/png")
-    return public_file_url(object_key), object_key
+    return object_key
 
 
 async def generate_scene_image(
@@ -388,7 +401,7 @@ async def generate_scene_image(
     mask_image: bytes | None = None,
     scribble_image: bytes | None = None,
     pose_image: bytes | None = None,
-) -> tuple[str, str, bool]:
+) -> tuple[str, bool]:
     model_path_value = settings.stable_diffusion_model_path.strip()
     if not model_path_value:
         raise HTTPException(
@@ -540,7 +553,7 @@ async def generate_scene_image(
     )
     image_bytes.seek(0)
     upload_fileobj(image_bytes, image_key, _image_content_type(GEN_IMAGE_OUTPUT_FORMAT))
-    return public_file_url(image_key), image_key, has_active_scribble
+    return image_key, has_active_scribble
 
 
 def decode_generation_image(
