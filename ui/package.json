@@ -6,6 +6,7 @@
   "packageManager": "pnpm@10.12.1",
   "scripts": {
     "dev": "vite",
+    "dev-host": "vite --host",
     "build": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
