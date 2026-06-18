@@ -353,7 +353,6 @@ GEN_IMAGE_CAMERA_SAMPLES ={
     "deep shadows": "깊고 짙은 어둠",
     "lifted shadows": "그림자가 완전히 검지 않고 부드럽게 열린 톤",
     "bright highlights": "밝은 하이라이트가 두드러지는 이미지",
-    "silhouette": "피사체 내부 디테일보다 검은 윤곽을 강조",
     "contre-jour": "역광으로 피사체를 드라마틱하게 보이게 하는 방식"
   },
 
