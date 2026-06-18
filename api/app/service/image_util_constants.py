@@ -353,17 +353,9 @@ GEN_IMAGE_CAMERA_SAMPLES ={
   "광학효과와_후처리": {
     "fine film grain": "필름 사진의 미세한 입자감",
     "halation": "밝은 부분 주변이 부드럽게 번지는 필름 효과",
-    "bloom": "강한 빛이 주변으로 번지는 효과",
-    "lens flare": "렌즈 안에서 빛이 반사되어 생기는 플레어",
-    "anamorphic flare": "가로로 길게 뻗는 영화적 렌즈 플레어",
-    "light leaks": "필름 카메라에 빛이 새어 들어온 듯한 효과",
-    "chromatic aberration": "렌즈 가장자리의 색 번짐 효과",
-    "vignette": "화면 가장자리가 어두워지는 효과",
-    "soft glow": "전체적으로 부드러운 빛 번짐",
-    "starburst effect": "빛이 별 모양으로 갈라지는 효과",
-    "bokeh highlights": "흐린 배경 속 반짝이는 빛망울",
-    "subtle haze": "얇은 안개나 공기층이 낀 듯한 효과",
-    "double exposure": "두 이미지가 겹친 듯한 사진 효과",
+    "flare": "플레어",
+    "glow": "빛 번짐",
+    "bokeh": "흐린 배경",
   },
 
   "품질과_디테일": {
