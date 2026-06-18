@@ -93,12 +93,8 @@ GEN_IMAGE_CAMERA_SAMPLES ={
   },
 
   "인물_수와_관계": {
-    "single figure": "한 명의 인물을 중심으로 장면 구성",
-    "two-shot": "두 인물이 함께 등장하는 장면",
     "three-person composition": "세 인물의 관계나 긴장을 보여 주기 좋은 구성",
-    "group shot": "여러 인물이 함께 등장하는 장면",
     "ensemble cast": "여러 주요 인물이 모두 중요하게 배치된 구성",
-    "crowd scene": "군중이 있는 대규모 장면",
     "face-to-face": "두 인물이 마주 보는 대립, 대화, 친밀감의 구도",
     "side-by-side": "인물들이 나란히 있어 동행, 연대, 비교를 표현",
     "back-to-back": "등을 맞대고 있는 구도, 협력이나 긴장감을 표현",
@@ -457,7 +453,6 @@ GEN_IMAGE_CAMERA_SAMPLES ={
     "bokeh highlights": "흐린 배경 속 반짝이는 빛망울",
     "subtle haze": "얇은 안개나 공기층이 낀 듯한 효과",
     "double exposure": "두 이미지가 겹친 듯한 사진 효과",
-    "infrared look": "적외선 사진처럼 비현실적인 밝기와 색감"
   },
 
   "품질과_디테일": {

@@ -41,6 +41,7 @@ from service.image_util import (
     resolve_image_generation_model_path,
     resolve_image_generation_settings,
 )
+from service.prompt_text import strip_prompt_weight_syntax
 from utils.local_storage import (
     build_object_key,
     delete_object,
@@ -327,7 +328,7 @@ async def resolve_scene_image_for_upsert(db: AsyncSession, item: SceneBase) -> S
 
 
 async def make_scene_embedding(visual_prompt: str, script: str) -> list[float]:
-    embedding_input = build_scene_embedding_input(visual_prompt, script)
+    embedding_input = build_scene_embedding_input(strip_prompt_weight_syntax(visual_prompt), script)
     model_name = settings.SCENE_EMBEDDING_MODEL_NAME.strip()
     if not model_name:
         raise HTTPException(
@@ -441,7 +442,8 @@ async def make_positive_prompt_embedding(positive_prompt: str) -> list[float] | 
             detail="scene embedding model name is required",
         )
 
-    embedding = await encode_scene_text(model_name, f"passage: {positive_prompt}")
+    embedding_prompt = strip_prompt_weight_syntax(positive_prompt)
+    embedding = await encode_scene_text(model_name, f"passage: {embedding_prompt}")
     if len(embedding) != VECTOR_DIMENSION:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

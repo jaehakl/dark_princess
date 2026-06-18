@@ -31,6 +31,7 @@ from service.image_util_constants import (
     GEN_IMAGE_STEPS,
     GEN_IMAGE_WIDTH,
 )
+from service.prompt_text import strip_prompt_weight_syntax
 from utils.crud_helpers import normalize_int_ids
 from utils.local_storage import (
     build_object_key,
@@ -207,7 +208,8 @@ async def make_positive_prompt_embedding(positive_prompt: str) -> list[float] | 
             detail="scene embedding model name is required",
         )
 
-    embedding = await encode_scene_text(model_name, f"passage: {positive_prompt}")
+    embedding_prompt = strip_prompt_weight_syntax(positive_prompt)
+    embedding = await encode_scene_text(model_name, f"passage: {embedding_prompt}")
     if len(embedding) != VECTOR_DIMENSION:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
