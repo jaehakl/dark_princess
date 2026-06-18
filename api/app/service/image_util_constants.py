@@ -438,27 +438,6 @@ GEN_IMAGE_CAMERA_SAMPLES ={
     "intimate scale": "작고 가까운 사적인 규모"
   },
 
-  "시대와_장르": {
-    "contemporary realism": "현대 현실 기반의 사실적 장르",
-    "historical drama": "역사적 시대 배경의 드라마",
-    "period piece": "특정 시대 의상, 건축, 소품을 반영한 장면",
-    "fantasy": "마법, 신화, 비현실 요소가 있는 장르",
-    "dark fantasy": "어둡고 음울한 판타지",
-    "science fiction": "미래 기술, 우주, 과학적 상상력 기반 장르",
-    "space opera": "우주 규모의 장대한 SF 모험극",
-    "cyberpunk": "네온, 도시, 해킹, 기업 지배 등의 미래 디스토피아",
-    "solarpunk": "친환경 기술과 밝은 미래상을 담은 장르",
-    "steampunk": "증기기관과 빅토리아풍 기계 문명의 장르",
-    "retrofuturism": "과거 사람들이 상상한 미래 같은 스타일",
-    "post-apocalyptic": "문명 붕괴 이후의 세계",
-    "gothic": "어둡고 장식적인 고딕 분위기",
-    "noir": "어두운 범죄 영화풍, 그림자와 냉소적 분위기",
-    "western": "서부극 분위기",
-    "folklore": "민담, 전설, 지역 신앙 기반 분위기",
-    "mythic": "신화적이고 장엄한 느낌",
-    "surreal fantasy": "초현실적 이미지와 판타지가 결합된 장르",
-  },
-
   "시각_스타일": {
     "photorealistic": "사진처럼 사실적인 표현o",
     "cinematic realism": "영화 장면처럼 현실적이지만 연출된 표현",
