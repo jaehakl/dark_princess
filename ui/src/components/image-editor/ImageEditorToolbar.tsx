@@ -18,6 +18,10 @@ type ImageEditorToolbarProps = {
   disabled: boolean;
   canUndo: boolean;
   canRedo: boolean;
+  imageId?: number | null;
+  canGoPreviousImage: boolean;
+  canGoNextImage: boolean;
+  canOpenLineage: boolean;
   hasActiveObject: boolean;
   hasBaseImage: boolean;
   hasScribble: boolean;
@@ -41,6 +45,9 @@ type ImageEditorToolbarProps = {
   onToolChange: (tool: ImageTool) => void;
   onUndo: () => void;
   onRedo: () => void;
+  onPreviousImage: () => void;
+  onNextImage: () => void;
+  onOpenLineage: () => void;
   onFlip: () => void;
   onClearImage: () => void;
   onToggleMaskOverlap: () => void;
@@ -118,6 +125,10 @@ export function ImageEditorToolbar({
   disabled,
   canUndo,
   canRedo,
+  imageId,
+  canGoPreviousImage,
+  canGoNextImage,
+  canOpenLineage,
   hasActiveObject,
   hasBaseImage,
   hasScribble,
@@ -141,6 +152,9 @@ export function ImageEditorToolbar({
   onToolChange,
   onUndo,
   onRedo,
+  onPreviousImage,
+  onNextImage,
+  onOpenLineage,
   onFlip,
   onClearImage,
   onToggleMaskOverlap,
@@ -172,6 +186,14 @@ export function ImageEditorToolbar({
     <div className="space-y-2">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <FieldLabel className="mr-auto">Image generator</FieldLabel>
+        <Button className={TOOL_BUTTON_CLASS} onClick={onPreviousImage} disabled={disabled || !canGoPreviousImage} title="이전 그림">‹</Button>
+        <span className="min-w-14 text-center text-xs font-semibold text-[var(--app-muted)]">
+          {imageId ? `#${imageId}` : '-'}
+        </span>
+        <Button className={TOOL_BUTTON_CLASS} onClick={onNextImage} disabled={disabled || !canGoNextImage} title="다음 그림">›</Button>
+        <Button className="h-7 px-2.5 py-0 text-xs" onClick={onOpenLineage} disabled={disabled || !canOpenLineage}>
+          계통목록
+        </Button>
         {QUICK_IMAGE_RESOLUTIONS.map((resolution) => (
           <Button
             key={resolution.label}

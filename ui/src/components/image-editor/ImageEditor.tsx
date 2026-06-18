@@ -31,6 +31,7 @@ import {
 } from './canvas';
 import { createHistory, pushHistory, redoHistory, undoHistory } from './history';
 import { ImageEditorStage } from './ImageEditorStage';
+import { ImageLineageModal } from './ImageLineageModal';
 import { ImageEditorToolbar } from './ImageEditorToolbar';
 import {
   clampCoverOffset,
@@ -88,13 +89,19 @@ const EMPTY_POSE: PoseLayer = {
 export function ImageEditor({
   parameters,
   promptColumns,
+  imageId,
   baseImageUrl,
   scribbleImageUrl,
   poseImageUrl,
   disabled = false,
   isSubmitting = false,
+  canGoPreviousImage = false,
+  canGoNextImage = false,
   onParameterUpdated,
   onSubmit,
+  onPreviousImage,
+  onNextImage,
+  onSelectLineageImage,
 }: ImageEditorProps) {
   const width = parameters.width;
   const height = parameters.height;
@@ -102,7 +109,6 @@ export function ImageEditor({
   const baseImageRef = useRef<BaseImageLayer | null>(null);
   const objectsRef = useRef<ImageObject[]>([]);
   const activeObjectIdRef = useRef<string | null>(null);
-  const prevImageRef = useRef<ImageLayerSnapshot | null>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const scribbleCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const sourceScribbleBlobRef = useRef<Blob | null>(null);
@@ -128,6 +134,7 @@ export function ImageEditor({
   const [featherBrushSize, setFeatherBrushSize] = useState(DEFAULT_FEATHER_BRUSH_SIZE);
   const [scribbleBrushSize, setScribbleBrushSize] = useState(DEFAULT_SCRIBBLE_BRUSH_SIZE);
   const [scribbleModified, setScribbleModified] = useState(false);
+  const [isLineageOpen, setIsLineageOpen] = useState(false);
   const [isLoadingSource, setIsLoadingSource] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -248,9 +255,6 @@ export function ImageEditor({
       setIsLoadingSource(true);
       setError(null);
       try {
-        if (baseImageRef.current || objectsRef.current.length > 0) {
-          prevImageRef.current = currentImageSnapshot();
-        }
         if (!baseImageUrl) {
           if (!isCancelled) {
             replaceBaseImage(null);
@@ -854,9 +858,6 @@ export function ImageEditor({
 
   function clearImage() {
     pushImageHistory();
-    if (baseImageRef.current || objectsRef.current.length > 0) {
-      prevImageRef.current = currentImageSnapshot();
-    }
     replaceBaseImage(null);
     replaceObjects([], null);
   }
@@ -983,6 +984,10 @@ export function ImageEditor({
               ? maskHistoryRef.current.future.length > 0
               : scribbleHistoryRef.current.future.length > 0
         }
+        imageId={imageId}
+        canGoPreviousImage={canGoPreviousImage}
+        canGoNextImage={canGoNextImage}
+        canOpenLineage={Boolean(imageId && onSelectLineageImage)}
         hasActiveObject={Boolean(activeObject)}
         hasBaseImage={hasImage}
         hasScribble={hasScribble}
@@ -1006,6 +1011,9 @@ export function ImageEditor({
         onToolChange={setTool}
         onUndo={undoActiveTab}
         onRedo={redoActiveTab}
+        onPreviousImage={() => onPreviousImage?.()}
+        onNextImage={() => onNextImage?.()}
+        onOpenLineage={() => setIsLineageOpen(true)}
         onFlip={flipActiveObject}
         onClearImage={clearImage}
         onToggleMaskOverlap={() => setMaskOverlap((current) => !current)}
@@ -1072,6 +1080,14 @@ export function ImageEditor({
           이미지 생성 저장
         </Button>
       </div>
+
+      {isLineageOpen && imageId && onSelectLineageImage ? (
+        <ImageLineageModal
+          currentImageId={imageId}
+          onClose={() => setIsLineageOpen(false)}
+          onSelectImage={onSelectLineageImage}
+        />
+      ) : null}
     </div>
   );
 }

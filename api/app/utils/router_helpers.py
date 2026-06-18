@@ -20,6 +20,7 @@ async def require_existing_ids(
     ids: Iterable[Any],
     field_name: str,
     base_clause: Any | None = None,
+    status_code: int = 404,
 ) -> None:
     normalized_ids = normalize_int_ids(ids, sort=True)
     if not normalized_ids:
@@ -32,5 +33,5 @@ async def require_existing_ids(
     found_ids = set((await db.execute(stmt)).scalars().all())
     missing_ids = [item_id for item_id in normalized_ids if item_id not in found_ids]
     if missing_ids:
-        raise HTTPException(status_code=404, detail=f"{field_name} not found: {missing_ids}")
+        raise HTTPException(status_code=status_code, detail=f"{field_name} not found: {missing_ids}")
 

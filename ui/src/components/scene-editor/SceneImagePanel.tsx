@@ -1,8 +1,8 @@
 import type { Dispatch, SetStateAction } from 'react';
 import type {
   ImageGenerationSettings,
+  ImageRecord,
   PromptColumnName,
-  SceneRecord,
 } from '../../api/type';
 import { ImageEditor } from '../image-editor';
 import type { ImageEditorSubmitPayload } from '../image-editor';
@@ -17,33 +17,51 @@ import type {
 } from './types';
 
 type SceneImagePanelProps = {
-  activeScene: SceneRecord | null;
+  imageId: number | null;
+  baseImageUrl: string | null;
+  scribbleImageUrl: string | null;
+  poseImageUrl: string | null;
   imageSettings: ImageGenerationSettings | null;
   promptDraft: Record<PromptColumnName, string>;
   strengthControlValue: string;
   statusChangeValues: StatusChangeValues;
   canSaveText: boolean;
   isLoadingScene: boolean;
+  isLoadingHistoryImage: boolean;
   savingMode: SaveMode | null;
+  canGoPreviousImage: boolean;
+  canGoNextImage: boolean;
   setStatusChangeValues: Dispatch<SetStateAction<StatusChangeValues>>;
   onImageStrengthChange: (value: string) => void;
   onImageParametersUpdated: (settings: ImageGenerationSettings) => void;
   onSubmitImage: (payload: ImageEditorSubmitPayload) => void | Promise<void>;
+  onPreviousImage: () => void;
+  onNextImage: () => void;
+  onSelectLineageImage: (image: ImageRecord) => void;
 };
 
 export function SceneImagePanel({
-  activeScene,
+  imageId,
+  baseImageUrl,
+  scribbleImageUrl,
+  poseImageUrl,
   imageSettings,
   promptDraft,
   strengthControlValue,
   statusChangeValues,
   canSaveText,
   isLoadingScene,
+  isLoadingHistoryImage,
   savingMode,
+  canGoPreviousImage,
+  canGoNextImage,
   setStatusChangeValues,
   onImageStrengthChange,
   onImageParametersUpdated,
   onSubmitImage,
+  onPreviousImage,
+  onNextImage,
+  onSelectLineageImage,
 }: SceneImagePanelProps) {
   return (
     <aside className="min-w-0 space-y-3">
@@ -80,13 +98,19 @@ export function SceneImagePanel({
             <ImageEditor
               parameters={imageSettings}
               promptColumns={promptDraft}
-              baseImageUrl={activeScene?.image_url ?? null}
-              scribbleImageUrl={activeScene?.scribble_url ?? null}
-              poseImageUrl={activeScene?.pose_url ?? null}
-              disabled={!canSaveText || isLoadingScene}
+              imageId={imageId}
+              baseImageUrl={baseImageUrl}
+              scribbleImageUrl={scribbleImageUrl}
+              poseImageUrl={poseImageUrl}
+              disabled={!canSaveText || isLoadingScene || isLoadingHistoryImage}
               isSubmitting={savingMode === 'image'}
+              canGoPreviousImage={canGoPreviousImage}
+              canGoNextImage={canGoNextImage}
               onParameterUpdated={onImageParametersUpdated}
               onSubmit={onSubmitImage}
+              onPreviousImage={onPreviousImage}
+              onNextImage={onNextImage}
+              onSelectLineageImage={onSelectLineageImage}
             />
           ) : (
             <div className="grid aspect-square min-h-72 w-full place-items-center rounded-[8px] border border-[rgba(255,218,228,0.22)] bg-[rgba(15,5,20,0.78)] p-6 text-center text-[0.95rem] text-[var(--app-muted)]">

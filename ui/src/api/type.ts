@@ -79,6 +79,17 @@ export type SceneRecord = {
   prompt_negative?: string | null;
 };
 
+export type ImageRecord = {
+  id?: number | null;
+  image_object_key?: string | null;
+  scribble_object_key?: string | null;
+  pose_object_key?: string | null;
+  positive_prompt?: string | null;
+  negative_prompt?: string | null;
+  seed_image_id?: number | null;
+  model_parameters?: Record<string, unknown> | null;
+};
+
 export type NextSceneRequest = {
   scene_id: number | null;
   status_id: number;
@@ -124,5 +135,6 @@ export type StatusRecord = {
 
 export type DbTableName =
   | 'Scene'
+  | 'Image'
   | 'SelectionModel'
   | 'Status';

@@ -7,6 +7,7 @@ import type {
   GetListRequest,
   GetListResponse,
   ImageGenerationSettings,
+  ImageRecord,
   NextSceneRequest,
   SceneRecord,
   SelectionModelRecord,
@@ -44,6 +45,25 @@ export const dbTables = {
     updateContext: (item: UpdateSceneContextRequest) =>
       request<StatusRecord>('post', '/scene/update-context', item),
     deleteRows: (ids: number[]) => request<null>('delete', '/scene/', ids).then(() => undefined),
+  },
+
+  Image: {
+    label: '이미지',
+    columns: {
+      id: { label: 'ID', type: 'id' },
+      image_object_key: { label: '이미지 Object Key', type: 'text' },
+      scribble_object_key: { label: 'Scribble Object Key', type: 'text' },
+      pose_object_key: { label: 'Pose Object Key', type: 'text' },
+      positive_prompt: { label: 'Positive 프롬프트', type: 'text' },
+      negative_prompt: { label: 'Negative 프롬프트', type: 'text' },
+      seed_image_id: { label: 'Seed 이미지', type: 'fk', targetTable: 'Image' },
+      model_parameters: { label: '모델 파라미터', type: 'dict-list' },
+    },
+    listRows: (listRequest: GetListRequest) =>
+      request<GetListResponse<ImageRecord>>('post', '/image/list', listRequest),
+    upsertRow: (items: ImageRecord[]) => request<UpsertResponse[]>('post', '/image/upsert', items),
+    getLineageIds: (imageId: number) => request<number[]>('get', `/image/${imageId}/lineage`),
+    deleteRows: (ids: number[]) => request<null>('delete', '/image/', ids).then(() => undefined),
   },
 
   SelectionModel: {

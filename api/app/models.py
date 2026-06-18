@@ -126,6 +126,17 @@ class SceneBase(BaseModel):
     prompt_negative: Optional[str] = None
 
 
+class ImageBase(BaseModel):
+    id: Optional[int] = None
+    image_object_key: Optional[str] = None
+    scribble_object_key: Optional[str] = None
+    pose_object_key: Optional[str] = None
+    positive_prompt: Optional[str] = None
+    negative_prompt: Optional[str] = None
+    seed_image_id: Optional[int] = None
+    model_parameters: Optional[Dict[str, Any]] = None
+
+
 class SelectionModelBase(BaseModel):
     id: Optional[int] = None
     name: str

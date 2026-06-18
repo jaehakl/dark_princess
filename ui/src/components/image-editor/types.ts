@@ -1,4 +1,4 @@
-import type { ImageGenerationSettings, PromptColumnName } from '../../api/type';
+import type { ImageGenerationSettings, ImageRecord, PromptColumnName } from '../../api/type';
 
 export type Point = {
   x: number;
@@ -72,11 +72,17 @@ export type ImageEditorSubmitPayload = {
 export type ImageEditorProps = {
   parameters: ImageGenerationSettings;
   promptColumns: Record<PromptColumnName, string>;
+  imageId?: number | null;
   baseImageUrl?: string | null;
   scribbleImageUrl?: string | null;
   poseImageUrl?: string | null;
   disabled?: boolean;
   isSubmitting?: boolean;
+  canGoPreviousImage?: boolean;
+  canGoNextImage?: boolean;
   onParameterUpdated: (parameters: ImageGenerationSettings) => void;
   onSubmit: (payload: ImageEditorSubmitPayload) => Promise<void> | void;
+  onPreviousImage?: () => void;
+  onNextImage?: () => void;
+  onSelectLineageImage?: (image: ImageRecord) => void;
 };
