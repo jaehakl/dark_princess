@@ -21,6 +21,7 @@ export type UpsertResponse = {
 export type ImageGenerationSettings = {
   model_filename: string;
   model_filenames: string[];
+  camera_samples: Record<string, string[]>;
   prompt_default_positive: string;
   prompt_default_negative: string;
   steps: number;

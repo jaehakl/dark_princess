@@ -1,56 +1,38 @@
+Scene 이미지 데이터베이스 구조 개편안
 
 
+1. Image 테이블을 새로 만든다.
+- id
+- image_object_key (기존 Scene.image_url)
+- scribble_object_key (기존 Scene.image_url)
+- pose_object_key (기존 Scene.image_url)
+- positive_prompt (instant, default 포함하여 실제로 이미지 생성에 들어간 것)
+- positive_prompt_embedding
+- negative_prompt (instant, default 포함하여 실제로 이미지 생성에 들어간 것)
+- seed_image_id (i2i 로 생성된 경우)
+- model_parameters (JSON) (위에 저장되는 것 제외 이미지 생성에 필요한 모든 메타정보(모델 파일명, seed, cfg 등등))
 
-프롬프트 체계 개편안
+2. Scene 테이블의 칼럼들을 변경한다.
+- id
+- image_id (Image fk)
+- embedding
+- script
+- status_change
+- prompt_situation
+- prompt_hero
+- prompt_camera
+- prompt_detail
+- prompt_negative
 
-<요약>
-- 저장되지 않는 instant prompt 를 넣을 수 있게 한다
-- 칼럼 종류들의 재편
-- negative 프롬프트도 저장할 수 있게 함
-
-
-<작업할 내용>
-- db.py (Scene 테이블 수정)
-- initserver.py (부팅시 마이그레이션용 코드 추가)
-- service/scene.py (이미지 생성 시 프롬프트 종류별 결합 및 저장 로직)
-- SceneEditComponent.tsx (편집 대상 프롬프트 변경)
-- 그 밖에 영향받는 코드들
-
-
-<이미지 생성 시 결합 순서>
-
-(positive)
-1. prompt_situation
-2. prompt_instant_positive
-3. prompt_hero
-4. prompt_camera 
-5. prompt_detail
-6. prompt_default_positive
-
-(negative)
-1. prompt_instant_negative
-1. prompt_negative
-2. prompt_default_negative
+(Scene 테이블의 다음 칼럼들은 모두 제거한다.)
+- prompt_situation_embedding
+- prompt_hero_embedding
+- prompt_camera_embedding
+- prompt_detail_embedding
 
 
-<입력 및 관리>
-
-(DB 테이블 칼럼, 저장)
-1. prompt_situation
-2. prompt_hero
-3. prompt_camera 
-4. prompt_detail
-5. prompt_negative
-
-(SceneEditComponent 에서 편집)
-1. prompt_situation
-2. prompt_instant_positive
-3. prompt_hero
-4. prompt_camera 
-5. prompt_detail
-6. prompt_instant_negative
-7. prompt_negative
-
-(이미지 설정에서 편집 및 Session Storage 저장)
-1. prompt_default_positive
-2. prompt_default_negative
+<이미지 생성 흐름>
+- 이미지 생성 시, parent image_id 를 프론트로부터 받을 수 있음 (nullable)
+- 이미지 생성 후 Image 테이블에 저장 후 scene 에는 image_id 연결
+- 실제 i2i 및 inpaint 이미지 생성에는 기존처럼 image blob 받아서 사용, parent image_id 는 Image 테이블에 값으로만 저장
+- 이미지 재생성 시, 기존 Image 는 삭제하지 않으며, Scene 에 연결된 image_id 만 교체

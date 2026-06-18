@@ -21,7 +21,7 @@ from models import (
 )
 from settings import settings
 from service.selection_model import cosine_distance
-from service.image_util import (
+from service.image_util_constants import (
     GEN_IMAGE_CFG,
     GEN_IMAGE_HEIGHT,
     GEN_IMAGE_MAX_CHUNK_SIZE,
@@ -34,6 +34,8 @@ from service.image_util import (
     GEN_IMAGE_STEPS,
     GEN_IMAGE_WIDTH,
     SCENE_PROMPT_FIELDS,
+)
+from service.image_util import (
     resolve_image_generation_model_path,
     resolve_image_generation_settings,
 )
@@ -47,6 +49,8 @@ from utils.local_storage import (
 )
 from model_runtime import encode_scene_text, generate_images_batch
 from utils.vector import VECTOR_DIMENSION, validate_embedding
+
+SCENE_EMBEDDING_PROMPT_FIELDS = ("prompt_situation", "prompt_hero")
 
 
 async def generate_scene_from_form(db: AsyncSession, form: FormData) -> Scene:
@@ -138,7 +142,8 @@ async def generate_scene(
     visual_prompt = build_scene_visual_prompt(column_values)
     if not visual_prompt:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scene prompt component is required")
-    embedding = await make_scene_embedding(visual_prompt, script)
+    embedding_visual_prompt = build_scene_embedding_visual_prompt(column_values)
+    embedding = await make_scene_embedding(embedding_visual_prompt, script)
     column_embeddings = await make_scene_column_embeddings(column_values)
     if should_generate_image:
         try:
@@ -242,6 +247,7 @@ async def upsert_scenes(db: AsyncSession, items: list[SceneBase]) -> list[Upsert
             visual_prompt = build_scene_visual_prompt(column_values)
             if not visual_prompt:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scene prompt component is required")
+            embedding_visual_prompt = build_scene_embedding_visual_prompt(column_values)
             column_embeddings = await make_scene_column_embeddings(column_values)
 
             scene.image_url = image_url
@@ -249,7 +255,7 @@ async def upsert_scenes(db: AsyncSession, items: list[SceneBase]) -> list[Upsert
             scene.pose_url = pose_url
             scene.script = script
             scene.status_change = item.status_change
-            scene.embedding = await make_scene_embedding(visual_prompt, script)
+            scene.embedding = await make_scene_embedding(embedding_visual_prompt, script)
             for field in SCENE_PROMPT_FIELDS:
                 setattr(scene, field, column_values[field])
                 setattr(scene, f"{field}_embedding", column_embeddings[field])
@@ -383,6 +389,14 @@ def build_scene_visual_prompt(column_values: dict[str, str | None]) -> str:
     return ", ".join(
         (column_values[field] or "").strip()
         for field in SCENE_PROMPT_FIELDS
+        if (column_values[field] or "").strip()
+    )
+
+
+def build_scene_embedding_visual_prompt(column_values: dict[str, str | None]) -> str:
+    return ", ".join(
+        (column_values[field] or "").strip()
+        for field in SCENE_EMBEDDING_PROMPT_FIELDS
         if (column_values[field] or "").strip()
     )
 

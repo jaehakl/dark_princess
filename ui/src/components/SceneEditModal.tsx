@@ -1,5 +1,5 @@
 import type { SceneRecord } from '../api/type';
-import { SceneEditComponent } from './SceneEditComponent';
+import { SceneEditComponent } from './scene-editor';
 import { ModalBackdrop } from './ui';
 
 type SceneEditModalProps = {

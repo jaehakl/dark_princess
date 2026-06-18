@@ -10,6 +10,33 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db import Scene
 from models import ImageGenerationSettingsBase, ImagePromptExtractionResponseBase, RecommendPromptItemBase
 from settings import API_ROOT, settings
+from service.image_util_constants import (
+    GEN_IMAGE_ALLOWED_SAMPLERS,
+    GEN_IMAGE_ALLOWED_SCHEDULERS,
+    GEN_IMAGE_CAMERA_SAMPLES,
+    GEN_IMAGE_CFG,
+    GEN_IMAGE_CLIP_SKIP,
+    GEN_IMAGE_HEIGHT,
+    GEN_IMAGE_MODEL_FILE_EXTENSIONS,
+    GEN_IMAGE_NEGATIVE_PROMPT,
+    GEN_IMAGE_POSE_GUIDANCE_END,
+    GEN_IMAGE_POSE_GUIDANCE_START,
+    GEN_IMAGE_POSE_SCALE,
+    GEN_IMAGE_POSITIVE_BASE,
+    GEN_IMAGE_SAMPLER,
+    GEN_IMAGE_SCHEDULER,
+    GEN_IMAGE_SCRIBBLE_GUIDANCE_END,
+    GEN_IMAGE_SCRIBBLE_GUIDANCE_START,
+    GEN_IMAGE_SCRIBBLE_SCALE,
+    GEN_IMAGE_STEPS,
+    GEN_IMAGE_STRENGTH,
+    GEN_IMAGE_WIDTH,
+    RECOMMEND_PROMPT_DISTANCE_EPSILON,
+    SCENE_PROMPT_FIELDS,
+    WD14_DEFAULT_CHARACTER_THRESHOLD,
+    WD14_DEFAULT_GENERAL_THRESHOLD,
+    WD14_TAGGER_MODEL_ID,
+)
 from service.selection_model import cosine_distance
 from model_runtime import (
     analyze_scene_components,
@@ -20,41 +47,6 @@ from model_runtime import (
     translate_visual_keywords_to_english,
 )
 from utils.vector import VECTOR_DIMENSION, validate_embedding
-
-#GEN_IMAGE_POSITIVE_BASE = "score_7_up, source_anime, cinematic composition,"
-#GEN_IMAGE_NEGATIVE_PROMPT = "score_5, score_4, score_3, solo, portrait, character focus, lowres, blurry, low quality, bad anatomy, disfigured, deformed, bad hands, missing fingers, extra fingers, worst quality, jpeg artifacts, signature, watermark, text, bad eyes, grotesque, sketchy, logo, rough, incomplete, disgusting, distorted, deformed face, poorly drawn, bad quality"
-
-GEN_IMAGE_POSITIVE_BASE = "masterpiece, best quality"
-GEN_IMAGE_NEGATIVE_PROMPT = "low quality, blurry, jpeg artifacts, watermark, signature, text, logo, distorted, deformed face"
-
-GEN_IMAGE_STEPS = 30
-GEN_IMAGE_CFG = 5
-GEN_IMAGE_STRENGTH = 1.0
-GEN_IMAGE_SCRIBBLE_SCALE = 0.6
-GEN_IMAGE_SCRIBBLE_GUIDANCE_START = 0.0
-GEN_IMAGE_SCRIBBLE_GUIDANCE_END = 0.6
-GEN_IMAGE_POSE_SCALE = 0.9
-GEN_IMAGE_POSE_GUIDANCE_START = 0.0
-GEN_IMAGE_POSE_GUIDANCE_END = 0.8
-GEN_IMAGE_SAMPLER = "euler_a" #"dpmpp_2m"
-GEN_IMAGE_SCHEDULER = "" #"karras"
-GEN_IMAGE_CLIP_SKIP: int | None = None #2
-GEN_IMAGE_HEIGHT = 1024
-GEN_IMAGE_WIDTH = 1024
-GEN_IMAGE_MAX_CHUNK_SIZE = 1
-GEN_IMAGE_OUTPUT_FORMAT = "PNG"
-GEN_IMAGE_OUTPUT_EXTENSION = ".png"
-GEN_IMAGE_OUTPUT_QUALITY = 85
-GEN_IMAGE_SEED_MIN = 0
-GEN_IMAGE_SEED_MAX = 1_000_000
-RECOMMEND_PROMPT_DISTANCE_EPSILON = 1e-6
-GEN_IMAGE_ALLOWED_SAMPLERS = {"", "euler", "euler_a", "dpmpp_2m", "unipc"}
-GEN_IMAGE_ALLOWED_SCHEDULERS = {"", "karras"}
-GEN_IMAGE_MODEL_FILE_EXTENSIONS = {".safetensors", ".ckpt"}
-SCENE_PROMPT_FIELDS = ("prompt_situation", "prompt_hero", "prompt_camera", "prompt_detail")
-WD14_TAGGER_MODEL_ID = "SmilingWolf/wd-eva02-large-tagger-v3"
-WD14_DEFAULT_GENERAL_THRESHOLD = 0.35
-WD14_DEFAULT_CHARACTER_THRESHOLD = 0.85
 
 
 async def extract_prompt_from_image(
@@ -299,6 +291,7 @@ def get_default_image_generation_settings() -> ImageGenerationSettingsBase:
     return ImageGenerationSettingsBase(
         model_filename=model_filename,
         model_filenames=model_filenames,
+        camera_samples=GEN_IMAGE_CAMERA_SAMPLES,
         prompt_default_positive=GEN_IMAGE_POSITIVE_BASE,
         prompt_default_negative=GEN_IMAGE_NEGATIVE_PROMPT,
         steps=GEN_IMAGE_STEPS,
