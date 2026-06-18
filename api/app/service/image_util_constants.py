@@ -36,23 +36,22 @@ WD14_DEFAULT_CHARACTER_THRESHOLD = 0.85
 
 
 GEN_IMAGE_CAMERA_SAMPLES ={
-  "카메라_거리_쇼트크기": {
+  "구도": {
     "close-up": "얼굴이나 특정 사물을 크게 보여 주는 근접 샷",
     "medium shot": "허리 위 인물과 주변 상황을 함께 보여 주는 중간 거리 샷",
     "cowboy shot": "허벅지 위까지 잡는 서부극식 인물 샷",
     "full shot": "인물의 전신을 화면 안에 담는 샷",
-  },
-
-  "구도": {
     "centered composition": "주 피사체를 화면 중앙에 배치해 안정감과 상징성을 주는 구도",
     "rule of thirds": "화면을 3분할해 자연스럽고 균형 잡힌 배치를 만드는 구도",
     "cinematic composition": "영화 장면처럼 인물, 배경, 빛, 시선 흐름이 연출된 구도",
     "face-to-face": "두 인물이 마주 보는 대립, 대화, 친밀감의 구도",
     "side-by-side": "인물들이 나란히 있어 동행, 연대, 비교를 표현",
     "back-to-back": "등을 맞대고 있는 구도, 협력이나 긴장감을 표현",
+    "looking through a doorway": "문 너머로 장면을 바라보는 구도",
+    "looking through a window": "창문 너머로 장면을 바라보는 구도"
   },
 
-  "카메라_각도": {
+  "각도": {
     "eye-level shot": "눈높이 시점으로 자연스럽고 현실적인 인상을 줌",
     "high-angle shot": "위에서 내려다봐 피사체를 작고 약하게 보이게 함",
     "low-angle shot": "아래에서 올려다봐 피사체를 강하고 위압적으로 보이게 함",
@@ -63,7 +62,7 @@ GEN_IMAGE_CAMERA_SAMPLES ={
     "oblique angle": "정면이 아닌 비스듬한 시점으로 입체감과 긴장감을 줌"
   },
 
-  "시점과_방향": {
+  "시점": {
     "front view": "정면에서 보는 시점",
     "side view": "측면에서 보는 시점",
     "profile view": "인물의 옆얼굴을 강조하는 시점",
@@ -72,29 +71,32 @@ GEN_IMAGE_CAMERA_SAMPLES ={
     "first-person perspective": "1인칭 게임이나 체험 장면처럼 보이는 시점",
     "aerial viewpoint": "공중에서 내려다보는 넓은 시점",
     "spectator viewpoint": "관객이 현장을 지켜보는 듯한 시점",
-    "looking through a doorway": "문 너머로 장면을 바라보는 구도",
-    "looking through a window": "창문 너머로 장면을 바라보는 구도"
   },
 
-  "렌즈와 원근법": {
-    "fisheye lens": "어안렌즈처럼 휘어진 왜곡과 독특한 공간감을 만듦",
+  "공간감": {
     "point perspective": "하나의 소실점으로 시선이 모이는 안정적인 원근",
     "linear perspective": "선들이 소실점으로 모이는 전통적 원근법",
     "exaggerated perspective": "공간감과 깊이를 일부러 크게 과장",
     "deep perspective": "화면 깊숙이 들어가는 강한 거리감",
     "isometric view": "게임 맵이나 설계도처럼 축이 일정한 등각 시점",
-    "foreshortening": "몸이나 사물이 카메라를 향해 짧게 압축되어 보이는 효과"
+    "foreshortening": "몸이나 사물이 카메라를 향해 짧게 압축되어 보이는 효과",
+    "fisheye lens": "어안렌즈처럼 휘어진 왜곡과 독특한 공간감을 만듦",
+    "bokeh": "흐린 배경",
   },
 
-  "조명": {
+  "광원 효과": {
     "front lighting": "정면에서 비추는 빛, 얼굴과 형태가 잘 보임",
     "side lighting": "옆에서 비추는 빛, 입체감과 명암이 강해짐",
     "backlighting": "뒤에서 비추는 빛, 실루엣과 윤곽 강조",
     "rim lighting": "피사체 가장자리에 빛 테두리를 만드는 조명",
     "top lighting": "위에서 내려오는 빛, 엄숙하거나 극적인 느낌",
+    "fine film grain": "필름 사진의 미세한 입자감",
+    "halation": "밝은 부분 주변이 부드럽게 번지는 필름 효과",
+    "flare": "플레어",
+    "glow": "빛 번짐",
   },
 
-  "광원과_시간대": {
+  "채광": {
     "midday sunlight": "정오의 강한 햇빛, 선명하고 그림자가 짧음",
     "golden hour": "해 뜰 무렵이나 해 질 무렵의 따뜻한 황금빛",
     "blue hour": "해가 진 직후의 푸른 시간대",
@@ -103,10 +105,11 @@ GEN_IMAGE_CAMERA_SAMPLES ={
     "candlelight": "촛불의 따뜻하고 흔들리는 빛",
     "neon light": "강렬한 색의 네온 조명",
     "fluorescent light": "형광등 같은 차갑고 평평한 실내 조명",
-    "bioluminescent light": "생물 발광처럼 신비로운 자연광"
+    "bioluminescent light": "생물 발광처럼 신비로운 자연광",
+    "overcast sky": "흐린 하늘, 부드럽고 평평한 빛",
   },
 
-  "색상_팔레트": {
+  "색조": {
     "warm color palette": "빨강, 주황, 노랑 계열의 따뜻한 색감",
     "cool color palette": "파랑, 청록, 보라 계열의 차가운 색감",
     "neutral color palette": "회색, 베이지, 흰색, 검정 중심의 절제된 색감",
@@ -115,17 +118,13 @@ GEN_IMAGE_CAMERA_SAMPLES ={
     "sepia tones": "갈색빛이 도는 오래된 사진 느낌",
   },
 
-  "날씨와_대기": {
-    "overcast sky": "흐린 하늘, 부드럽고 평평한 빛",
-    "drifting embers": "날리는 불씨",
-  },
-
-  "공간과_스케일": {
+  "배경": {
     "industrial interior": "공장, 기계실 같은 산업적 실내",
     "domestic interior": "집 안, 생활 공간",
     "grand architecture": "웅장한 건축물",
     "ruined architecture": "폐허가 된 건축물",
     "cluttered environment": "물건이 많고 복잡한 환경",
+    "drifting embers": "날리는 불씨",
   },
 
   "시각_스타일": {
@@ -133,19 +132,8 @@ GEN_IMAGE_CAMERA_SAMPLES ={
     "film still": "영화의 한 프레임처럼 보이는 이미지",
     "storytelling": "이야기 전달을 목적으로 한 일러스트",
     "narrative illustration": "이야기 전달을 목적으로 한 일러스트",
-  },
-
-  "매체와_표현_기법": {
     "collage": "여러 재료를 붙여 만든 콜라주 느낌",
     "3D render": "3D 그래픽 렌더링 느낌",
-  },
-
-  "광학효과와_후처리": {
-    "fine film grain": "필름 사진의 미세한 입자감",
-    "halation": "밝은 부분 주변이 부드럽게 번지는 필름 효과",
-    "flare": "플레어",
-    "glow": "빛 번짐",
-    "bokeh": "흐린 배경",
   },
 
   "품질과_디테일": {
