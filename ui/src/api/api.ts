@@ -62,8 +62,8 @@ export const dbTables = {
     },
     listRows: (listRequest: GetListRequest) =>
       request<GetListResponse<ImageRecord>>('post', '/image/list', listRequest),
-    generateImage: (item: GenerateImageRequest) =>
-      request<ImageRecord>('post', '/image/generate', item),
+    generateImage: (items: GenerateImageRequest[]) =>
+      request<ImageRecord[]>('post', '/image/generate', items),
     upsertRow: (items: ImageRecord[]) => request<UpsertResponse[]>('post', '/image/upsert', items),
     getLineageIds: (imageId: number) => request<number[]>('get', `/image/${imageId}/lineage`),
     deleteRows: (ids: number[]) => request<null>('delete', '/image/', ids).then(() => undefined),

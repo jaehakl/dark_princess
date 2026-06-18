@@ -525,6 +525,7 @@ export function SceneEditComponent({
     const nextImageSettings: ImageGenerationSettings = {
       model_filename: modelFilename,
       model_filenames: imageModelFilenameOptions,
+      available_gpu_ids: imageSettingsDefaults?.available_gpu_ids ?? imageSettings?.available_gpu_ids ?? [],
       camera_samples: cameraSamples,
       prompt_default_positive: imageSettingsDraft.prompt_default_positive.trim(),
       prompt_default_negative: imageSettingsDraft.prompt_default_negative.trim(),

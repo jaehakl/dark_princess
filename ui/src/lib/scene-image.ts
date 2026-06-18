@@ -82,6 +82,7 @@ export function readSessionImageSettings(defaults: ImageGenerationSettings): Ima
     return {
       model_filename: modelFilename,
       model_filenames: modelFilenames,
+      available_gpu_ids: defaults.available_gpu_ids,
       camera_samples: defaults.camera_samples,
       prompt_default_positive: (
         parsedSettings.prompt_default_positive

@@ -41,6 +41,7 @@ from service.selection_model import cosine_distance
 from model_runtime import (
     encode_scene_text,
     extract_visual_keywords,
+    get_available_cuda_device_ids,
     predict_wd14_tags,
     translate_korean_to_english,
     translate_visual_keywords_to_english,
@@ -228,6 +229,7 @@ def get_default_image_generation_settings() -> ImageGenerationSettingsBase:
     return ImageGenerationSettingsBase(
         model_filename=model_filename,
         model_filenames=model_filenames,
+        available_gpu_ids=get_available_cuda_device_ids(),
         camera_samples=GEN_IMAGE_CAMERA_SAMPLES,
         prompt_default_positive=GEN_IMAGE_POSITIVE_BASE,
         prompt_default_negative=GEN_IMAGE_NEGATIVE_PROMPT,
@@ -258,6 +260,7 @@ def resolve_image_generation_settings(
     resolved = ImageGenerationSettingsBase(
         model_filename=defaults.model_filename if image_settings.model_filename is None else image_settings.model_filename,
         model_filenames=defaults.model_filenames,
+        available_gpu_ids=defaults.available_gpu_ids,
         prompt_default_positive=(
             defaults.prompt_default_positive
             if image_settings.prompt_default_positive is None
@@ -394,6 +397,7 @@ def _validate_image_generation_settings(
     return ImageGenerationSettingsBase(
         model_filename=(image_settings.model_filename or "").strip(),
         model_filenames=image_settings.model_filenames or [],
+        available_gpu_ids=image_settings.available_gpu_ids or [],
         prompt_default_positive=(image_settings.prompt_default_positive or "").strip(),
         prompt_default_negative=(image_settings.prompt_default_negative or "").strip(),
         steps=steps,

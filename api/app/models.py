@@ -41,6 +41,7 @@ class UpdateSceneContextRequestBase(BaseModel):
 class ImageGenerationSettingsBase(BaseModel):
     model_filename: Optional[str] = None
     model_filenames: Optional[List[str]] = None
+    available_gpu_ids: Optional[List[int]] = None
     camera_samples: Optional[Dict[str, List[str]]] = None
     prompt_default_positive: Optional[str] = None
     prompt_default_negative: Optional[str] = None

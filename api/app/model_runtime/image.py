@@ -6,11 +6,11 @@ import random
 from typing import Any
 
 
-_image_lock = asyncio.Lock()
-_image_ckpt_path: str | None = None
-_image_pipe_mode: str | None = None
-_image_controlnet_model_ids: tuple[str, ...] | None = None
-_image_pipe: Any | None = None
+_image_locks: dict[int, asyncio.Lock] = {}
+_image_ckpt_paths: dict[int, str] = {}
+_image_pipe_modes: dict[int, str] = {}
+_image_controlnet_model_ids_by_device: dict[int, tuple[str, ...] | None] = {}
+_image_pipes: dict[int, Any] = {}
 
 
 async def generate_images_batch(
@@ -37,8 +37,10 @@ async def generate_images_batch(
     controlnet_conditioning_scales: list[float],
     control_guidance_starts: list[float],
     control_guidance_ends: list[float],
+    device_id: int | None = None,
 ) -> tuple[list[Any], list[int]]:
-    async with _image_lock:
+    normalized_device_id = 0 if device_id is None else device_id
+    async with _get_image_lock(normalized_device_id):
         return await asyncio.to_thread(
             _generate_images_batch_locked,
             ckpt_path,
@@ -64,16 +66,26 @@ async def generate_images_batch(
             controlnet_conditioning_scales,
             control_guidance_starts,
             control_guidance_ends,
+            normalized_device_id,
         )
 
 
 def _reset_image_runtime_for_tests() -> None:
-    global _image_ckpt_path, _image_pipe_mode, _image_controlnet_model_ids, _image_pipe
+    _image_locks.clear()
+    _image_ckpt_paths.clear()
+    _image_pipe_modes.clear()
+    _image_controlnet_model_ids_by_device.clear()
+    _image_pipes.clear()
 
-    _image_ckpt_path = None
-    _image_pipe_mode = None
-    _image_controlnet_model_ids = None
-    _image_pipe = None
+
+def get_available_cuda_device_ids() -> list[int]:
+    try:
+        torch = _load_image_torch()
+        if not torch.cuda.is_available():
+            return []
+        return list(range(torch.cuda.device_count()))
+    except Exception:
+        return []
 
 
 def _generate_images_batch_locked(
@@ -100,10 +112,13 @@ def _generate_images_batch_locked(
     controlnet_conditioning_scales: list[float],
     control_guidance_starts: list[float],
     control_guidance_ends: list[float],
+    device_id: int,
 ) -> tuple[list[Any], list[int]]:
     normalized_image_mode = image_mode.strip().lower()
     torch = _load_image_torch()
-    pipe = _get_image_pipe_locked(ckpt_path, normalized_image_mode, controlnet_model_ids, torch)
+    _validate_cuda_device_id(torch, device_id)
+    device = _cuda_device_name(device_id)
+    pipe = _get_image_pipe_locked(ckpt_path, normalized_image_mode, controlnet_model_ids, torch, device_id)
     sampler_key = sampler.strip().lower()
     scheduler_key = scheduler.strip().lower()
     if sampler_key:
@@ -151,10 +166,10 @@ def _generate_images_batch_locked(
             for j in range(chunk_size)
         ]
         generators_chunk = [
-            torch.Generator(device="cuda").manual_seed(seed_int)
+            torch.Generator(device=device).manual_seed(seed_int)
             for seed_int in seed_chunk
         ]
-        _clear_cuda_cache(torch)
+        _clear_cuda_cache(torch, device_id)
         call_kwargs = {
             "prompt": positive_prompt_chunk,
             "negative_prompt": negative_prompt_chunk,
@@ -230,26 +245,27 @@ def _get_image_pipe_locked(
     image_mode: str,
     controlnet_model_ids: list[str],
     torch: Any,
+    device_id: int,
 ) -> Any:
-    global _image_ckpt_path, _image_pipe_mode, _image_controlnet_model_ids, _image_pipe
-
     is_controlnet_mode = image_mode.startswith("controlnet_")
     next_controlnet_model_ids = tuple(controlnet_model_ids) if is_controlnet_mode else None
+    pipe = _image_pipes.get(device_id)
     if (
-        _image_pipe is not None
+        pipe is not None
         and (
-            _image_ckpt_path != ckpt_path
-            or _image_pipe_mode != image_mode
-            or _image_controlnet_model_ids != next_controlnet_model_ids
+            _image_ckpt_paths.get(device_id) != ckpt_path
+            or _image_pipe_modes.get(device_id) != image_mode
+            or _image_controlnet_model_ids_by_device.get(device_id) != next_controlnet_model_ids
         )
     ):
-        _image_pipe = None
-        _image_ckpt_path = None
-        _image_pipe_mode = None
-        _image_controlnet_model_ids = None
-        _clear_cuda_cache(torch)
+        _image_pipes.pop(device_id, None)
+        _image_ckpt_paths.pop(device_id, None)
+        _image_pipe_modes.pop(device_id, None)
+        _image_controlnet_model_ids_by_device.pop(device_id, None)
+        _clear_cuda_cache(torch, device_id)
+        pipe = None
 
-    if _image_pipe is None:
+    if pipe is None:
         if image_mode == "t2i":
             from diffusers import StableDiffusionXLPipeline
 
@@ -291,9 +307,10 @@ def _get_image_pipe_locked(
         else:
             raise ValueError(f"unsupported image generation mode: {image_mode}")
 
-        print(f"Loading Stable Diffusion {image_mode} checkpoint: {ckpt_path}", flush=True)
+        device = _cuda_device_name(device_id)
+        print(f"Loading Stable Diffusion {image_mode} checkpoint on {device}: {ckpt_path}", flush=True)
         if is_controlnet_mode:
-            print(f"Loading ControlNet model(s): {', '.join(controlnet_model_ids)}", flush=True)
+            print(f"Loading ControlNet model(s) on {device}: {', '.join(controlnet_model_ids)}", flush=True)
             pipe = pipeline_cls.from_single_file(
                 ckpt_path,
                 controlnet=controlnet,
@@ -306,15 +323,15 @@ def _get_image_pipe_locked(
                 torch_dtype=torch.float16,
                 use_safetensors=True,
             )
-        pipe.to("cuda")
+        pipe.to(device)
 
         pipe.enable_attention_slicing()
         pipe.enable_vae_slicing()
-        _image_pipe = pipe
-        _image_ckpt_path = ckpt_path
-        _image_pipe_mode = image_mode
-        _image_controlnet_model_ids = next_controlnet_model_ids
-    return _image_pipe
+        _image_pipes[device_id] = pipe
+        _image_ckpt_paths[device_id] = ckpt_path
+        _image_pipe_modes[device_id] = image_mode
+        _image_controlnet_model_ids_by_device[device_id] = next_controlnet_model_ids
+    return pipe
 
 
 def _load_image_torch() -> Any:
@@ -323,6 +340,29 @@ def _load_image_torch() -> Any:
     return torch
 
 
-def _clear_cuda_cache(torch: Any) -> None:
-    torch.cuda.empty_cache()
+def _get_image_lock(device_id: int) -> asyncio.Lock:
+    lock = _image_locks.get(device_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _image_locks[device_id] = lock
+    return lock
+
+
+def _cuda_device_name(device_id: int) -> str:
+    return f"cuda:{device_id}"
+
+
+def _validate_cuda_device_id(torch: Any, device_id: int) -> None:
+    if device_id < 0:
+        raise ValueError("cuda device id must be 0 or greater")
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA GPU is not available")
+    device_count = torch.cuda.device_count()
+    if device_id >= device_count:
+        raise ValueError(f"cuda device id {device_id} is not available")
+
+
+def _clear_cuda_cache(torch: Any, device_id: int) -> None:
+    with torch.cuda.device(_cuda_device_name(device_id)):
+        torch.cuda.empty_cache()
     gc.collect()
