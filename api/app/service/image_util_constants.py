@@ -485,29 +485,13 @@ GEN_IMAGE_CAMERA_SAMPLES ={
   },
 
   "매체와_표현_기법": {
-    "oil painting": "유화 같은 두꺼운 질감과 깊은 색",
-    "watercolor": "수채화처럼 투명하고 번지는 색감",
-    "gouache": "과슈처럼 불투명하고 부드러운 물감 느낌",
-    "acrylic painting": "아크릴화처럼 선명하고 빠르게 마른 듯한 질감",
     "ink wash": "먹 번짐과 농담이 있는 동양화적 표현",
-    "pen and ink": "펜 선과 잉크 명암 중심의 표현",
-    "charcoal drawing": "목탄화처럼 거칠고 깊은 흑백 질감",
     "graphite drawing": "연필 드로잉 같은 세밀한 흑연 질감",
-    "pastel drawing": "파스텔처럼 부드럽고 가루감 있는 색",
-    "colored pencil": "색연필의 섬세한 선과 입자감",
-    "linocut print": "리놀륨 판화처럼 굵고 그래픽적인 선",
-    "woodblock print": "목판화 같은 평면적 색면과 선",
     "screen print": "실크스크린처럼 색면이 또렷한 인쇄 느낌",
     "collage": "여러 재료를 붙여 만든 콜라주 느낌",
-    "mixed media": "여러 매체가 섞인 복합적인 표현",
     "paper cutout": "종이를 오려 붙인 듯한 레이어 표현",
-    "stained glass": "스테인드글라스처럼 색유리와 굵은 윤곽",
-    "mosaic": "작은 조각들이 모여 이미지를 이루는 표현",
     "3D render": "3D 그래픽 렌더링 느낌",
-    "claymation": "점토 애니메이션 같은 손맛 있는 3D 느낌",
-    "stop-motion look": "스톱모션 인형극 같은 물리적 질감",
     "pixel art": "픽셀 단위로 구성된 레트로 게임풍",
-    "low-poly 3D": "폴리곤 수가 적은 단순한 3D 스타일"
   },
 
   "재질과_표면": {
