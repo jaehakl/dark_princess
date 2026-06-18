@@ -4,8 +4,14 @@ from fastapi import APIRouter, Body, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import Image, get_db
-from models import GetListRequestBase, GetListResponseBase, ImageBase, UpsertResponseBase
-from service.image import get_image_lineage_ids, get_image_list_response
+from models import (
+    GenerateImageRequestBase,
+    GetListRequestBase,
+    GetListResponseBase,
+    ImageBase,
+    UpsertResponseBase,
+)
+from service.image import generate_image, get_image_lineage_ids, get_image_list_response
 from utils.crud_helpers import CrudSpec, delete_items, upsert_items
 from utils.router_helpers import field_ids, require_existing_ids
 
@@ -25,6 +31,14 @@ async def api_get_image_list(
     db: AsyncSession = Depends(get_db),
 ):
     return await get_image_list_response(db, request)
+
+
+@router.post("/generate", response_model=ImageBase)
+async def api_generate_image(
+    request: GenerateImageRequestBase,
+    db: AsyncSession = Depends(get_db),
+):
+    return await generate_image(db, request)
 
 
 @router.post("/upsert", response_model=List[UpsertResponseBase])

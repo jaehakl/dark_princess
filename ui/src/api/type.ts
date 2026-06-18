@@ -40,6 +40,12 @@ export type ImageGenerationSettings = {
   pose_guidance_end: number;
 };
 
+export type GenerateImageRequest = {
+  positive_prompt: string;
+  negative_prompt: string | null;
+  model_parameters: Partial<ImageGenerationSettings> | null;
+};
+
 export type GenImageResponse = {
   id: number;
   image: string;

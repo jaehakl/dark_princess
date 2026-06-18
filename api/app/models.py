@@ -69,6 +69,12 @@ class ImagePromptExtractionResponseBase(BaseModel):
     thresholds: Dict[str, float]
 
 
+class GenerateImageRequestBase(BaseModel):
+    positive_prompt: str
+    negative_prompt: Optional[str] = None
+    model_parameters: Optional[ImageGenerationSettingsBase] = None
+
+
 class GenerateSceneRequestBase(BaseModel):
     scene_id: Optional[int] = None
     image_id: Optional[int] = None
