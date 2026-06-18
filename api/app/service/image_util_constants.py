@@ -221,36 +221,6 @@ GEN_IMAGE_CAMERA_SAMPLES ={
     "clear cause and effect": "행동과 결과의 관계가 명확한 장면"
   },
 
-  "분위기와_감정": {
-    "serene": "고요하고 평온한 분위기",
-    "peaceful": "안정적이고 평화로운 분위기",
-    "cozy": "따뜻하고 아늑한 분위기",
-    "intimate": "가깝고 사적인 감정의 분위기",
-    "contemplative": "사색적이고 조용한 분위기",
-    "melancholic": "쓸쓸하고 우울한 정서",
-    "nostalgic": "과거를 떠올리게 하는 향수 어린 분위기",
-    "hopeful": "희망적이고 밝은 가능성이 느껴지는 분위기",
-    "uplifting": "기분을 끌어올리는 긍정적인 분위기",
-    "joyful": "기쁨과 활력이 있는 분위기",
-    "playful": "장난스럽고 가벼운 분위기",
-    "romantic": "낭만적이고 감성적인 분위기",
-    "mysterious": "비밀스럽고 알 수 없는 분위기",
-    "suspenseful": "곧 무언가 벌어질 듯한 긴장감",
-    "tense": "팽팽하고 불안정한 긴장감",
-    "ominous": "불길한 예감이 드는 분위기",
-    "eerie": "섬뜩하고 낯선 분위기",
-    "haunting": "잔상이 오래 남는 으스스하거나 애잔한 분위기",
-    "solemn": "엄숙하고 진지한 분위기",
-    "triumphant": "승리감과 장엄함이 있는 분위기",
-    "whimsical": "기발하고 동화적인 분위기",
-    "dreamlike": "꿈속 같은 몽환적 분위기",
-    "surreal": "현실을 벗어난 초현실적 분위기",
-    "chaotic": "혼란스럽고 무질서한 분위기",
-    "desolate": "황량하고 버려진 느낌",
-    "oppressive": "짓누르는 듯 무겁고 답답한 분위기",
-    "bittersweet": "달콤함과 쓸쓸함이 함께 있는 정서"
-  },
-
   "조명_성질": {
     "natural light": "자연광 느낌",
     "soft diffused light": "부드럽게 퍼진 빛",
