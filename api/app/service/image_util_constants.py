@@ -37,85 +37,27 @@ WD14_DEFAULT_CHARACTER_THRESHOLD = 0.85
 
 GEN_IMAGE_CAMERA_SAMPLES ={
   "카메라_거리_쇼트크기": {
-    "extreme close-up": "눈, 입술, 손끝처럼 아주 작은 디테일을 화면 가득 보여주는 초근접 샷",
     "close-up": "얼굴이나 특정 사물을 크게 보여 주는 근접 샷",
-    "medium close-up": "가슴 위나 어깨 위 인물을 중심으로 보여 주는 샷",
     "medium shot": "허리 위 인물과 주변 상황을 함께 보여 주는 중간 거리 샷",
-    "medium full shot": "무릎 위 정도까지 보여 주어 인물과 자세를 함께 드러내는 샷",
     "cowboy shot": "허벅지 위까지 잡는 서부극식 인물 샷",
     "full shot": "인물의 전신을 화면 안에 담는 샷",
-    "full-body shot": "전신이 명확하게 보이도록 유도하는 샷",
-    "long shot": "인물보다 배경과 공간감이 더 강조되는 먼 거리 샷",
-    "wide shot": "장면 전체와 공간 배치를 넓게 보여 주는 샷",
-    "extreme wide shot": "인물이 작게 보일 정도로 거대한 환경을 강조하는 초광각 장면",
-    "establishing shot": "장소, 시대, 분위기를 먼저 설명하는 도입부 같은 장면",
-    "environmental shot": "인물보다 주변 환경과 관계성을 강조하는 장면",
-    "panoramic shot": "좌우로 넓게 펼쳐진 풍경이나 대규모 장면",
-    "macro shot": "곤충, 꽃, 물방울, 질감 같은 작은 대상을 크게 확대하는 샷"
   },
 
   "구도": {
     "centered composition": "주 피사체를 화면 중앙에 배치해 안정감과 상징성을 주는 구도",
     "rule of thirds": "화면을 3분할해 자연스럽고 균형 잡힌 배치를 만드는 구도",
-    "symmetrical composition": "좌우 또는 상하가 대칭인 정돈된 구도",
-    "asymmetrical composition": "대칭은 아니지만 시각적 무게가 균형을 이루는 구도",
-    "balanced composition": "인물, 배경, 소품의 시각적 무게가 안정적으로 배치된 구도",
-    "dynamic composition": "사선, 움직임, 긴장감이 살아 있는 역동적인 구도",
-    "diagonal composition": "사선 방향으로 시선과 움직임을 만드는 구도",
-    "triangular composition": "피사체들을 삼각형 구조로 배치해 안정감과 집중도를 주는 구도",
-    "radial composition": "중심에서 바깥으로 퍼지거나 바깥에서 중심으로 모이는 구도",
-    "layered composition": "전경, 중경, 배경을 층처럼 나누어 깊이감을 만드는 구도",
-    "leading lines": "길, 빛, 건축선 등이 시선을 특정 지점으로 이끄는 구도",
-    "S-curve composition": "S자 곡선 흐름으로 부드러운 시선 이동을 만드는 구도",
-    "frame within a frame": "문, 창문, 아치 같은 프레임 안에 피사체를 배치하는 구도",
-    "negative space": "빈 공간을 크게 남겨 고독감, 여백, 집중감을 주는 구도",
-    "foreground framing": "전경의 사물로 화면 가장자리를 감싸 깊이와 몰입감을 주는 구도",
-    "deep composition": "앞뒤 거리감이 크게 느껴지는 깊은 구도",
-    "clear focal point": "시선이 향해야 할 핵심 지점이 분명한 구도",
-    "cinematic composition": "영화 장면처럼 인물, 배경, 빛, 시선 흐름이 연출된 구도"
-  },
-
-  "피사체_배치": {
-    "centered subject": "주 피사체를 화면 중앙에 두어 명확하게 강조",
-    "off-center subject": "피사체를 중앙에서 살짝 벗어나게 배치해 자연스러운 긴장감 생성",
-    "subject in the foreground": "피사체가 화면 앞쪽에 크게 위치",
-    "subject in the midground": "피사체가 중간 거리에 있어 배경과 함께 읽히는 배치",
-    "subject in the background": "피사체가 뒤쪽에 있어 공간이나 상황을 강조",
-    "foreground silhouette": "전경의 인물을 실루엣으로 보여 주어 분위기와 깊이감 강조",
-    "background figures": "배경에 작은 인물들을 배치해 장면의 규모나 사회적 맥락을 추가",
-    "isolated subject": "피사체를 홀로 두어 고독감, 집중감, 상징성을 부여",
-    "overlapping figures": "인물들이 겹쳐 보이며 밀도, 혼잡함, 관계성을 표현",
-    "clustered figures": "인물들이 한곳에 모여 있는 배치",
-    "evenly spaced figures": "인물들이 일정 간격으로 배치되어 질서감 생성",
-    "foreground and background separation": "전경과 배경이 명확히 분리되어 입체감 강화",
-    "small figure in a vast environment": "거대한 배경 속 작은 인물로 압도감이나 고독감 표현",
-    "dominant foreground subject": "전경의 피사체가 화면을 지배하도록 크게 배치"
-  },
-
-  "인물_수와_관계": {
-    "three-person composition": "세 인물의 관계나 긴장을 보여 주기 좋은 구성",
-    "ensemble cast": "여러 주요 인물이 모두 중요하게 배치된 구성",
+    "cinematic composition": "영화 장면처럼 인물, 배경, 빛, 시선 흐름이 연출된 구도",
     "face-to-face": "두 인물이 마주 보는 대립, 대화, 친밀감의 구도",
     "side-by-side": "인물들이 나란히 있어 동행, 연대, 비교를 표현",
     "back-to-back": "등을 맞대고 있는 구도, 협력이나 긴장감을 표현",
-    "surrounding figures": "한 인물을 여러 인물이 둘러싼 장면",
-    "interacting characters": "인물들이 서로 행동이나 감정으로 연결된 장면",
-    "separated characters": "인물들이 떨어져 있어 거리감, 갈등, 단절을 표현",
-    "foreground protagonist": "주인공을 전경에 배치해 장면의 중심으로 만듦",
-    "background onlookers": "배경의 구경꾼들을 통해 사건성과 사회적 분위기를 추가"
   },
 
   "카메라_각도": {
     "eye-level shot": "눈높이 시점으로 자연스럽고 현실적인 인상을 줌",
     "high-angle shot": "위에서 내려다봐 피사체를 작고 약하게 보이게 함",
     "low-angle shot": "아래에서 올려다봐 피사체를 강하고 위압적으로 보이게 함",
-    "bird's-eye view": "새가 내려다보는 듯한 높은 시점",
-    "worm's-eye view": "땅바닥에서 올려다보는 극단적인 낮은 시점",
-    "overhead shot": "정수리 위에서 수직으로 내려다보는 시점",
-    "top-down view": "지도처럼 위에서 아래로 보는 시점",
-    "ground-level shot": "카메라가 바닥 가까이에 있어 현장감과 긴장감을 줌",
-    "hip-level shot": "허리 높이에서 보는 자연스럽고 거리감 있는 시점",
-    "shoulder-level shot": "어깨 높이에서 보는 안정적인 인물 중심 시점",
+    "overhead": "정수리 위에서 수직으로 내려다보는 시점",
+    "top-down": "지도처럼 위에서 아래로 보는 시점",
     "Dutch angle": "화면을 기울여 불안감이나 혼란을 주는 각도",
     "canted angle": "Dutch angle과 비슷하게 화면을 비스듬히 기울인 각도",
     "oblique angle": "정면이 아닌 비스듬한 시점으로 입체감과 긴장감을 줌"
