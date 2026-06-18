@@ -163,21 +163,6 @@ GEN_IMAGE_CAMERA_SAMPLES ={
     "foreshortening": "몸이나 사물이 카메라를 향해 짧게 압축되어 보이는 효과"
   },
 
-  "초점과_심도": {
-    "shallow depth of field": "배경을 흐리게 하고 피사체에 집중시키는 얕은 심도",
-    "large depth of field": "앞뒤가 넓게 선명한 깊은 심도",
-    "deep focus": "전경부터 배경까지 선명한 영화적 초점",
-    "selective focus": "특정 부분만 선명하게 강조",
-    "tack sharp focus": "매우 또렷하고 날카로운 초점",
-    "soft focus": "부드럽고 약간 몽환적인 초점",
-    "sharp foreground": "전경을 선명하게 강조",
-    "sharp background": "배경까지 선명하게 보여 줌",
-    "foreground blur": "전경을 흐리게 해 깊이감과 몰입감을 줌",
-    "background blur": "배경 흐림으로 피사체를 강조",
-    "creamy bokeh": "부드럽고 둥근 배경 흐림",
-    "split-diopter effect": "가까운 대상과 먼 대상을 동시에 선명하게 보이게 하는 영화적 효과"
-  },
-
   "움직임과_동세": {
     "dynamic action": "큰 움직임과 에너지가 있는 액션 장면",
     "dynamic pose": "인물의 자세가 역동적으로 보이도록 유도",
