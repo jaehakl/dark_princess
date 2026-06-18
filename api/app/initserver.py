@@ -51,6 +51,7 @@ def server():
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             await ensure_scene_control_image_columns(conn)
+            await ensure_scene_prompt_columns(conn)
             await migrate_upload_references_to_object_keys(conn)
         print("service is started.")
 
@@ -66,6 +67,75 @@ async def ensure_scene_control_image_columns(conn):
     for column_name in ("scribble_url", "pose_url"):
         if column_name not in existing_column_names:
             await conn.execute(text(f"ALTER TABLE scenes ADD COLUMN {column_name} TEXT"))
+
+
+async def ensure_scene_prompt_columns(conn):
+    columns = (await conn.execute(text("PRAGMA table_info(scenes)"))).all()
+    existing_column_names = {row[1] for row in columns}
+    for column_name in (
+        "prompt_situation",
+        "prompt_hero",
+        "prompt_camera",
+        "prompt_detail",
+        "prompt_negative",
+    ):
+        if column_name not in existing_column_names:
+            await conn.execute(text(f"ALTER TABLE scenes ADD COLUMN {column_name} TEXT"))
+            existing_column_names.add(column_name)
+
+    for column_name in (
+        "prompt_situation_embedding",
+        "prompt_hero_embedding",
+        "prompt_camera_embedding",
+        "prompt_detail_embedding",
+    ):
+        if column_name not in existing_column_names:
+            await conn.execute(text(f"ALTER TABLE scenes ADD COLUMN {column_name} JSON"))
+            existing_column_names.add(column_name)
+
+    await migrate_legacy_scene_prompt_columns(conn, existing_column_names)
+
+
+async def migrate_legacy_scene_prompt_columns(conn, existing_column_names: set[str]):
+    legacy_columns = ("background", "subject", "object", "action", "detail")
+    if not set(legacy_columns).issubset(existing_column_names):
+        return
+
+    rows = (
+        await conn.execute(
+            text(
+                "SELECT id, background, subject, object, action, detail, "
+                "prompt_situation, prompt_hero, prompt_detail FROM scenes"
+            )
+        )
+    ).all()
+    for row in rows:
+        row_data = row._mapping
+        updates = {}
+        if _is_blank(row_data["prompt_situation"]) and not _is_blank(row_data["background"]):
+            updates["prompt_situation"] = row_data["background"].strip()
+        if _is_blank(row_data["prompt_hero"]) and not _is_blank(row_data["subject"]):
+            updates["prompt_hero"] = row_data["subject"].strip()
+        if _is_blank(row_data["prompt_detail"]):
+            detail_parts = [
+                value.strip()
+                for value in (row_data["object"], row_data["action"], row_data["detail"])
+                if isinstance(value, str) and value.strip()
+            ]
+            if detail_parts:
+                updates["prompt_detail"] = ", ".join(detail_parts)
+        if not updates:
+            continue
+
+        set_clause = ", ".join(f"{column_name} = :{column_name}" for column_name in updates)
+        await conn.execute(
+            text(f"UPDATE scenes SET {set_clause} WHERE id = :id"),
+            {**updates, "id": row_data["id"]},
+        )
+
+
+def _is_blank(value):
+    return not isinstance(value, str) or not value.strip()
 
 
 async def migrate_upload_references_to_object_keys(conn):

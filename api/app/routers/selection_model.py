@@ -93,11 +93,11 @@ def scene_to_base(scene) -> SceneBase:
         pose_url=public_file_url_from_reference(scene.pose_url),
         script=scene.script,
         status_change=scene.status_change,
-        background=scene.background,
-        subject=scene.subject,
-        object=scene.object,
-        action=scene.action,
-        detail=scene.detail,
+        prompt_situation=scene.prompt_situation,
+        prompt_hero=scene.prompt_hero,
+        prompt_camera=scene.prompt_camera,
+        prompt_detail=scene.prompt_detail,
+        prompt_negative=scene.prompt_negative,
     )
 
 

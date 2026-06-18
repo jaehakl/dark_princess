@@ -41,8 +41,8 @@ class UpdateSceneContextRequestBase(BaseModel):
 class ImageGenerationSettingsBase(BaseModel):
     model_filename: Optional[str] = None
     model_filenames: Optional[List[str]] = None
-    positive_base: Optional[str] = None
-    negative_prompt: Optional[str] = None
+    prompt_default_positive: Optional[str] = None
+    prompt_default_negative: Optional[str] = None
     steps: Optional[int] = None
     cfg: Optional[float] = None
     strength: Optional[float] = None
@@ -74,11 +74,13 @@ class GenerateSceneRequestBase(BaseModel):
     status_change: Dict[str, Any] = Field(default_factory=dict)
     generate_image: bool = True
     image_settings: Optional[ImageGenerationSettingsBase] = None
-    background: Optional[str] = None
-    subject: Optional[str] = None
-    object: Optional[str] = None
-    action: Optional[str] = None
-    detail: Optional[str] = None
+    prompt_situation: Optional[str] = None
+    prompt_instant_positive: Optional[str] = None
+    prompt_hero: Optional[str] = None
+    prompt_camera: Optional[str] = None
+    prompt_detail: Optional[str] = None
+    prompt_instant_negative: Optional[str] = None
+    prompt_negative: Optional[str] = None
 
 
 class GenerateScenePromptRequestBase(BaseModel):
@@ -120,11 +122,11 @@ class SceneBase(BaseModel):
     pose_url: Optional[str] = None
     script: str = ""
     status_change: Dict[str, Any] = Field(default_factory=dict)
-    background: Optional[str] = None
-    subject: Optional[str] = None
-    object: Optional[str] = None
-    action: Optional[str] = None
-    detail: Optional[str] = None
+    prompt_situation: Optional[str] = None
+    prompt_hero: Optional[str] = None
+    prompt_camera: Optional[str] = None
+    prompt_detail: Optional[str] = None
+    prompt_negative: Optional[str] = None
 
 
 class SceneOptionBase(BaseModel):

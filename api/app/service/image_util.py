@@ -25,7 +25,7 @@ from utils.vector import VECTOR_DIMENSION, validate_embedding
 #GEN_IMAGE_NEGATIVE_PROMPT = "score_5, score_4, score_3, solo, portrait, character focus, lowres, blurry, low quality, bad anatomy, disfigured, deformed, bad hands, missing fingers, extra fingers, worst quality, jpeg artifacts, signature, watermark, text, bad eyes, grotesque, sketchy, logo, rough, incomplete, disgusting, distorted, deformed face, poorly drawn, bad quality"
 
 GEN_IMAGE_POSITIVE_BASE = "masterpiece, best quality"
-GEN_IMAGE_NEGATIVE_PROMPT = "blurry, low quality, bad anatomy, disfigured, deformed, bad hands, missing fingers, extra fingers, worst quality, jpeg artifacts, signature, watermark, text, bad eyes, grotesque, sketchy, logo, rough, incomplete, disgusting, distorted, deformed face, poorly drawn, bad quality"
+GEN_IMAGE_NEGATIVE_PROMPT = "low quality, blurry, jpeg artifacts, watermark, signature, text, logo, distorted, deformed face"
 
 GEN_IMAGE_STEPS = 30
 GEN_IMAGE_CFG = 5
@@ -51,7 +51,7 @@ RECOMMEND_PROMPT_DISTANCE_EPSILON = 1e-6
 GEN_IMAGE_ALLOWED_SAMPLERS = {"", "euler", "euler_a", "dpmpp_2m", "unipc"}
 GEN_IMAGE_ALLOWED_SCHEDULERS = {"", "karras"}
 GEN_IMAGE_MODEL_FILE_EXTENSIONS = {".safetensors", ".ckpt"}
-SCENE_PROMPT_FIELDS = ("background", "subject", "object", "action", "detail")
+SCENE_PROMPT_FIELDS = ("prompt_situation", "prompt_hero", "prompt_camera", "prompt_detail")
 WD14_TAGGER_MODEL_ID = "SmilingWolf/wd-eva02-large-tagger-v3"
 WD14_DEFAULT_GENERAL_THRESHOLD = 0.35
 WD14_DEFAULT_CHARACTER_THRESHOLD = 0.85
@@ -299,8 +299,8 @@ def get_default_image_generation_settings() -> ImageGenerationSettingsBase:
     return ImageGenerationSettingsBase(
         model_filename=model_filename,
         model_filenames=model_filenames,
-        positive_base=GEN_IMAGE_POSITIVE_BASE,
-        negative_prompt=GEN_IMAGE_NEGATIVE_PROMPT,
+        prompt_default_positive=GEN_IMAGE_POSITIVE_BASE,
+        prompt_default_negative=GEN_IMAGE_NEGATIVE_PROMPT,
         steps=GEN_IMAGE_STEPS,
         cfg=GEN_IMAGE_CFG,
         strength=GEN_IMAGE_STRENGTH,
@@ -328,8 +328,16 @@ def resolve_image_generation_settings(
     resolved = ImageGenerationSettingsBase(
         model_filename=defaults.model_filename if image_settings.model_filename is None else image_settings.model_filename,
         model_filenames=defaults.model_filenames,
-        positive_base=defaults.positive_base if image_settings.positive_base is None else image_settings.positive_base,
-        negative_prompt=defaults.negative_prompt if image_settings.negative_prompt is None else image_settings.negative_prompt,
+        prompt_default_positive=(
+            defaults.prompt_default_positive
+            if image_settings.prompt_default_positive is None
+            else image_settings.prompt_default_positive
+        ),
+        prompt_default_negative=(
+            defaults.prompt_default_negative
+            if image_settings.prompt_default_negative is None
+            else image_settings.prompt_default_negative
+        ),
         steps=defaults.steps if image_settings.steps is None else image_settings.steps,
         cfg=defaults.cfg if image_settings.cfg is None else image_settings.cfg,
         strength=defaults.strength if image_settings.strength is None else image_settings.strength,
@@ -456,8 +464,8 @@ def _validate_image_generation_settings(
     return ImageGenerationSettingsBase(
         model_filename=(image_settings.model_filename or "").strip(),
         model_filenames=image_settings.model_filenames or [],
-        positive_base=(image_settings.positive_base or "").strip(),
-        negative_prompt=(image_settings.negative_prompt or "").strip(),
+        prompt_default_positive=(image_settings.prompt_default_positive or "").strip(),
+        prompt_default_negative=(image_settings.prompt_default_negative or "").strip(),
         steps=steps,
         cfg=cfg,
         strength=strength,

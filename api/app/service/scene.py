@@ -143,7 +143,10 @@ async def generate_scene(
     if should_generate_image:
         try:
             image_key, has_active_scribble = await generate_scene_image(
-                visual_prompt,
+                column_values,
+                request.prompt_instant_positive,
+                request.prompt_negative,
+                request.prompt_instant_negative,
                 seed_image,
                 request.image_settings,
                 mask_image=mask_image,
@@ -180,6 +183,7 @@ async def generate_scene(
         for field in SCENE_PROMPT_FIELDS:
             setattr(scene, field, column_values[field])
             setattr(scene, f"{field}_embedding", column_embeddings[field])
+        scene.prompt_negative = request.prompt_negative
         if image_key is not None:
             scene.image_url = image_key
         if should_generate_image:
@@ -249,6 +253,7 @@ async def upsert_scenes(db: AsyncSession, items: list[SceneBase]) -> list[Upsert
             for field in SCENE_PROMPT_FIELDS:
                 setattr(scene, field, column_values[field])
                 setattr(scene, f"{field}_embedding", column_embeddings[field])
+            scene.prompt_negative = item.prompt_negative
 
             if old_image_url != image_url:
                 orphan_candidates.append(old_image_url)
@@ -382,6 +387,14 @@ def build_scene_visual_prompt(column_values: dict[str, str | None]) -> str:
     )
 
 
+def build_generation_prompt(parts: list[str | None]) -> str:
+    return ", ".join(
+        part.strip().strip(",")
+        for part in parts
+        if isinstance(part, str) and part.strip().strip(",")
+    )
+
+
 def build_scene_embedding_input(visual_prompt: str, script: str) -> str:
     return f"passage: {visual_prompt}\n{script}"
 
@@ -394,7 +407,10 @@ def upload_scene_control_image(image_bytes: bytes, filename: str) -> str:
 
 
 async def generate_scene_image(
-    visual_prompt: str,
+    column_values: dict[str, str | None],
+    prompt_instant_positive: str | None,
+    prompt_negative: str | None,
+    prompt_instant_negative: str | None,
     seed_image: bytes | None,
     image_settings: ImageGenerationSettingsBase | None = None,
     *,
@@ -469,8 +485,17 @@ async def generate_scene_image(
         pose_guidance_ends.append(resolved_settings.pose_guidance_end)
 
     positive_prompt_parts = [
-        (resolved_settings.positive_base or "").strip().strip(","),
-        visual_prompt.strip().strip(","),
+        column_values["prompt_situation"],
+        prompt_instant_positive,
+        column_values["prompt_hero"],
+        column_values["prompt_camera"],
+        column_values["prompt_detail"],
+        resolved_settings.prompt_default_positive,
+    ]
+    negative_prompt_parts = [
+        prompt_instant_negative,
+        prompt_negative,
+        resolved_settings.prompt_default_negative,
     ]
     seed = random.randint(GEN_IMAGE_SEED_MIN, GEN_IMAGE_SEED_MAX)
     if controlnet_images:
@@ -492,8 +517,8 @@ async def generate_scene_image(
     images, _seeds = await generate_images_batch(
         str(model_path),
         runtime_image_mode,
-        [", ".join(part for part in positive_prompt_parts if part)],
-        [resolved_settings.negative_prompt or ""],
+        [build_generation_prompt(positive_prompt_parts)],
+        [build_generation_prompt(negative_prompt_parts)],
         [init_image] if init_image is not None else [],
         [init_mask] if init_mask is not None else [],
         [controlnet_images] if controlnet_images else [],

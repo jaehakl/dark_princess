@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { dbTables } from '../api/api';
 import type {
   GenerateSceneRequest,
@@ -31,28 +31,48 @@ import {
 } from './ui';
 
 const PROMPT_COLUMNS = [
-  { key: 'background', label: '배경' },
-  { key: 'subject', label: '인물' },
-  { key: 'object', label: '대상' },
-  { key: 'action', label: '행동' },
-  { key: 'detail', label: '디테일' },
+  { key: 'prompt_situation', label: '상황' },
+  { key: 'prompt_hero', label: '주인공' },
+  { key: 'prompt_camera', label: '카메라' },
+  { key: 'prompt_detail', label: '디테일' },
 ] as const;
 
+const PROMPT_EDITOR_COLUMNS = [
+  { key: 'prompt_situation', label: '상황', kind: 'stored' },
+  { key: 'prompt_instant_positive', label: 'instant positive', kind: 'instant' },
+  { key: 'prompt_hero', label: '주인공', kind: 'stored' },
+  { key: 'prompt_camera', label: '카메라', kind: 'stored' },
+  { key: 'prompt_detail', label: '디테일', kind: 'stored' },
+  { key: 'prompt_instant_negative', label: 'instant negative', kind: 'instant' },
+  { key: 'prompt_negative', label: 'negative', kind: 'negative' },
+] as const;
+
+type PromptEditorColumnName = (typeof PROMPT_EDITOR_COLUMNS)[number]['key'];
+
 const EMPTY_PROMPT_DRAFT: Record<PromptColumnName, string> = {
-  background: '',
-  subject: '',
-  object: '',
-  action: '',
-  detail: '',
+  prompt_situation: '',
+  prompt_hero: '',
+  prompt_camera: '',
+  prompt_detail: '',
 };
 
 const EMPTY_RECOMMENDATIONS: RecommendPromptColumns = {
-  background: [],
-  subject: [],
-  object: [],
-  action: [],
-  detail: [],
+  prompt_situation: [],
+  prompt_hero: [],
+  prompt_camera: [],
+  prompt_detail: [],
 };
+
+const EMPTY_INSTANT_PROMPT_DRAFT = {
+  prompt_instant_positive: '',
+  prompt_instant_negative: '',
+};
+
+const EMPTY_TRANSLATION_DRAFT: Record<PromptEditorColumnName, string> =
+  PROMPT_EDITOR_COLUMNS.reduce((draft, column) => {
+    draft[column.key] = '';
+    return draft;
+  }, {} as Record<PromptEditorColumnName, string>);
 
 const QUICK_IMAGE_STRENGTHS = [0.5, 0.75, 0.85, 0.95, 1];
 const STATUS_CHANGE_FIELDS = [
@@ -84,6 +104,7 @@ type SaveMode =
 
 type StatusChangeKey = (typeof STATUS_CHANGE_FIELDS)[number]['key'];
 type StatusChangeValues = Record<StatusChangeKey, string>;
+type InstantPromptName = keyof typeof EMPTY_INSTANT_PROMPT_DRAFT;
 
 type SceneEditComponentProps = {
   sceneId: number | null;
@@ -104,11 +125,10 @@ function getErrorMessage(error: unknown) {
 
 function sceneToPromptDraft(scene: SceneRecord): Record<PromptColumnName, string> {
   return {
-    background: scene.background ?? '',
-    subject: scene.subject ?? '',
-    object: scene.object ?? '',
-    action: scene.action ?? '',
-    detail: scene.detail ?? '',
+    prompt_situation: scene.prompt_situation ?? '',
+    prompt_hero: scene.prompt_hero ?? '',
+    prompt_camera: scene.prompt_camera ?? '',
+    prompt_detail: scene.prompt_detail ?? '',
   };
 }
 
@@ -142,8 +162,12 @@ export function SceneEditComponent({
   const [promptDraft, setPromptDraft] = useState<Record<PromptColumnName, string>>(
     () => sceneToPromptDraft(initialScene),
   );
-  const [translationDraft, setTranslationDraft] = useState<Record<PromptColumnName, string>>({
-    ...EMPTY_PROMPT_DRAFT,
+  const [instantPromptDraft, setInstantPromptDraft] = useState<Record<InstantPromptName, string>>({
+    ...EMPTY_INSTANT_PROMPT_DRAFT,
+  });
+  const [promptNegativeDraft, setPromptNegativeDraft] = useState(initialScene.prompt_negative ?? '');
+  const [translationDraft, setTranslationDraft] = useState<Record<PromptEditorColumnName, string>>({
+    ...EMPTY_TRANSLATION_DRAFT,
   });
   const [script, setScript] = useState(initialScene.script ?? '');
   const [statusChangeValues, setStatusChangeValues] = useState<StatusChangeValues>(
@@ -163,6 +187,7 @@ export function SceneEditComponent({
   const [isDeleting, setIsDeleting] = useState(false);
   const [savingMode, setSavingMode] = useState<SaveMode | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const preserveInstantPromptSceneIdRef = useRef<number | null>(null);
 
   const composedPrompt = useMemo(
     () =>
@@ -179,7 +204,7 @@ export function SceneEditComponent({
   const canRefreshRecommendations =
     canEdit && script.trim().length > 0 && !isRecommending && !isTranslatingPromptColumns && !savingMode;
   const canTranslatePromptColumns =
-    canEdit && !isBusy && PROMPT_COLUMNS.some((column) => translationDraft[column.key].trim().length > 0);
+    canEdit && !isBusy && PROMPT_EDITOR_COLUMNS.some((column) => translationDraft[column.key].trim().length > 0);
   const canDuplicate = Boolean(modalLayout && onDuplicate && sceneId !== null && canEdit && !isBusy);
   const imageModelFilenameOptions = imageSettings?.model_filenames ?? imageSettingsDefaults?.model_filenames ?? [];
   const selectedLabel = sceneId === null
@@ -188,10 +213,14 @@ export function SceneEditComponent({
       ? `Scene #${sceneId} 불러오는 중`
       : `Scene #${sceneId}`;
 
-  const applySceneDraft = useCallback((scene: SceneRecord) => {
+  const applySceneDraft = useCallback((scene: SceneRecord, resetInstantPrompts = true) => {
     setActiveScene(scene);
     setPromptDraft(sceneToPromptDraft(scene));
-    setTranslationDraft({ ...EMPTY_PROMPT_DRAFT });
+    setPromptNegativeDraft(scene.prompt_negative ?? '');
+    if (resetInstantPrompts) {
+      setInstantPromptDraft({ ...EMPTY_INSTANT_PROMPT_DRAFT });
+    }
+    setTranslationDraft({ ...EMPTY_TRANSLATION_DRAFT });
     setScript(scene.script ?? '');
     setStatusChangeValues(statusChangeToValues(scene.status_change));
     setRecommendations({ ...EMPTY_RECOMMENDATIONS });
@@ -203,6 +232,7 @@ export function SceneEditComponent({
       setIsLoadingScene(false);
       setIsDeleting(false);
       setSavingMode(null);
+      preserveInstantPromptSceneIdRef.current = null;
       applySceneDraft({ ...initialScene, id: null });
       return;
     }
@@ -226,13 +256,20 @@ export function SceneEditComponent({
           throw new Error(`Scene #${targetSceneId}을 찾을 수 없습니다.`);
         }
         if (!isCancelled) {
-          applySceneDraft(loadedScene);
+          const shouldPreserveInstantPrompts = preserveInstantPromptSceneIdRef.current === targetSceneId;
+          if (shouldPreserveInstantPrompts || preserveInstantPromptSceneIdRef.current !== null) {
+            preserveInstantPromptSceneIdRef.current = null;
+          }
+          applySceneDraft(loadedScene, !shouldPreserveInstantPrompts);
         }
       } catch (loadError) {
         if (!isCancelled) {
+          preserveInstantPromptSceneIdRef.current = null;
           setActiveScene(null);
           setPromptDraft({ ...EMPTY_PROMPT_DRAFT });
-          setTranslationDraft({ ...EMPTY_PROMPT_DRAFT });
+          setInstantPromptDraft({ ...EMPTY_INSTANT_PROMPT_DRAFT });
+          setPromptNegativeDraft('');
+          setTranslationDraft({ ...EMPTY_TRANSLATION_DRAFT });
           setScript('');
           setStatusChangeValues(statusChangeToValues(DEFAULT_STATUS_CHANGE));
           setRecommendations({ ...EMPTY_RECOMMENDATIONS });
@@ -315,9 +352,10 @@ export function SceneEditComponent({
   }
 
   async function translatePromptColumns() {
-    const targets = PROMPT_COLUMNS
+    const targets = PROMPT_EDITOR_COLUMNS
       .map((column) => ({
         key: column.key,
+        kind: column.kind,
         text: translationDraft[column.key].trim(),
       }))
       .filter((target) => target.text.length > 0);
@@ -340,6 +378,7 @@ export function SceneEditComponent({
       const translatedByColumn = targets
         .map((target, index) => ({
           key: target.key,
+          kind: target.kind,
           text: translatedTexts[index]?.trim() ?? '',
         }))
         .filter((item) => item.text.length > 0);
@@ -350,11 +389,34 @@ export function SceneEditComponent({
       setPromptDraft((current) => {
         const next = { ...current };
         for (const item of translatedByColumn) {
-          const currentText = next[item.key].trim();
-          next[item.key] = currentText ? `${currentText}, ${item.text}` : item.text;
+          if (item.kind !== 'stored') {
+            continue;
+          }
+          const key = item.key as PromptColumnName;
+          const currentText = next[key].trim();
+          next[key] = currentText ? `${currentText}, ${item.text}` : item.text;
         }
         return next;
       });
+      setInstantPromptDraft((current) => {
+        const next = { ...current };
+        for (const item of translatedByColumn) {
+          if (item.kind !== 'instant') {
+            continue;
+          }
+          const key = item.key as InstantPromptName;
+          const currentText = next[key].trim();
+          next[key] = currentText ? `${currentText}, ${item.text}` : item.text;
+        }
+        return next;
+      });
+      const negativeTranslation = translatedByColumn.find((item) => item.kind === 'negative');
+      if (negativeTranslation) {
+        setPromptNegativeDraft((current) => {
+          const currentText = current.trim();
+          return currentText ? `${currentText}, ${negativeTranslation.text}` : negativeTranslation.text;
+        });
+      }
       setTranslationDraft((current) => {
         const next = { ...current };
         for (const item of translatedByColumn) {
@@ -518,8 +580,8 @@ export function SceneEditComponent({
     const nextImageSettings: ImageGenerationSettings = {
       model_filename: modelFilename,
       model_filenames: imageModelFilenameOptions,
-      positive_base: imageSettingsDraft.positive_base.trim(),
-      negative_prompt: imageSettingsDraft.negative_prompt.trim(),
+      prompt_default_positive: imageSettingsDraft.prompt_default_positive.trim(),
+      prompt_default_negative: imageSettingsDraft.prompt_default_negative.trim(),
       steps,
       cfg,
       strength,
@@ -580,11 +642,11 @@ export function SceneEditComponent({
 
       const imagePromptColumns = imagePayload?.promptColumns ?? promptDraft;
       const sceneColumns = {
-        background: imagePromptColumns.background.trim() || null,
-        subject: imagePromptColumns.subject.trim() || null,
-        object: imagePromptColumns.object.trim() || null,
-        action: imagePromptColumns.action.trim() || null,
-        detail: imagePromptColumns.detail.trim() || null,
+        prompt_situation: imagePromptColumns.prompt_situation.trim() || null,
+        prompt_hero: imagePromptColumns.prompt_hero.trim() || null,
+        prompt_camera: imagePromptColumns.prompt_camera.trim() || null,
+        prompt_detail: imagePromptColumns.prompt_detail.trim() || null,
+        prompt_negative: promptNegativeDraft.trim() || null,
       };
 
       const payload: GenerateSceneRequest = {
@@ -594,6 +656,13 @@ export function SceneEditComponent({
         generate_image: isImageSave,
         ...sceneColumns,
       };
+      const imagePromptPayload = isImageSave
+        ? {
+            ...payload,
+            prompt_instant_positive: instantPromptDraft.prompt_instant_positive.trim() || null,
+            prompt_instant_negative: instantPromptDraft.prompt_instant_negative.trim() || null,
+          }
+        : payload;
       const formData = new FormData();
 
       const imageSettingsForPayload = isImageSave && imagePayload
@@ -601,8 +670,8 @@ export function SceneEditComponent({
         : imageSettings;
       formData.append('payload', JSON.stringify(
         isImageSave
-          ? { ...payload, image_settings: imageSettingsForPayload }
-          : payload,
+          ? { ...imagePromptPayload, image_settings: imageSettingsForPayload }
+          : imagePromptPayload,
       ));
 
       if (isImageSave && imagePayload) {
@@ -626,7 +695,8 @@ export function SceneEditComponent({
         throw new Error('Scene 저장 결과를 확인할 수 없습니다.');
       }
 
-      applySceneDraft(generatedScene);
+      preserveInstantPromptSceneIdRef.current = generatedSceneId;
+      applySceneDraft(generatedScene, false);
       onSaved(generatedSceneId);
     } catch (saveError) {
       setError(getErrorMessage(saveError));
@@ -656,6 +726,7 @@ export function SceneEditComponent({
     setError(null);
     try {
       await dbTables.Scene.deleteRows([deletedSceneId]);
+      preserveInstantPromptSceneIdRef.current = null;
       onDeleted?.(deletedSceneId);
     } catch (deleteError) {
       setError(getErrorMessage(deleteError));
@@ -681,11 +752,11 @@ export function SceneEditComponent({
       pose_url: activeScene.pose_url ?? null,
       script,
       status_change: { ...statusChange },
-      background: promptDraft.background,
-      subject: promptDraft.subject,
-      object: promptDraft.object,
-      action: promptDraft.action,
-      detail: promptDraft.detail,
+      prompt_situation: promptDraft.prompt_situation,
+      prompt_hero: promptDraft.prompt_hero,
+      prompt_camera: promptDraft.prompt_camera,
+      prompt_detail: promptDraft.prompt_detail,
+      prompt_negative: promptNegativeDraft,
     });
   }
 
@@ -756,7 +827,10 @@ export function SceneEditComponent({
               <Button
                 variant="danger"
                 className="px-3 py-2 text-xs"
-                onClick={onClose}
+                onClick={() => {
+                  preserveInstantPromptSceneIdRef.current = null;
+                  onClose();
+                }}
                 disabled={isBusy}
               >
                 닫기
@@ -815,68 +889,92 @@ export function SceneEditComponent({
                     </div>
                   </div>
                   <div className="overflow-hidden rounded-[8px] border border-[rgba(255,208,222,0.24)] bg-[rgba(12,5,18,0.46)]">
-                    {PROMPT_COLUMNS.map((column) => (
-                      <div
-                        key={column.key}
-                        className="grid gap-2 border-b border-[rgba(255,208,222,0.16)] p-2 last:border-b-0 md:grid-cols-[5.5rem_minmax(0,1fr)] md:items-start"
-                      >
-                        <div className="pt-2">
-                          <FieldLabel>{column.label}</FieldLabel>
-                        </div>
-                        <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-                          <label className="block min-w-0">
-                            <span className="sr-only">{column.label}</span>
-                            <FormControl
-                              as="textarea"
-                              rows={1}
-                              value={promptDraft[column.key]}
-                              onChange={(event) =>
-                                setPromptDraft((current) => ({
-                                  ...current,
-                                  [column.key]: event.target.value,
-                                }))
-                              }
-                              className="min-h-10 w-full resize-y px-3 py-2 text-sm"
-                              disabled={isLoadingScene || Boolean(savingMode) || isTranslatingPromptColumns}
-                            />
-                          </label>
-                          <label className="block min-w-0">
-                            <span className="sr-only">{column.label} 한국어 번역 입력</span>
-                            <FormControl
-                              as="textarea"
-                              rows={1}
-                              value={translationDraft[column.key]}
-                              onChange={(event) =>
-                                setTranslationDraft((current) => ({
-                                  ...current,
-                                  [column.key]: event.target.value,
-                                }))
-                              }
-                              className="min-h-10 w-full resize-y px-3 py-2 text-sm"
-                              placeholder="한국어, 콤마 구분"
-                              disabled={isLoadingScene || Boolean(savingMode) || isTranslatingPromptColumns}
-                            />
-                          </label>
-                        </div>
-                        <div className="flex min-w-0 flex-wrap gap-1.5 md:col-start-2">
-                          {recommendations[column.key].slice(0, 12).map((tag) => (
-                            <Button
-                              key={`${column.key}-${tag}`}
-                              className="px-2 py-1 text-xs"
-                              onClick={() => appendRecommendation(column.key, tag)}
-                              disabled={isLoadingScene || Boolean(savingMode) || isTranslatingPromptColumns}
-                            >
-                              {tag}
-                            </Button>
-                          ))}
-                          {recommendations[column.key].length === 0 ? (
-                            <span className="px-1 py-2 text-xs font-semibold text-[var(--app-muted)]">
-                              추천 없음
-                            </span>
+                    {PROMPT_EDITOR_COLUMNS.map((column) => {
+                      const value = column.kind === 'stored'
+                        ? promptDraft[column.key]
+                        : column.kind === 'negative'
+                          ? promptNegativeDraft
+                          : instantPromptDraft[column.key];
+
+                      return (
+                        <div
+                          key={column.key}
+                          className="grid gap-2 border-b border-[rgba(255,208,222,0.16)] p-2 last:border-b-0 md:grid-cols-[5.5rem_minmax(0,1fr)] md:items-start"
+                        >
+                          <div className="pt-2">
+                            <FieldLabel>{column.label}</FieldLabel>
+                          </div>
+                          <div
+                            className="grid min-w-0 gap-2 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"
+                          >
+                            <label className="block min-w-0">
+                              <span className="sr-only">{column.label}</span>
+                              <FormControl
+                                as="textarea"
+                                rows={1}
+                                value={value}
+                                onChange={(event) => {
+                                  const nextValue = event.target.value;
+                                  if (column.kind === 'stored') {
+                                    setPromptDraft((current) => ({
+                                      ...current,
+                                      [column.key]: nextValue,
+                                    }));
+                                    return;
+                                  }
+                                  if (column.kind === 'negative') {
+                                    setPromptNegativeDraft(nextValue);
+                                    return;
+                                  }
+                                  setInstantPromptDraft((current) => ({
+                                    ...current,
+                                    [column.key]: nextValue,
+                                  }));
+                                }}
+                                className="min-h-10 w-full resize-y px-3 py-2 text-sm"
+                                disabled={isLoadingScene || Boolean(savingMode)}
+                              />
+                            </label>
+                            <label className="block min-w-0">
+                              <span className="sr-only">{column.label} 한국어 번역 입력</span>
+                              <FormControl
+                                as="textarea"
+                                rows={1}
+                                value={translationDraft[column.key]}
+                                onChange={(event) =>
+                                  setTranslationDraft((current) => ({
+                                    ...current,
+                                    [column.key]: event.target.value,
+                                  }))
+                                }
+                                className="min-h-10 w-full resize-y px-3 py-2 text-sm"
+                                placeholder="한국어, 콤마 구분"
+                                disabled={isLoadingScene || Boolean(savingMode) || isTranslatingPromptColumns}
+                              />
+                            </label>
+                          </div>
+                          {column.kind === 'stored' ? (
+                            <div className="flex min-w-0 flex-wrap gap-1.5 md:col-start-2">
+                              {recommendations[column.key].slice(0, 12).map((tag) => (
+                                <Button
+                                  key={`${column.key}-${tag}`}
+                                  className="px-2 py-1 text-xs"
+                                  onClick={() => appendRecommendation(column.key, tag)}
+                                  disabled={isLoadingScene || Boolean(savingMode) || isTranslatingPromptColumns}
+                                >
+                                  {tag}
+                                </Button>
+                              ))}
+                              {recommendations[column.key].length === 0 ? (
+                                <span className="px-1 py-2 text-xs font-semibold text-[var(--app-muted)]">
+                                  추천 없음
+                                </span>
+                              ) : null}
+                            </div>
                           ) : null}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -1010,21 +1108,21 @@ export function SceneEditComponent({
               </div>
 
               <div className="flex min-w-0 flex-col gap-1">
-                <FieldLabel>positive base</FieldLabel>
+                <FieldLabel>prompt default positive</FieldLabel>
                 <FormControl
                   as="textarea"
-                  value={imageSettingsDraft.positive_base}
-                  onChange={(event) => updateImageSettingsDraft('positive_base', event.target.value)}
+                  value={imageSettingsDraft.prompt_default_positive}
+                  onChange={(event) => updateImageSettingsDraft('prompt_default_positive', event.target.value)}
                   className="min-h-20 w-full resize-y px-3 py-2 text-sm"
                 />
               </div>
 
               <div className="flex min-w-0 flex-col gap-1">
-                <FieldLabel>negative prompt</FieldLabel>
+                <FieldLabel>prompt default negative</FieldLabel>
                 <FormControl
                   as="textarea"
-                  value={imageSettingsDraft.negative_prompt}
-                  onChange={(event) => updateImageSettingsDraft('negative_prompt', event.target.value)}
+                  value={imageSettingsDraft.prompt_default_negative}
+                  onChange={(event) => updateImageSettingsDraft('prompt_default_negative', event.target.value)}
                   className="min-h-24 w-full resize-y px-3 py-2 text-sm"
                 />
               </div>

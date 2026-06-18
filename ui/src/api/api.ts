@@ -30,6 +30,11 @@ export const dbTables = {
       pose_url: { label: 'Pose URL', type: 'text' },
       script: { label: '스크립트', type: 'text' },
       status_change: { label: '상태 변화', type: 'dict-list' },
+      prompt_situation: { label: '상황 프롬프트', type: 'text' },
+      prompt_hero: { label: '주인공 프롬프트', type: 'text' },
+      prompt_camera: { label: '카메라 프롬프트', type: 'text' },
+      prompt_detail: { label: '디테일 프롬프트', type: 'text' },
+      prompt_negative: { label: 'Negative 프롬프트', type: 'text' },
     },
     listRows: (listRequest: GetListRequest) =>
       request<GetListResponse<SceneRecord>>('post', '/scene/list', listRequest),

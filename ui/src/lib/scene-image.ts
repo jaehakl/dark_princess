@@ -17,8 +17,8 @@ export type SeedImageState = {
 
 export type ImageGenerationSettingsDraft = {
   model_filename: string;
-  positive_base: string;
-  negative_prompt: string;
+  prompt_default_positive: string;
+  prompt_default_negative: string;
   steps: string;
   cfg: string;
   strength: string;
@@ -38,8 +38,8 @@ export type ImageGenerationSettingsDraft = {
 export function imageSettingsToDraft(settings: ImageGenerationSettings): ImageGenerationSettingsDraft {
   return {
     model_filename: settings.model_filename,
-    positive_base: settings.positive_base,
-    negative_prompt: settings.negative_prompt,
+    prompt_default_positive: settings.prompt_default_positive,
+    prompt_default_negative: settings.prompt_default_negative,
     steps: String(settings.steps),
     cfg: String(settings.cfg),
     strength: String(settings.strength),
@@ -65,6 +65,8 @@ export function readSessionImageSettings(defaults: ImageGenerationSettings): Ima
 
   try {
     const parsedSettings = JSON.parse(rawSettings) as Partial<ImageGenerationSettings> & {
+      positive_base?: string;
+      negative_prompt?: string;
       controlnet_conditioning_scale?: number;
       control_guidance_start?: number;
       control_guidance_end?: number;
@@ -80,8 +82,16 @@ export function readSessionImageSettings(defaults: ImageGenerationSettings): Ima
     return {
       model_filename: modelFilename,
       model_filenames: modelFilenames,
-      positive_base: parsedSettings.positive_base ?? defaults.positive_base,
-      negative_prompt: parsedSettings.negative_prompt ?? defaults.negative_prompt,
+      prompt_default_positive: (
+        parsedSettings.prompt_default_positive
+        ?? parsedSettings.positive_base
+        ?? defaults.prompt_default_positive
+      ),
+      prompt_default_negative: (
+        parsedSettings.prompt_default_negative
+        ?? parsedSettings.negative_prompt
+        ?? defaults.prompt_default_negative
+      ),
       steps: parsedSettings.steps ?? defaults.steps,
       cfg: parsedSettings.cfg ?? defaults.cfg,
       strength: parsedSettings.strength ?? defaults.strength,

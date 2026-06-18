@@ -21,8 +21,8 @@ export type UpsertResponse = {
 export type ImageGenerationSettings = {
   model_filename: string;
   model_filenames: string[];
-  positive_base: string;
-  negative_prompt: string;
+  prompt_default_positive: string;
+  prompt_default_negative: string;
   steps: number;
   cfg: number;
   strength: number;
@@ -51,14 +51,16 @@ export type GenerateSceneRequest = {
   status_change: Record<string, unknown>;
   generate_image?: boolean;
   image_settings?: Partial<ImageGenerationSettings> | null;
-  background?: string | null;
-  subject?: string | null;
-  object?: string | null;
-  action?: string | null;
-  detail?: string | null;
+  prompt_situation?: string | null;
+  prompt_instant_positive?: string | null;
+  prompt_hero?: string | null;
+  prompt_camera?: string | null;
+  prompt_detail?: string | null;
+  prompt_instant_negative?: string | null;
+  prompt_negative?: string | null;
 };
 
-export type PromptColumnName = 'background' | 'subject' | 'object' | 'action' | 'detail';
+export type PromptColumnName = 'prompt_situation' | 'prompt_hero' | 'prompt_camera' | 'prompt_detail';
 
 export type RecommendPromptColumns = Record<PromptColumnName, string[]>;
 
@@ -75,11 +77,11 @@ export type SceneRecord = {
   pose_url?: string | null;
   script: string;
   status_change: Record<string, unknown>;
-  background?: string | null;
-  subject?: string | null;
-  object?: string | null;
-  action?: string | null;
-  detail?: string | null;
+  prompt_situation?: string | null;
+  prompt_hero?: string | null;
+  prompt_camera?: string | null;
+  prompt_detail?: string | null;
+  prompt_negative?: string | null;
 };
 
 export type SceneOptionRecord = {

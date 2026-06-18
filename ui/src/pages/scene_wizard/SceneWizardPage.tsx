@@ -12,11 +12,11 @@ const EMPTY_INITIAL_SCENE: SceneRecord = {
   pose_url: null,
   script: '',
   status_change: { turn: 1 },
-  background: null,
-  subject: null,
-  object: null,
-  action: null,
-  detail: null,
+  prompt_situation: null,
+  prompt_hero: null,
+  prompt_camera: null,
+  prompt_detail: null,
+  prompt_negative: null,
 };
 
 function createEmptyInitialScene(): SceneRecord {
