@@ -365,7 +365,6 @@ GEN_IMAGE_CAMERA_SAMPLES ={
     "complementary colors": "보색 대비를 이용한 강한 색 조합",
     "split-complementary palette": "보색보다 조금 부드러운 삼각형 색 조합",
     "limited color palette": "색 수를 제한해 통일감 있는 색감",
-    "black and white": "흑백 이미지",
     "sepia tones": "갈색빛이 도는 오래된 사진 느낌",
     "teal and orange": "청록과 주황 대비의 영화적 색감"
   },
