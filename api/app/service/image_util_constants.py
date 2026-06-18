@@ -460,28 +460,18 @@ GEN_IMAGE_CAMERA_SAMPLES ={
   },
 
   "시각_스타일": {
-    "photorealistic": "사진처럼 사실적인 표현",
+    "photorealistic": "사진처럼 사실적인 표현o",
     "cinematic realism": "영화 장면처럼 현실적이지만 연출된 표현",
     "documentary photography": "다큐멘터리 사진처럼 현장감 있는 표현",
     "editorial photography": "잡지 화보 같은 세련된 사진 스타일",
-    "fine art photography": "예술 사진 같은 정제된 표현",
-    "film still": "영화의 한 프레임처럼 보이는 이미지",
-    "concept art": "게임, 영화, 애니메이션 제작용 설정화 느낌",
-    "matte painting": "거대한 배경이나 풍경을 회화적으로 합성한 느낌",
-    "digital painting": "디지털 브러시로 그린 회화적 이미지",
-    "painterly illustration": "붓터치와 회화성이 살아 있는 일러스트",
+    "film still": "영화의 한 프레임처럼 보이는 이미지o",
     "fantasy illustration": "판타지 소설 표지나 게임 아트 같은 스타일",
     "graphic novel art": "그래픽 노블식 진지하고 서사적인 만화 스타일",
-    "comic book art": "미국 만화책 같은 선명한 선과 색",
     "anime": "일본 애니메이션풍",
-    "manga": "일본 만화풍, 선화와 컷 감각이 강함",
     "storybook illustration": "동화책 삽화 같은 부드러운 스타일",
     "minimalist illustration": "단순하고 절제된 형태 중심의 일러스트",
-    "surrealist art": "비현실적이고 상징적인 초현실주의 미술",
     "impressionist painting": "빛과 색의 인상을 강조하는 인상주의풍",
     "expressionist painting": "감정과 왜곡을 강하게 드러내는 표현주의풍",
-    "art nouveau": "곡선, 식물 장식, 우아한 장식성이 강한 스타일",
-    "art deco": "기하학, 대칭, 고급스러운 장식성이 강한 스타일"
   },
 
   "매체와_표현_기법": {
