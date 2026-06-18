@@ -277,10 +277,7 @@ GEN_IMAGE_CAMERA_SAMPLES ={
     "neutral color palette": "회색, 베이지, 흰색, 검정 중심의 절제된 색감",
     "analogous colors": "색상환에서 가까운 색끼리 조합한 조화로운 팔레트",
     "complementary colors": "보색 대비를 이용한 강한 색 조합",
-    "split-complementary palette": "보색보다 조금 부드러운 삼각형 색 조합",
-    "limited color palette": "색 수를 제한해 통일감 있는 색감",
     "sepia tones": "갈색빛이 도는 오래된 사진 느낌",
-    "teal and orange": "청록과 주황 대비의 영화적 색감"
   },
 
   "색보정과_톤": {
