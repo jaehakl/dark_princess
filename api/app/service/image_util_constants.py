@@ -38,7 +38,6 @@ WD14_DEFAULT_CHARACTER_THRESHOLD = 0.85
 GEN_IMAGE_CAMERA_SAMPLES ={
   "구도": {
     "close-up": "얼굴이나 특정 사물을 크게 보여 주는 근접 샷",
-    "medium shot": "허리 위 인물과 주변 상황을 함께 보여 주는 중간 거리 샷",
     "cowboy shot": "허벅지 위까지 잡는 서부극식 인물 샷",
     "full shot": "인물의 전신을 화면 안에 담는 샷",
     "centered composition": "주 피사체를 화면 중앙에 배치해 안정감과 상징성을 주는 구도",
@@ -69,19 +68,14 @@ GEN_IMAGE_CAMERA_SAMPLES ={
     "rear view": "뒤에서 바라보는 시점, 미스터리나 여정의 느낌을 줌",
     "point-of-view shot": "인물의 눈으로 보는 듯한 주관적 시점",
     "first-person perspective": "1인칭 게임이나 체험 장면처럼 보이는 시점",
-    "aerial viewpoint": "공중에서 내려다보는 넓은 시점",
-    "spectator viewpoint": "관객이 현장을 지켜보는 듯한 시점",
   },
 
   "공간감": {
     "point perspective": "하나의 소실점으로 시선이 모이는 안정적인 원근",
     "linear perspective": "선들이 소실점으로 모이는 전통적 원근법",
-    "exaggerated perspective": "공간감과 깊이를 일부러 크게 과장",
-    "deep perspective": "화면 깊숙이 들어가는 강한 거리감",
     "isometric view": "게임 맵이나 설계도처럼 축이 일정한 등각 시점",
     "foreshortening": "몸이나 사물이 카메라를 향해 짧게 압축되어 보이는 효과",
     "fisheye lens": "어안렌즈처럼 휘어진 왜곡과 독특한 공간감을 만듦",
-    "bokeh": "흐린 배경",
   },
 
   "광원 효과": {
@@ -92,20 +86,15 @@ GEN_IMAGE_CAMERA_SAMPLES ={
     "top lighting": "위에서 내려오는 빛, 엄숙하거나 극적인 느낌",
     "fine film grain": "필름 사진의 미세한 입자감",
     "halation": "밝은 부분 주변이 부드럽게 번지는 필름 효과",
-    "flare": "플레어",
-    "glow": "빛 번짐",
   },
 
   "채광": {
-    "midday sunlight": "정오의 강한 햇빛, 선명하고 그림자가 짧음",
-    "golden hour": "해 뜰 무렵이나 해 질 무렵의 따뜻한 황금빛",
     "blue hour": "해가 진 직후의 푸른 시간대",
     "twilight": "해질녘이나 새벽녘의 어스름",
     "window light": "창문을 통해 들어오는 부드러운 빛",
     "candlelight": "촛불의 따뜻하고 흔들리는 빛",
     "neon light": "강렬한 색의 네온 조명",
     "fluorescent light": "형광등 같은 차갑고 평평한 실내 조명",
-    "bioluminescent light": "생물 발광처럼 신비로운 자연광",
     "overcast sky": "흐린 하늘, 부드럽고 평평한 빛",
   },
 
