@@ -457,7 +457,6 @@ GEN_IMAGE_CAMERA_SAMPLES ={
     "folklore": "민담, 전설, 지역 신앙 기반 분위기",
     "mythic": "신화적이고 장엄한 느낌",
     "surreal fantasy": "초현실적 이미지와 판타지가 결합된 장르",
-    "cosmic horror": "우주적 공포와 인간을 압도하는 미지의 존재감"
   },
 
   "시각_스타일": {
@@ -567,24 +566,4 @@ GEN_IMAGE_CAMERA_SAMPLES ={
     "cinematic detail": "영화 장면처럼 디테일과 연출감이 있는 표현",
     "detailed environment": "배경과 공간 디테일을 풍부하게 유도"
   },
-
-  "관습적_품질_태그_체크포인트_의존": {
-    "high quality": "전반적인 품질 향상을 기대하는 범용 태그",
-    "best quality": "더 좋은 품질을 유도하는 관습적 태그",
-    "masterpiece": "완성도 높은 결과를 기대하는 관습적 태그, 모델에 따라 효과 차이가 큼",
-    "ultra-detailed": "디테일을 매우 많이 넣도록 유도하는 태그"
-  },
-
-  "화면비와_방향": {
-    "horizontal composition": "가로형 구도",
-    "vertical composition": "세로형 구도",
-    "square composition": "정사각형 구도",
-    "panoramic composition": "좌우로 넓은 파노라마 구도",
-    "widescreen composition": "영화 화면처럼 넓은 가로 구도",
-    "cinematic 16:9 framing": "16:9 영화 화면비에 맞는 프레이밍",
-    "anamorphic widescreen": "아나모픽 영화처럼 더 넓고 극적인 와이드 화면",
-    "landscape orientation": "가로 방향 이미지",
-    "portrait orientation": "세로 방향 이미지",
-    "tall composition": "세로로 길게 올라가는 구도"
-  }
 }
