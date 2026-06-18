@@ -201,24 +201,8 @@ GEN_IMAGE_CAMERA_SAMPLES ={
   },
 
   "서사와_장면_유형": {
-    "in medias res": "사건이 이미 벌어지는 중간 순간에서 시작하는 장면",
-    "decisive moment": "의미가 가장 강한 결정적 순간",
-    "before the action": "사건 직전의 긴장감 있는 순간",
-    "aftermath": "사건이 끝난 뒤의 흔적과 여운",
-    "dramatic confrontation": "인물 간 대립이 강한 장면",
-    "quiet interaction": "조용한 대화나 섬세한 교류 장면",
-    "discovery scene": "무언가를 처음 발견하는 장면",
-    "escape scene": "도망치거나 탈출하는 장면",
-    "chase scene": "추격 장면",
-    "ritual scene": "의식, 제례, 마법진 같은 장면",
-    "crowd scene": "군중이 중심이 되는 장면",
-    "environmental storytelling": "배경과 소품만으로 이야기를 암시",
-    "visual narrative": "그림 안에서 사건의 흐름이 읽히는 서사적 구성",
-    "cinematic tableau": "영화의 한 장면처럼 정교하게 배치된 정지 장면",
+    "storytelling": "이야기 전달을 목적으로 한 일러스트",
     "narrative illustration": "이야기 전달을 목적으로 한 일러스트",
-    "candid moment": "우연히 포착한 듯한 자연스러운 순간",
-    "implied story": "직접 설명하지 않아도 전후 사정이 느껴지는 장면",
-    "clear cause and effect": "행동과 결과의 관계가 명확한 장면"
   },
 
   "조명_성질": {
