@@ -1,20 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { dbTables } from '../../api/api';
+import { useImageSettingsStore } from '../../api/store';
 import type {
   GenerateSceneRequest,
-  ImageGenerationSettings,
   ImageRecord,
   PromptColumnName,
   SceneRecord,
 } from '../../api/type';
-import {
-  IMAGE_SAMPLER_OPTIONS,
-  IMAGE_SCHEDULER_OPTIONS,
-  IMAGE_SETTINGS_SESSION_KEY,
-  imageSettingsToDraft,
-  readSessionImageSettings,
-} from '../../lib/scene-image';
-import type { ImageGenerationSettingsDraft } from '../../lib/scene-image';
 import type { ImageEditorSubmitPayload } from '../image-editor';
 import {
   Panel,
@@ -32,7 +24,6 @@ import {
   PROMPT_EDITOR_COLUMNS,
   STATUS_CHANGE_FIELDS,
 } from './constants';
-import { ImageSettingsDialog } from './ImageSettingsDialog';
 import { SceneEditorHeader } from './SceneEditorHeader';
 import { SceneImagePanel } from './SceneImagePanel';
 import { ScenePromptPanel } from './ScenePromptPanel';
@@ -108,12 +99,11 @@ export function SceneEditComponent({
   const [statusChangeValues, setStatusChangeValues] = useState<StatusChangeValues>(
     () => statusChangeToValues(initialScene.status_change),
   );
-  const [imageSettingsDefaults, setImageSettingsDefaults] = useState<ImageGenerationSettings | null>(null);
-  const [imageSettings, setImageSettings] = useState<ImageGenerationSettings | null>(null);
-  const [imageSettingsDraft, setImageSettingsDraft] = useState<ImageGenerationSettingsDraft | null>(null);
+  const imageSettingsDefaults = useImageSettingsStore((state) => state.defaults);
+  const imageSettings = useImageSettingsStore((state) => state.settings);
+  const openImageSettings = useImageSettingsStore((state) => state.openDialog);
+  const updateImageParameters = useImageSettingsStore((state) => state.updateSettings);
   const [strengthControlValue, setStrengthControlValue] = useState('');
-  const [isImageSettingsOpen, setIsImageSettingsOpen] = useState(false);
-  const [imageSettingsError, setImageSettingsError] = useState<string | null>(null);
   const [imageHistory, setImageHistory] = useState({ ids: [] as number[], index: -1 });
   const [selectedImageOverride, setSelectedImageOverride] = useState<ImageRecord | null>(null);
   const [isLoadingHistoryImage, setIsLoadingHistoryImage] = useState(false);
@@ -142,7 +132,6 @@ export function SceneEditComponent({
       (column) => column.key !== 'prompt_camera' && translationDraft[column.key].trim().length > 0,
     );
   const canDuplicate = Boolean(modalLayout && onDuplicate && sceneId !== null && canEdit && !isBusy);
-  const imageModelFilenameOptions = imageSettings?.model_filenames ?? imageSettingsDefaults?.model_filenames ?? [];
   const cameraSamples = imageSettingsDefaults?.camera_samples ?? imageSettings?.camera_samples ?? {};
   const displayedImageId = selectedImageOverride?.id ?? activeScene?.image_id ?? null;
   const displayedBaseImageUrl = selectedImageOverride
@@ -268,32 +257,10 @@ export function SceneEditComponent({
   }, [activeScene?.id, activeScene?.image_id, sceneId]);
 
   useEffect(() => {
-    let isCancelled = false;
-
-    async function loadImageSettingsDefaults() {
-      try {
-        const defaults = await dbTables.ImageUtil.getImageSettingsDefaults();
-        if (isCancelled) {
-          return;
-        }
-
-        const settingsFromSession = readSessionImageSettings(defaults);
-        setImageSettingsDefaults(defaults);
-        setImageSettings(settingsFromSession);
-        setImageSettingsDraft(imageSettingsToDraft(settingsFromSession));
-        setStrengthControlValue(String(settingsFromSession.strength));
-      } catch (settingsError) {
-        if (!isCancelled) {
-          setError(getErrorMessage(settingsError));
-        }
-      }
+    if (imageSettings) {
+      setStrengthControlValue(String(imageSettings.strength));
     }
-
-    void loadImageSettingsDefaults();
-    return () => {
-      isCancelled = true;
-    };
-  }, []);
+  }, [imageSettings]);
 
   async function translatePromptColumns() {
     const targets = PROMPT_EDITOR_COLUMNS
@@ -376,12 +343,6 @@ export function SceneEditComponent({
     }
   }
 
-  function updateImageSettingsDraft(field: keyof ImageGenerationSettingsDraft, value: string) {
-    setImageSettingsDraft((currentDraft) => (
-      currentDraft ? { ...currentDraft, [field]: value } : currentDraft
-    ));
-  }
-
   function updateImageStrength(value: string) {
     setStrengthControlValue(value);
     if (!imageSettings) {
@@ -395,158 +356,7 @@ export function SceneEditComponent({
     }
 
     updateImageParameters({ ...imageSettings, strength });
-  }
-
-  function updateImageParameters(nextImageSettings: ImageGenerationSettings) {
-    setImageSettings(nextImageSettings);
-    setImageSettingsDraft(imageSettingsToDraft(nextImageSettings));
-    setStrengthControlValue(String(nextImageSettings.strength));
-    sessionStorage.setItem(IMAGE_SETTINGS_SESSION_KEY, JSON.stringify(nextImageSettings));
     setError(null);
-  }
-
-  function openImageSettings() {
-    if (!imageSettings) {
-      setError('이미지 설정 기본값을 불러오는 중입니다.');
-      return;
-    }
-
-    setImageSettingsDraft(imageSettingsToDraft(imageSettings));
-    setImageSettingsError(null);
-    setIsImageSettingsOpen(true);
-  }
-
-  function resetImageSettingsToDefaults() {
-    if (!imageSettingsDefaults) {
-      setImageSettingsError('이미지 설정 기본값을 불러오지 못했습니다.');
-      return;
-    }
-
-    setImageSettings(imageSettingsDefaults);
-    setImageSettingsDraft(imageSettingsToDraft(imageSettingsDefaults));
-    setStrengthControlValue(String(imageSettingsDefaults.strength));
-    sessionStorage.setItem(IMAGE_SETTINGS_SESSION_KEY, JSON.stringify(imageSettingsDefaults));
-    setImageSettingsError(null);
-  }
-
-  function applyImageSettings() {
-    if (!imageSettingsDraft) {
-      return;
-    }
-
-    const steps = Number(imageSettingsDraft.steps);
-    const cfg = Number(imageSettingsDraft.cfg);
-    const strength = Number(imageSettingsDraft.strength);
-    const height = Number(imageSettingsDraft.height);
-    const width = Number(imageSettingsDraft.width);
-    const scribbleScale = Number(imageSettingsDraft.scribble_scale);
-    const scribbleGuidanceStart = Number(imageSettingsDraft.scribble_guidance_start);
-    const scribbleGuidanceEnd = Number(imageSettingsDraft.scribble_guidance_end);
-    const poseScale = Number(imageSettingsDraft.pose_scale);
-    const poseGuidanceStart = Number(imageSettingsDraft.pose_guidance_start);
-    const poseGuidanceEnd = Number(imageSettingsDraft.pose_guidance_end);
-    const clipSkip = imageSettingsDraft.clip_skip.trim() === ''
-      ? null
-      : Number(imageSettingsDraft.clip_skip);
-    const sampler = imageSettingsDraft.sampler.trim().toLowerCase();
-    const scheduler = imageSettingsDraft.scheduler.trim().toLowerCase();
-    const modelFilename = imageSettingsDraft.model_filename.trim();
-
-    if (!Number.isInteger(steps) || steps < 1) {
-      setImageSettingsError('steps는 1 이상의 정수로 입력해 주세요.');
-      return;
-    }
-    if (!Number.isFinite(cfg) || cfg <= 0) {
-      setImageSettingsError('cfg는 0보다 큰 숫자로 입력해 주세요.');
-      return;
-    }
-    if (!Number.isFinite(strength) || strength <= 0 || strength > 1) {
-      setImageSettingsError('strength는 0보다 크고 1 이하인 숫자로 입력해 주세요.');
-      return;
-    }
-    if (!Number.isInteger(height) || height <= 0 || height % 8 !== 0) {
-      setImageSettingsError('height는 8의 배수인 양의 정수로 입력해 주세요.');
-      return;
-    }
-    if (!Number.isInteger(width) || width <= 0 || width % 8 !== 0) {
-      setImageSettingsError('width는 8의 배수인 양의 정수로 입력해 주세요.');
-      return;
-    }
-    if (!Number.isFinite(scribbleScale) || scribbleScale < 0 || scribbleScale > 2) {
-      setImageSettingsError('Scribble scale은 0 이상 2 이하인 숫자로 입력해 주세요.');
-      return;
-    }
-    if (!Number.isFinite(scribbleGuidanceStart) || scribbleGuidanceStart < 0 || scribbleGuidanceStart > 1) {
-      setImageSettingsError('Scribble start는 0 이상 1 이하인 숫자로 입력해 주세요.');
-      return;
-    }
-    if (!Number.isFinite(scribbleGuidanceEnd) || scribbleGuidanceEnd < 0 || scribbleGuidanceEnd > 1) {
-      setImageSettingsError('Scribble end는 0 이상 1 이하인 숫자로 입력해 주세요.');
-      return;
-    }
-    if (scribbleGuidanceEnd < scribbleGuidanceStart) {
-      setImageSettingsError('Scribble end는 start 이상이어야 합니다.');
-      return;
-    }
-    if (!Number.isFinite(poseScale) || poseScale < 0 || poseScale > 2) {
-      setImageSettingsError('Pose scale은 0 이상 2 이하인 숫자로 입력해 주세요.');
-      return;
-    }
-    if (!Number.isFinite(poseGuidanceStart) || poseGuidanceStart < 0 || poseGuidanceStart > 1) {
-      setImageSettingsError('Pose start는 0 이상 1 이하인 숫자로 입력해 주세요.');
-      return;
-    }
-    if (!Number.isFinite(poseGuidanceEnd) || poseGuidanceEnd < 0 || poseGuidanceEnd > 1) {
-      setImageSettingsError('Pose end는 0 이상 1 이하인 숫자로 입력해 주세요.');
-      return;
-    }
-    if (poseGuidanceEnd < poseGuidanceStart) {
-      setImageSettingsError('Pose end는 start 이상이어야 합니다.');
-      return;
-    }
-    if (clipSkip !== null && (!Number.isInteger(clipSkip) || clipSkip < 1)) {
-      setImageSettingsError('clip skip은 비우거나 1 이상의 정수로 입력해 주세요.');
-      return;
-    }
-    if (!IMAGE_SAMPLER_OPTIONS.includes(sampler as (typeof IMAGE_SAMPLER_OPTIONS)[number])) {
-      setImageSettingsError('지원하지 않는 sampler입니다.');
-      return;
-    }
-    if (!IMAGE_SCHEDULER_OPTIONS.includes(scheduler as (typeof IMAGE_SCHEDULER_OPTIONS)[number])) {
-      setImageSettingsError('지원하지 않는 scheduler입니다.');
-      return;
-    }
-
-    if (!imageModelFilenameOptions.includes(modelFilename)) {
-      setImageSettingsError('Unsupported model file.');
-      return;
-    }
-
-    const nextImageSettings: ImageGenerationSettings = {
-      model_filename: modelFilename,
-      model_filenames: imageModelFilenameOptions,
-      available_gpu_ids: imageSettingsDefaults?.available_gpu_ids ?? imageSettings?.available_gpu_ids ?? [],
-      camera_samples: cameraSamples,
-      prompt_default_positive: imageSettingsDraft.prompt_default_positive.trim(),
-      prompt_default_negative: imageSettingsDraft.prompt_default_negative.trim(),
-      steps,
-      cfg,
-      strength,
-      sampler,
-      scheduler,
-      clip_skip: clipSkip,
-      height,
-      width,
-      scribble_scale: scribbleScale,
-      scribble_guidance_start: scribbleGuidanceStart,
-      scribble_guidance_end: scribbleGuidanceEnd,
-      pose_scale: poseScale,
-      pose_guidance_start: poseGuidanceStart,
-      pose_guidance_end: poseGuidanceEnd,
-    };
-    updateImageParameters(nextImageSettings);
-    setImageSettingsError(null);
-    setIsImageSettingsOpen(false);
   }
 
   function buildStatusChange() {
@@ -891,19 +701,6 @@ export function SceneEditComponent({
           </div>
         </SectionBody>
       </Panel>
-
-      {isImageSettingsOpen && imageSettingsDraft ? (
-        <ImageSettingsDialog
-          modalLayout={modalLayout}
-          imageSettingsDraft={imageSettingsDraft}
-          imageModelFilenameOptions={imageModelFilenameOptions}
-          imageSettingsError={imageSettingsError}
-          onUpdateDraft={updateImageSettingsDraft}
-          onResetDefaults={resetImageSettingsToDefaults}
-          onApply={applyImageSettings}
-          onClose={() => setIsImageSettingsOpen(false)}
-        />
-      ) : null}
     </>
   );
 }

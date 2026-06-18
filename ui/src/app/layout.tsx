@@ -1,7 +1,9 @@
+import { useEffect } from 'react';
 import { Link, Outlet, useMatches } from 'react-router-dom';
 import { dbTables } from '../api/api';
-import { useSceneStore } from '../api/store';
+import { useImageSettingsStore, useSceneStore } from '../api/store';
 import type { GetListRequest } from '../api/type';
+import { ImageSettingsDialog } from '../components/image-settings/ImageSettingsDialog';
 import { SceneExplorerModal } from '../components/SceneExplorerModal';
 import { Button, cx } from '../components/ui';
 
@@ -27,8 +29,23 @@ export function AppLayout() {
   const openSceneExplorer = useSceneStore((state) => state.openSceneExplorer);
   const closeSceneExplorer = useSceneStore((state) => state.closeSceneExplorer);
   const selectScene = useSceneStore((state) => state.selectScene);
+  const imageSettings = useImageSettingsStore((state) => state.settings);
+  const imageSettingsDraft = useImageSettingsStore((state) => state.draft);
+  const imageSettingsError = useImageSettingsStore((state) => state.error);
+  const isImageSettingsOpen = useImageSettingsStore((state) => state.isOpen);
+  const loadImageSettingsDefaults = useImageSettingsStore((state) => state.loadDefaults);
+  const openImageSettings = useImageSettingsStore((state) => state.openDialog);
+  const closeImageSettings = useImageSettingsStore((state) => state.closeDialog);
+  const updateImageSettingsDraft = useImageSettingsStore((state) => state.updateDraft);
+  const resetImageSettingsToDefaults = useImageSettingsStore((state) => state.resetDefaults);
+  const applyImageSettings = useImageSettingsStore((state) => state.applyDraft);
+  const imageModelFilenameOptions = imageSettings?.model_filenames ?? [];
   let breadcrumbs: string[] = [];
   let currentPageTitle = 'Dark Princess';
+
+  useEffect(() => {
+    void loadImageSettingsDefaults();
+  }, [loadImageSettingsDefaults]);
 
   for (const match of matches) {
     const handle = match.handle as RouteHandle | undefined;
@@ -109,6 +126,13 @@ export function AppLayout() {
           </Link>
           <Button
             className="shrink-0 px-3 py-2 text-xs sm:px-4"
+            disabled={!imageSettings}
+            onClick={openImageSettings}
+          >
+            이미지 설정
+          </Button>
+          <Button
+            className="shrink-0 px-3 py-2 text-xs sm:px-4"
             onClick={openSceneExplorer}
           >
             Scene 탐색
@@ -128,6 +152,19 @@ export function AppLayout() {
           currentSceneId={currentScene?.id ?? null}
           onClose={closeSceneExplorer}
           onSelect={(sceneId) => void handleSceneExplorerSelect(sceneId)}
+        />
+      ) : null}
+
+      {isImageSettingsOpen && imageSettingsDraft ? (
+        <ImageSettingsDialog
+          modalLayout={false}
+          imageSettingsDraft={imageSettingsDraft}
+          imageModelFilenameOptions={imageModelFilenameOptions}
+          imageSettingsError={imageSettingsError}
+          onUpdateDraft={updateImageSettingsDraft}
+          onResetDefaults={resetImageSettingsToDefaults}
+          onApply={applyImageSettings}
+          onClose={closeImageSettings}
         />
       ) : null}
     </div>
