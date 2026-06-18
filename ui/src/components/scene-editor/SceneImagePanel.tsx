@@ -25,7 +25,7 @@ type SceneImagePanelProps = {
   promptDraft: Record<PromptColumnName, string>;
   strengthControlValue: string;
   statusChangeValues: StatusChangeValues;
-  canSaveText: boolean;
+  canSaveData: boolean;
   isLoadingScene: boolean;
   isLoadingHistoryImage: boolean;
   savingMode: SaveMode | null;
@@ -49,7 +49,7 @@ export function SceneImagePanel({
   promptDraft,
   strengthControlValue,
   statusChangeValues,
-  canSaveText,
+  canSaveData,
   isLoadingScene,
   isLoadingHistoryImage,
   savingMode,
@@ -102,7 +102,7 @@ export function SceneImagePanel({
               baseImageUrl={baseImageUrl}
               scribbleImageUrl={scribbleImageUrl}
               poseImageUrl={poseImageUrl}
-              disabled={!canSaveText || isLoadingScene || isLoadingHistoryImage}
+              disabled={!canSaveData || isLoadingScene || isLoadingHistoryImage}
               isSubmitting={savingMode === 'image'}
               canGoPreviousImage={canGoPreviousImage}
               canGoNextImage={canGoNextImage}

@@ -32,6 +32,7 @@ import {
 import { createHistory, pushHistory, redoHistory, undoHistory } from './history';
 import { ImageEditorStage } from './ImageEditorStage';
 import { ImageLineageModal } from './ImageLineageModal';
+import { ImageSearchModal } from './ImageSearchModal';
 import { ImageEditorToolbar } from './ImageEditorToolbar';
 import {
   clampCoverOffset,
@@ -135,6 +136,7 @@ export function ImageEditor({
   const [scribbleBrushSize, setScribbleBrushSize] = useState(DEFAULT_SCRIBBLE_BRUSH_SIZE);
   const [scribbleModified, setScribbleModified] = useState(false);
   const [isLineageOpen, setIsLineageOpen] = useState(false);
+  const [isImageSearchOpen, setIsImageSearchOpen] = useState(false);
   const [isLoadingSource, setIsLoadingSource] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -988,6 +990,7 @@ export function ImageEditor({
         canGoPreviousImage={canGoPreviousImage}
         canGoNextImage={canGoNextImage}
         canOpenLineage={Boolean(imageId && onSelectLineageImage)}
+        canOpenImageSearch={Boolean(onSelectLineageImage)}
         hasActiveObject={Boolean(activeObject)}
         hasBaseImage={hasImage}
         hasScribble={hasScribble}
@@ -1014,6 +1017,7 @@ export function ImageEditor({
         onPreviousImage={() => onPreviousImage?.()}
         onNextImage={() => onNextImage?.()}
         onOpenLineage={() => setIsLineageOpen(true)}
+        onOpenImageSearch={() => setIsImageSearchOpen(true)}
         onFlip={flipActiveObject}
         onClearImage={clearImage}
         onToggleMaskOverlap={() => setMaskOverlap((current) => !current)}
@@ -1085,6 +1089,14 @@ export function ImageEditor({
         <ImageLineageModal
           currentImageId={imageId}
           onClose={() => setIsLineageOpen(false)}
+          onSelectImage={onSelectLineageImage}
+        />
+      ) : null}
+
+      {isImageSearchOpen && onSelectLineageImage ? (
+        <ImageSearchModal
+          currentImageId={imageId}
+          onClose={() => setIsImageSearchOpen(false)}
           onSelectImage={onSelectLineageImage}
         />
       ) : null}

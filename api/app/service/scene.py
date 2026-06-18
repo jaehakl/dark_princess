@@ -154,6 +154,10 @@ async def generate_scene(
     parent_image_id = None
     if should_generate_image and request.parent_image_id is not None:
         parent_image_id = await validate_image_id(db, request.parent_image_id)
+    should_update_scene_image = (not should_generate_image) and "image_id" in request.model_fields_set
+    scene_image_id = None
+    if should_update_scene_image and request.image_id is not None:
+        scene_image_id = await validate_image_id(db, request.image_id)
 
     script = normalize_scene_script(request.script)
     column_values = {field: getattr(request, field) for field in SCENE_PROMPT_FIELDS}
@@ -220,10 +224,16 @@ async def generate_scene(
             )
             db.add(stored_image)
             scene.image = stored_image
+        elif should_update_scene_image:
+            scene.image_id = scene_image_id
+            if scene_image_id is None:
+                scene.image = None
         await db.commit()
         await db.refresh(scene)
         if scene.image_id is not None:
             await db.refresh(scene, attribute_names=["image"])
+        else:
+            scene.image = None
     except Exception:
         await db.rollback()
         if image_key is not None:

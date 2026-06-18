@@ -70,6 +70,19 @@ function statusChangeToValues(statusChange: Record<string, unknown> | undefined)
   }, {} as StatusChangeValues);
 }
 
+function promptColumnsToScenePayload(
+  promptColumns: Record<PromptColumnName, string>,
+  promptNegative: string,
+) {
+  return {
+    prompt_situation: promptColumns.prompt_situation.trim() || null,
+    prompt_hero: promptColumns.prompt_hero.trim() || null,
+    prompt_camera: promptColumns.prompt_camera.trim() || null,
+    prompt_detail: promptColumns.prompt_detail.trim() || null,
+    prompt_negative: promptNegative.trim() || null,
+  };
+}
+
 export function SceneEditComponent({
   sceneId,
   initialScene,
@@ -120,7 +133,7 @@ export function SceneEditComponent({
   );
   const isBusy = isLoadingScene || isLoadingHistoryImage || isTranslatingPromptColumns || isDeleting || Boolean(savingMode);
   const canEdit = Boolean(activeScene);
-  const canSaveText = canEdit && composedPrompt.length > 0 && !isBusy;
+  const canSaveData = canEdit && composedPrompt.length > 0 && !isBusy;
   const canDelete = sceneId !== null && !isBusy;
   const canTranslatePromptColumns =
     canEdit
@@ -629,9 +642,19 @@ export function SceneEditComponent({
     setError(null);
   }
 
-  async function saveScene(mode: SaveMode, imagePayload: ImageEditorSubmitPayload | null = null) {
-    const isImageSave = mode === 'image';
-    const targetSceneId = sceneId ?? null;
+  async function submitSceneForm(formData: FormData) {
+    const generatedScene = await dbTables.Scene.generateScene(formData);
+    const generatedSceneId = generatedScene.id;
+    if (!generatedSceneId) {
+      throw new Error('Scene 저장 결과를 확인할 수 없습니다.');
+    }
+
+    preserveInstantPromptSceneIdRef.current = generatedSceneId;
+    applySceneDraft(generatedScene, false);
+    onSaved(generatedSceneId);
+  }
+
+  async function saveDataOnlyScene() {
     const trimmedPrompt = composedPrompt.trim();
 
     if (!trimmedPrompt) {
@@ -644,72 +667,21 @@ export function SceneEditComponent({
       return;
     }
 
-    setSavingMode(mode);
+    setSavingMode('data');
     setError(null);
     try {
-      if (isImageSave && !imagePayload) {
-        throw new Error('이미지 생성 payload를 확인할 수 없습니다.');
-      }
-
-      const imagePromptColumns = imagePayload?.promptColumns ?? promptDraft;
-      const sceneColumns = {
-        prompt_situation: imagePromptColumns.prompt_situation.trim() || null,
-        prompt_hero: imagePromptColumns.prompt_hero.trim() || null,
-        prompt_camera: imagePromptColumns.prompt_camera.trim() || null,
-        prompt_detail: imagePromptColumns.prompt_detail.trim() || null,
-        prompt_negative: promptNegativeDraft.trim() || null,
-      };
-
       const payload: GenerateSceneRequest = {
-        scene_id: targetSceneId,
-        parent_image_id: isImageSave ? selectedImageOverride?.id ?? activeScene?.image_id ?? null : undefined,
+        scene_id: sceneId ?? null,
+        image_id: displayedImageId,
         script,
         status_change: statusChange,
-        generate_image: isImageSave,
-        ...sceneColumns,
+        generate_image: false,
+        ...promptColumnsToScenePayload(promptDraft, promptNegativeDraft),
       };
-      const imagePromptPayload = isImageSave
-        ? {
-            ...payload,
-            prompt_instant_positive: instantPromptDraft.prompt_instant_positive.trim() || null,
-            prompt_instant_negative: instantPromptDraft.prompt_instant_negative.trim() || null,
-          }
-        : payload;
       const formData = new FormData();
+      formData.append('payload', JSON.stringify(payload));
 
-      const imageSettingsForPayload = isImageSave && imagePayload
-        ? imagePayload.parameters
-        : imageSettings;
-      formData.append('payload', JSON.stringify(
-        isImageSave
-          ? { ...imagePromptPayload, image_settings: imageSettingsForPayload }
-          : imagePromptPayload,
-      ));
-
-      if (isImageSave && imagePayload) {
-        if (imagePayload.image) {
-          formData.append('image', imagePayload.image, 'scene-inpaint-image.png');
-        }
-        if (imagePayload.mask) {
-          formData.append('mask', imagePayload.mask, 'scene-inpaint-mask.png');
-        }
-        if (imagePayload.scribbleImage) {
-          formData.append('scribble_image', imagePayload.scribbleImage, 'scene-controlnet-scribble.png');
-        }
-        if (imagePayload.poseImage) {
-          formData.append('pose_image', imagePayload.poseImage, 'scene-controlnet-openpose.png');
-        }
-      }
-
-      const generatedScene = await dbTables.Scene.generateScene(formData);
-      const generatedSceneId = generatedScene.id;
-      if (!generatedSceneId) {
-        throw new Error('Scene 저장 결과를 확인할 수 없습니다.');
-      }
-
-      preserveInstantPromptSceneIdRef.current = generatedSceneId;
-      applySceneDraft(generatedScene, false);
-      onSaved(generatedSceneId);
+      await submitSceneForm(formData);
     } catch (saveError) {
       setError(getErrorMessage(saveError));
     } finally {
@@ -718,7 +690,54 @@ export function SceneEditComponent({
   }
 
   async function saveGeneratedImage(imagePayload: ImageEditorSubmitPayload) {
-    await saveScene('image', imagePayload);
+    const trimmedPrompt = composedPrompt.trim();
+
+    if (!trimmedPrompt) {
+      setError('프롬프트 항목을 하나 이상 입력해 주세요.');
+      return;
+    }
+
+    const statusChange = buildStatusChange();
+    if (!statusChange) {
+      return;
+    }
+
+    setSavingMode('image');
+    setError(null);
+    try {
+      const payload: GenerateSceneRequest = {
+        scene_id: sceneId ?? null,
+        parent_image_id: displayedImageId,
+        script,
+        status_change: statusChange,
+        generate_image: true,
+        image_settings: imagePayload.parameters,
+        ...promptColumnsToScenePayload(imagePayload.promptColumns, promptNegativeDraft),
+        prompt_instant_positive: instantPromptDraft.prompt_instant_positive.trim() || null,
+        prompt_instant_negative: instantPromptDraft.prompt_instant_negative.trim() || null,
+      };
+      const formData = new FormData();
+      formData.append('payload', JSON.stringify(payload));
+
+      if (imagePayload.image) {
+        formData.append('image', imagePayload.image, 'scene-inpaint-image.png');
+      }
+      if (imagePayload.mask) {
+        formData.append('mask', imagePayload.mask, 'scene-inpaint-mask.png');
+      }
+      if (imagePayload.scribbleImage) {
+        formData.append('scribble_image', imagePayload.scribbleImage, 'scene-controlnet-scribble.png');
+      }
+      if (imagePayload.poseImage) {
+        formData.append('pose_image', imagePayload.poseImage, 'scene-controlnet-openpose.png');
+      }
+
+      await submitSceneForm(formData);
+    } catch (saveError) {
+      setError(getErrorMessage(saveError));
+    } finally {
+      setSavingMode(null);
+    }
   }
 
   async function deleteScene() {
@@ -797,15 +816,15 @@ export function SceneEditComponent({
           showDuplicate={Boolean(modalLayout && onDuplicate && sceneId !== null)}
           canDelete={canDelete}
           canDuplicate={canDuplicate}
-          canSaveText={canSaveText}
+          canSaveData={canSaveData}
           canOpenImageSettings={Boolean(imageSettings && !isBusy)}
           isBusy={isBusy}
           isDeleting={isDeleting}
           savingMode={savingMode}
           onDelete={() => void deleteScene()}
           onDuplicate={duplicateScene}
-          onSaveText={() => {
-            void saveScene('text');
+          onSaveData={() => {
+            void saveDataOnlyScene();
           }}
           onOpenImageSettings={openImageSettings}
           onClose={onClose ? closeEditor : undefined}
@@ -849,7 +868,7 @@ export function SceneEditComponent({
                 promptDraft={promptDraft}
                 strengthControlValue={strengthControlValue}
                 statusChangeValues={statusChangeValues}
-                canSaveText={canSaveText}
+                canSaveData={canSaveData}
                 isLoadingScene={isLoadingScene}
                 isLoadingHistoryImage={isLoadingHistoryImage}
                 savingMode={savingMode}

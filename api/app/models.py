@@ -71,6 +71,7 @@ class ImagePromptExtractionResponseBase(BaseModel):
 
 class GenerateSceneRequestBase(BaseModel):
     scene_id: Optional[int] = None
+    image_id: Optional[int] = None
     parent_image_id: Optional[int] = None
     script: str = ""
     status_change: Dict[str, Any] = Field(default_factory=dict)
@@ -135,6 +136,12 @@ class ImageBase(BaseModel):
     negative_prompt: Optional[str] = None
     seed_image_id: Optional[int] = None
     model_parameters: Optional[Dict[str, Any]] = None
+
+
+class ImageListItemBase(ImageBase):
+    scene_count: int = 0
+    family_root_image_id: Optional[int] = None
+    family_image_count: int = 0
 
 
 class SelectionModelBase(BaseModel):

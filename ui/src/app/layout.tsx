@@ -101,6 +101,12 @@ export function AppLayout() {
           >
             Scene Wizard
           </Link>
+          <Link
+            to="/image-manager"
+            className="shrink-0 rounded-[8px] border border-[rgba(255,216,176,0.54)] bg-[linear-gradient(135deg,rgba(255,231,180,0.2),rgba(232,90,135,0.14)),rgba(38,12,40,0.78)] px-3 py-2 text-xs font-extrabold text-[#fff5eb] shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_12px_28px_rgba(10,0,18,0.26)] transition-[transform,filter,border-color] [text-shadow:0_1px_8px_rgba(0,0,0,0.5)] hover:-translate-y-px hover:border-[rgba(255,238,205,0.92)] hover:brightness-[1.06] sm:px-4"
+          >
+            Image 관리
+          </Link>
           <Button
             className="shrink-0 px-3 py-2 text-xs sm:px-4"
             onClick={openSceneExplorer}

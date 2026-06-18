@@ -8,14 +8,14 @@ type SceneEditorHeaderProps = {
   showDuplicate: boolean;
   canDelete: boolean;
   canDuplicate: boolean;
-  canSaveText: boolean;
+  canSaveData: boolean;
   canOpenImageSettings: boolean;
   isBusy: boolean;
   isDeleting: boolean;
   savingMode: SaveMode | null;
   onDelete: () => void;
   onDuplicate: () => void;
-  onSaveText: () => void;
+  onSaveData: () => void;
   onOpenImageSettings: () => void;
   onClose?: () => void;
 };
@@ -33,14 +33,14 @@ export function SceneEditorHeader({
   showDuplicate,
   canDelete,
   canDuplicate,
-  canSaveText,
+  canSaveData,
   canOpenImageSettings,
   isBusy,
   isDeleting,
   savingMode,
   onDelete,
   onDuplicate,
-  onSaveText,
+  onSaveData,
   onOpenImageSettings,
   onClose,
 }: SceneEditorHeaderProps) {
@@ -78,11 +78,11 @@ export function SceneEditorHeader({
         ) : null}
         <Button
           className="inline-flex items-center gap-2 px-3 py-2 text-xs"
-          onClick={() => confirmAction('텍스트만 저장할까요?', onSaveText)}
-          disabled={!canSaveText}
+          onClick={() => confirmAction('데이터만 저장할까요?', onSaveData)}
+          disabled={!canSaveData}
         >
-          {savingMode === 'text' ? <Spinner aria-hidden="true" /> : null}
-          텍스트만 저장
+          {savingMode === 'data' ? <Spinner aria-hidden="true" /> : null}
+          데이터만 저장
         </Button>
         <Button
           className="px-3 py-2 text-base leading-none"

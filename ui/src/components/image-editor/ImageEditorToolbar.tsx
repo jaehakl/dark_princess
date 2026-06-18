@@ -22,6 +22,7 @@ type ImageEditorToolbarProps = {
   canGoPreviousImage: boolean;
   canGoNextImage: boolean;
   canOpenLineage: boolean;
+  canOpenImageSearch: boolean;
   hasActiveObject: boolean;
   hasBaseImage: boolean;
   hasScribble: boolean;
@@ -48,6 +49,7 @@ type ImageEditorToolbarProps = {
   onPreviousImage: () => void;
   onNextImage: () => void;
   onOpenLineage: () => void;
+  onOpenImageSearch: () => void;
   onFlip: () => void;
   onClearImage: () => void;
   onToggleMaskOverlap: () => void;
@@ -129,6 +131,7 @@ export function ImageEditorToolbar({
   canGoPreviousImage,
   canGoNextImage,
   canOpenLineage,
+  canOpenImageSearch,
   hasActiveObject,
   hasBaseImage,
   hasScribble,
@@ -155,6 +158,7 @@ export function ImageEditorToolbar({
   onPreviousImage,
   onNextImage,
   onOpenLineage,
+  onOpenImageSearch,
   onFlip,
   onClearImage,
   onToggleMaskOverlap,
@@ -193,6 +197,9 @@ export function ImageEditorToolbar({
         <Button className={TOOL_BUTTON_CLASS} onClick={onNextImage} disabled={disabled || !canGoNextImage} title="다음 그림">›</Button>
         <Button className="h-7 px-2.5 py-0 text-xs" onClick={onOpenLineage} disabled={disabled || !canOpenLineage}>
           계통목록
+        </Button>
+        <Button className="h-7 px-2.5 py-0 text-xs" onClick={onOpenImageSearch} disabled={disabled || !canOpenImageSearch}>
+          이미지 찾기
         </Button>
         {QUICK_IMAGE_RESOLUTIONS.map((resolution) => (
           <Button

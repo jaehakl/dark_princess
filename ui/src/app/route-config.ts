@@ -7,6 +7,7 @@ import {
 } from 'react-router-dom';
 import type { RouteObject } from 'react-router-dom';
 import { AppLayout } from './layout';
+import { ImageManagerPage } from '../pages/image-manager/ImageManagerPage';
 import { LandingPage } from '../pages/landing/LandingPage';
 import { PlayPage } from '../pages/play/PlayPage';
 import { SceneWizardPage } from '../pages/scene_wizard/SceneWizardPage';
@@ -49,6 +50,14 @@ export const routeObjects: RouteObject[] = [
         handle: {
           breadcrumb: 'Scene Wizard',
           pageTitle: 'Scene Wizard',
+        },
+      },
+      {
+        path: 'image-manager',
+        element: createElement(ImageManagerPage),
+        handle: {
+          breadcrumb: 'Image 관리',
+          pageTitle: 'Image 관리',
         },
       },
       {

@@ -48,6 +48,7 @@ export type GenImageResponse = {
 
 export type GenerateSceneRequest = {
   scene_id?: number | null;
+  image_id?: number | null;
   parent_image_id?: number | null;
   script: string;
   status_change: Record<string, unknown>;
@@ -88,6 +89,9 @@ export type ImageRecord = {
   negative_prompt?: string | null;
   seed_image_id?: number | null;
   model_parameters?: Record<string, unknown> | null;
+  scene_count?: number | null;
+  family_root_image_id?: number | null;
+  family_image_count?: number | null;
 };
 
 export type NextSceneRequest = {

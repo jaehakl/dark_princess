@@ -5,8 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import Image, get_db
 from models import GetListRequestBase, GetListResponseBase, ImageBase, UpsertResponseBase
-from service.image import get_image_lineage_ids
-from utils.crud_helpers import CrudSpec, delete_items, get_list_response, upsert_items
+from service.image import get_image_lineage_ids, get_image_list_response
+from utils.crud_helpers import CrudSpec, delete_items, upsert_items
 from utils.router_helpers import field_ids, require_existing_ids
 
 router = APIRouter(prefix="/image", tags=["image"])
@@ -24,7 +24,7 @@ async def api_get_image_list(
     request: GetListRequestBase,
     db: AsyncSession = Depends(get_db),
 ):
-    return await get_list_response(db, request, IMAGE_CRUD_SPEC)
+    return await get_image_list_response(db, request)
 
 
 @router.post("/upsert", response_model=List[UpsertResponseBase])

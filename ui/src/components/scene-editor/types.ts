@@ -8,7 +8,7 @@ import type {
 export type PromptEditorColumnName = (typeof PROMPT_EDITOR_COLUMNS)[number]['key'];
 
 export type SaveMode =
-  | 'text'
+  | 'data'
   | 'image';
 
 export type StatusChangeKey = (typeof STATUS_CHANGE_FIELDS)[number]['key'];
