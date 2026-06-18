@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import json
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -50,9 +51,12 @@ def server():
         app.state.progress = 0
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-            await ensure_scene_control_image_columns(conn)
+            await ensure_scene_image_schema(conn)
             await ensure_scene_prompt_columns(conn)
             await migrate_upload_references_to_object_keys(conn)
+            await migrate_legacy_scene_images(conn)
+            await drop_legacy_scene_columns(conn)
+            await drop_scene_options_table(conn)
         print("service is started.")
 
     def shutdown():
@@ -61,12 +65,30 @@ def server():
     return app
 
 
-async def ensure_scene_control_image_columns(conn):
+async def ensure_scene_image_schema(conn):
+    await ensure_image_columns(conn)
     columns = (await conn.execute(text("PRAGMA table_info(scenes)"))).all()
     existing_column_names = {row[1] for row in columns}
-    for column_name in ("scribble_url", "pose_url"):
+    if "image_id" not in existing_column_names:
+        await conn.execute(text("ALTER TABLE scenes ADD COLUMN image_id INTEGER REFERENCES images(id)"))
+
+
+async def ensure_image_columns(conn):
+    columns = (await conn.execute(text("PRAGMA table_info(images)"))).all()
+    existing_column_names = {row[1] for row in columns}
+    column_specs = {
+        "image_object_key": "TEXT",
+        "scribble_object_key": "TEXT",
+        "pose_object_key": "TEXT",
+        "positive_prompt": "TEXT",
+        "positive_prompt_embedding": "JSON",
+        "negative_prompt": "TEXT",
+        "seed_image_id": "INTEGER REFERENCES images(id)",
+        "model_parameters": "JSON",
+    }
+    for column_name, column_type in column_specs.items():
         if column_name not in existing_column_names:
-            await conn.execute(text(f"ALTER TABLE scenes ADD COLUMN {column_name} TEXT"))
+            await conn.execute(text(f"ALTER TABLE images ADD COLUMN {column_name} {column_type}"))
 
 
 async def ensure_scene_prompt_columns(conn):
@@ -81,16 +103,6 @@ async def ensure_scene_prompt_columns(conn):
     ):
         if column_name not in existing_column_names:
             await conn.execute(text(f"ALTER TABLE scenes ADD COLUMN {column_name} TEXT"))
-            existing_column_names.add(column_name)
-
-    for column_name in (
-        "prompt_situation_embedding",
-        "prompt_hero_embedding",
-        "prompt_camera_embedding",
-        "prompt_detail_embedding",
-    ):
-        if column_name not in existing_column_names:
-            await conn.execute(text(f"ALTER TABLE scenes ADD COLUMN {column_name} JSON"))
             existing_column_names.add(column_name)
 
     await migrate_legacy_scene_prompt_columns(conn, existing_column_names)
@@ -141,6 +153,7 @@ def _is_blank(value):
 async def migrate_upload_references_to_object_keys(conn):
     upload_columns = {
         "scenes": ("image_url", "scribble_url", "pose_url"),
+        "images": ("image_object_key", "scribble_object_key", "pose_object_key"),
         "selection_models": ("file_url",),
     }
     for table_name, column_names in upload_columns.items():
@@ -166,3 +179,92 @@ async def migrate_upload_references_to_object_keys(conn):
                     text(f"UPDATE {table_name} SET {column_name} = :object_key WHERE id = :id"),
                     {"object_key": object_key, "id": row[0]},
                 )
+
+
+async def migrate_legacy_scene_images(conn):
+    columns = (await conn.execute(text("PRAGMA table_info(scenes)"))).all()
+    existing_column_names = {row[1] for row in columns}
+    if "image_id" not in existing_column_names:
+        return
+
+    legacy_columns = [column for column in ("image_url", "scribble_url", "pose_url") if column in existing_column_names]
+    if not legacy_columns:
+        return
+
+    select_parts = [
+        "id",
+        "image_id",
+        *(column if column in legacy_columns else f"NULL AS {column}" for column in ("image_url", "scribble_url", "pose_url")),
+    ]
+    where_parts = [f"{column} IS NOT NULL AND {column} != ''" for column in legacy_columns]
+    rows = (
+        await conn.execute(
+            text(
+                f"SELECT {', '.join(select_parts)} FROM scenes "
+                f"WHERE image_id IS NULL AND ({' OR '.join(where_parts)})"
+            )
+        )
+    ).all()
+
+    for row in rows:
+        row_data = row._mapping
+        image_key = object_key_from_public_url(row_data["image_url"])
+        scribble_key = object_key_from_public_url(row_data["scribble_url"])
+        pose_key = object_key_from_public_url(row_data["pose_url"])
+        if image_key is None and scribble_key is None and pose_key is None:
+            continue
+
+        result = await conn.execute(
+            text(
+                "INSERT INTO images "
+                "(image_object_key, scribble_object_key, pose_object_key, model_parameters) "
+                "VALUES (:image_object_key, :scribble_object_key, :pose_object_key, :model_parameters)"
+            ),
+            {
+                "image_object_key": image_key,
+                "scribble_object_key": scribble_key,
+                "pose_object_key": pose_key,
+                "model_parameters": json.dumps(
+                    {
+                        "source": "legacy_scene_upload_migration",
+                        "scene_id": row_data["id"],
+                    }
+                ),
+            },
+        )
+        image_id = result.lastrowid
+        await conn.execute(
+            text("UPDATE scenes SET image_id = :image_id WHERE id = :scene_id"),
+            {"image_id": image_id, "scene_id": row_data["id"]},
+        )
+
+
+async def drop_legacy_scene_columns(conn):
+    columns = (await conn.execute(text("PRAGMA table_info(scenes)"))).all()
+    existing_column_names = {row[1] for row in columns}
+    legacy_columns = (
+        "image_url",
+        "scribble_url",
+        "pose_url",
+        "prompt_situation_embedding",
+        "prompt_hero_embedding",
+        "prompt_camera_embedding",
+        "prompt_detail_embedding",
+        "background",
+        "subject",
+        "object",
+        "action",
+        "detail",
+        "background_embedding",
+        "subject_embedding",
+        "object_embedding",
+        "action_embedding",
+        "detail_embedding",
+    )
+    for column_name in legacy_columns:
+        if column_name in existing_column_names:
+            await conn.execute(text(f"ALTER TABLE scenes DROP COLUMN {column_name}"))
+
+
+async def drop_scene_options_table(conn):
+    await conn.execute(text("DROP TABLE IF EXISTS scene_options"))

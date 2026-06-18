@@ -71,6 +71,7 @@ class ImagePromptExtractionResponseBase(BaseModel):
 
 class GenerateSceneRequestBase(BaseModel):
     scene_id: Optional[int] = None
+    parent_image_id: Optional[int] = None
     script: str = ""
     status_change: Dict[str, Any] = Field(default_factory=dict)
     generate_image: bool = True
@@ -94,12 +95,6 @@ class GenerateScenePromptResponseBase(BaseModel):
     prompt: str
 
 
-class GenerateSceneOptionRequestBase(BaseModel):
-    option_id: Optional[int] = None
-    scene_id: int
-    option_text: str
-
-
 class GenerateSelectionModelRequestBase(BaseModel):
     model_id: Optional[int] = None
     name: str
@@ -118,6 +113,7 @@ class AdjustSelectionModelRequestBase(NextSceneRequestBase):
 
 class SceneBase(BaseModel):
     id: Optional[int] = None
+    image_id: Optional[int] = None
     image_url: Optional[str] = None
     scribble_url: Optional[str] = None
     pose_url: Optional[str] = None
@@ -128,12 +124,6 @@ class SceneBase(BaseModel):
     prompt_camera: Optional[str] = None
     prompt_detail: Optional[str] = None
     prompt_negative: Optional[str] = None
-
-
-class SceneOptionBase(BaseModel):
-    id: Optional[int] = None
-    scene_id: int
-    option_text: str
 
 
 class SelectionModelBase(BaseModel):

@@ -7,6 +7,7 @@ import { Button, Panel } from '../../components/ui';
 
 const EMPTY_INITIAL_SCENE: SceneRecord = {
   id: null,
+  image_id: null,
   image_url: null,
   scribble_url: null,
   pose_url: null,

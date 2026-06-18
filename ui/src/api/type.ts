@@ -48,6 +48,7 @@ export type GenImageResponse = {
 
 export type GenerateSceneRequest = {
   scene_id?: number | null;
+  parent_image_id?: number | null;
   script: string;
   status_change: Record<string, unknown>;
   generate_image?: boolean;
@@ -63,16 +64,9 @@ export type GenerateSceneRequest = {
 
 export type PromptColumnName = 'prompt_situation' | 'prompt_hero' | 'prompt_camera' | 'prompt_detail';
 
-export type RecommendPromptColumns = Record<PromptColumnName, string[]>;
-
-export type GenerateSceneOptionRequest = {
-  option_id?: number | null;
-  scene_id: number;
-  option_text: string;
-};
-
 export type SceneRecord = {
   id?: number | null;
+  image_id?: number | null;
   image_url?: string | null;
   scribble_url?: string | null;
   pose_url?: string | null;
@@ -83,12 +77,6 @@ export type SceneRecord = {
   prompt_camera?: string | null;
   prompt_detail?: string | null;
   prompt_negative?: string | null;
-};
-
-export type SceneOptionRecord = {
-  id?: number | null;
-  scene_id: number;
-  option_text: string;
 };
 
 export type NextSceneRequest = {
@@ -136,6 +124,5 @@ export type StatusRecord = {
 
 export type DbTableName =
   | 'Scene'
-  | 'SceneOption'
   | 'SelectionModel'
   | 'Status';

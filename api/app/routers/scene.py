@@ -15,6 +15,7 @@ from models import (
 from service.scene import (
     generate_scene_from_form,
     get_similar_scenes,
+    scene_image_load_option,
     update_scene_context,
     upsert_scenes,
 )
@@ -28,6 +29,7 @@ SCENE_CRUD_SPEC = CrudSpec(
     model=Scene,
     schema=SceneBase,
     public_url_fields=("image_url", "scribble_url", "pose_url"),
+    load_options=(scene_image_load_option(),),
 )
 
 
@@ -59,6 +61,7 @@ async def api_generate_scene(
 def scene_to_base(scene: Scene) -> SceneBase:
     return SceneBase(
         id=scene.id,
+        image_id=scene.image_id,
         image_url=public_file_url_from_reference(scene.image_url),
         scribble_url=public_file_url_from_reference(scene.scribble_url),
         pose_url=public_file_url_from_reference(scene.pose_url),
@@ -108,5 +111,5 @@ async def api_delete_scene_list(
     ids: List[int] = Body(...),
     db: AsyncSession = Depends(get_db),
 ):
-    await delete_items(db, SCENE_CRUD_SPEC, ids, cleanup_fields=("image_url", "scribble_url", "pose_url"))
+    await delete_items(db, SCENE_CRUD_SPEC, ids)
     return None

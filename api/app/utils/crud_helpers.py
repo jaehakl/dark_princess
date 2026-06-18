@@ -12,7 +12,7 @@ from sqlalchemy import Text, and_, cast, delete as sa_delete, func, inspect, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from db import Scene, SelectionModel
+from db import Image as StoredImage, SelectionModel
 from models import GetListResponseBase, UpsertResponseBase
 from utils.datetime_utils import db_datetime_to_utc, parse_api_datetime_to_utc
 from utils.local_storage import (
@@ -35,9 +35,15 @@ class CrudSpec(Generic[ModelT, SchemaT]):
     computed_fields: Mapping[str, tuple[tuple[str, ...], str]] = field(default_factory=dict)
     search_aliases: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     public_url_fields: tuple[str, ...] = field(default_factory=tuple)
+    load_options: tuple[Any, ...] = field(default_factory=tuple)
 
 
-FILE_REFERENCE_COLUMNS = (Scene.image_url, Scene.scribble_url, Scene.pose_url, SelectionModel.file_url)
+FILE_REFERENCE_COLUMNS = (
+    StoredImage.image_object_key,
+    StoredImage.scribble_object_key,
+    StoredImage.pose_object_key,
+    SelectionModel.file_url,
+)
 
 
 def computed(*path: str, attr: str = "id") -> tuple[tuple[str, ...], str]:
@@ -389,8 +395,8 @@ async def get_list_response(
             *(path for path, _ in spec.computed_fields.values()),
         ],
     )
-    if load_options:
-        stmt = stmt.options(*load_options)
+    if load_options or spec.load_options:
+        stmt = stmt.options(*spec.load_options, *load_options)
     if where_clause is not None:
         stmt = stmt.where(where_clause)
     stmt = stmt.order_by(*order_by_clauses)

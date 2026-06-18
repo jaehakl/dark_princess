@@ -3,14 +3,11 @@
 import { API_URL, request } from './http';
 import type {
   AdjustSelectionModelRequest,
-  GenerateSceneOptionRequest,
   GenerateSelectionModelRequest,
   GetListRequest,
   GetListResponse,
   ImageGenerationSettings,
   NextSceneRequest,
-  RecommendPromptColumns,
-  SceneOptionRecord,
   SceneRecord,
   SelectionModelRecord,
   StatusRecord,
@@ -25,6 +22,7 @@ export const dbTables = {
     label: '장면',
     columns: {
       id: { label: 'ID', type: 'id' },
+      image_id: { label: 'Image ID', type: 'int' },
       image_url: { label: '이미지 URL', type: 'text' },
       scribble_url: { label: 'Scribble URL', type: 'text' },
       pose_url: { label: 'Pose URL', type: 'text' },
@@ -46,21 +44,6 @@ export const dbTables = {
     updateContext: (item: UpdateSceneContextRequest) =>
       request<StatusRecord>('post', '/scene/update-context', item),
     deleteRows: (ids: number[]) => request<null>('delete', '/scene/', ids).then(() => undefined),
-  },
-
-  SceneOption: {
-    label: '장면 선택지',
-    columns: {
-      id: { label: 'ID', type: 'id' },
-      scene_id: { label: '장면', type: 'fk', targetTable: 'Scene', required: true },
-      option_text: { label: '선택지', type: 'text', required: true },
-    },
-    listRows: (listRequest: GetListRequest) =>
-      request<GetListResponse<SceneOptionRecord>>('post', '/scene_option/list', listRequest),
-    upsertRow: (items: unknown) => request<UpsertResponse[]>('post', '/scene_option/upsert', items),
-    generateOption: (item: GenerateSceneOptionRequest) =>
-      request<SceneOptionRecord>('post', '/scene_option/generate', item),
-    deleteRows: (ids: number[]) => request<null>('delete', '/scene_option/', ids).then(() => undefined),
   },
 
   SelectionModel: {
@@ -107,7 +90,5 @@ export const dbTables = {
       request<ImageGenerationSettings>('get', '/image-util/image-settings/defaults'),
     translateCommaTexts: (texts: string[]) =>
       request<string[]>('post', '/image-util/translate-comma-texts', texts),
-    recommendPromptColumns: (text: string) =>
-      request<RecommendPromptColumns>('post', '/image-util/recommend-prompt-columns', { text }),
   },
 };

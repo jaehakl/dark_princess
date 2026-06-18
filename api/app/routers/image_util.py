@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import List
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +19,6 @@ from service.image_util import (
     generate_prompt,
     get_default_image_generation_settings,
     recommend_prompt,
-    recommend_prompt_columns,
     translate_comma_texts,
 )
 from utils.local_storage import is_allowed_content_type
@@ -45,14 +44,6 @@ async def api_recommend_prompt(
     db: AsyncSession = Depends(get_db),
 ):
     return await recommend_prompt(db, text)
-
-
-@router.post("/recommend-prompt-columns", response_model=Dict[str, List[str]])
-async def api_recommend_prompt_columns(
-    text: str = Body(..., embed=True),
-    db: AsyncSession = Depends(get_db),
-):
-    return await recommend_prompt_columns(db, text)
 
 
 @router.post("/generate-prompt", response_model=GenerateScenePromptResponseBase)

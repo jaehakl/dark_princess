@@ -536,6 +536,7 @@ export function SceneEditComponent({
 
       const payload: GenerateSceneRequest = {
         scene_id: targetSceneId,
+        parent_image_id: isImageSave ? activeScene?.image_id ?? null : undefined,
         script,
         status_change: statusChange,
         generate_image: isImageSave,
@@ -632,6 +633,7 @@ export function SceneEditComponent({
 
     onDuplicate({
       id: null,
+      image_id: activeScene.image_id ?? null,
       image_url: activeScene.image_url ?? null,
       scribble_url: activeScene.scribble_url ?? null,
       pose_url: activeScene.pose_url ?? null,

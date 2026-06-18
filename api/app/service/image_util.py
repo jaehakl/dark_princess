@@ -39,7 +39,6 @@ from service.image_util_constants import (
 )
 from service.selection_model import cosine_distance
 from model_runtime import (
-    analyze_scene_components,
     encode_scene_text,
     extract_visual_keywords,
     predict_wd14_tags,
@@ -169,68 +168,6 @@ async def recommend_prompt(db: AsyncSession, text: str) -> list[RecommendPromptI
             key=lambda item: (-(score_sums[item] / frequencies[item]), item),
         )
     ]
-
-
-async def recommend_prompt_columns(db: AsyncSession, text: str) -> dict[str, list[str]]:
-    prompt_text = text.strip()
-    if not prompt_text:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text is required")
-
-    model_name = settings.SCENE_EMBEDDING_MODEL_NAME.strip()
-    if not model_name:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="scene embedding model name is required",
-        )
-
-    components = await analyze_scene_components(prompt_text, SCENE_PROMPT_FIELDS)
-    scenes = (await db.execute(select(Scene))).scalars().all()
-    recommendations: dict[str, list[str]] = {field: [] for field in SCENE_PROMPT_FIELDS}
-
-    for field in SCENE_PROMPT_FIELDS:
-        component_text = components[field].strip()
-        if not component_text:
-            continue
-
-        component_embedding = await encode_scene_text(model_name, f"query: {component_text}")
-        if len(component_embedding) != VECTOR_DIMENSION:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"scene embedding model must return {VECTOR_DIMENSION} dimensions",
-            )
-
-        scene_distances = []
-        for scene in scenes:
-            try:
-                scene_embedding = validate_embedding(
-                    getattr(scene, f"{field}_embedding"),
-                    f"scene.{field}_embedding",
-                )
-            except HTTPException:
-                continue
-
-            distance = cosine_distance(component_embedding, scene_embedding)
-            if distance is None:
-                continue
-            scene_distances.append((scene, distance))
-
-        seen_tags: set[str] = set()
-        for scene, _distance in sorted(
-            scene_distances,
-            key=lambda item: (item[1], item[0].id or 0),
-        ):
-            column_text = getattr(scene, field)
-            if not isinstance(column_text, str):
-                continue
-
-            for raw_tag in column_text.split(","):
-                tag = raw_tag.strip()
-                if not tag or tag in seen_tags:
-                    continue
-                seen_tags.add(tag)
-                recommendations[field].append(tag)
-
-    return recommendations
 
 
 async def generate_prompt(

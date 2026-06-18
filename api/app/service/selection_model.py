@@ -9,11 +9,13 @@ from typing import Any, Iterable
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from db import Scene, SelectionModel, Status
+from db import Image as StoredImage, Scene, SelectionModel, Status
 from models import AdjustSelectionModelRequestBase, GenerateSelectionModelRequestBase
-from service.scene_option import make_scene_option_embedding
+from settings import settings
 from utils.local_storage import build_object_key, delete_object, get_object_path, object_key_from_public_url, upload_fileobj
+from model_runtime import encode_scene_text
 from model_runtime import predict_target_scene_embedding as predict_target_scene_embedding_cached
 from model_runtime import update_selection_model
 from utils.vector import VECTOR_DIMENSION, validate_embedding
@@ -197,7 +199,18 @@ async def get_next_scene(
         selection_model.file_url,
     )
 
-    candidate_stmt = select(Scene)
+    candidate_stmt = select(Scene).options(
+        selectinload(Scene.image).load_only(
+            StoredImage.id,
+            StoredImage.image_object_key,
+            StoredImage.scribble_object_key,
+            StoredImage.pose_object_key,
+            StoredImage.positive_prompt,
+            StoredImage.negative_prompt,
+            StoredImage.seed_image_id,
+            StoredImage.model_parameters,
+        )
+    )
     if scene_id is not None:
         candidate_stmt = candidate_stmt.where(Scene.id != scene_id)
     candidates = (await db.execute(candidate_stmt)).scalars().all()
@@ -238,7 +251,24 @@ async def make_optional_option_text_embedding(option_text: str) -> list[float]:
     normalized_option_text = option_text.strip()
     if not normalized_option_text:
         return zero_embedding()
-    return await make_scene_option_embedding(normalized_option_text)
+    return await make_option_text_embedding(normalized_option_text)
+
+
+async def make_option_text_embedding(option_text: str) -> list[float]:
+    model_name = settings.SCENE_EMBEDDING_MODEL_NAME.strip()
+    if not model_name:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="scene embedding model name is required",
+        )
+
+    embedding = await encode_scene_text(model_name, f"passage: {option_text}")
+    if len(embedding) != VECTOR_DIMENSION:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"option text embedding model must return {VECTOR_DIMENSION} dimensions",
+        )
+    return embedding
 
 
 async def make_target_scene_embedding(

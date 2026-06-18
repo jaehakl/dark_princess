@@ -60,13 +60,35 @@ class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=naming_convention)
 
 
+class Image(Base):
+    __tablename__ = "images"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    image_object_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    scribble_object_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    pose_object_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    positive_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    positive_prompt_embedding: Mapped[Optional[List[float]]] = mapped_column(JSON, nullable=True, deferred=True)
+    negative_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    seed_image_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("images.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    model_parameters: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+    scenes: Mapped[List["Scene"]] = relationship("Scene", back_populates="image")
+
+
 class Scene(Base):
     __tablename__ = "scenes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    image_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    scribble_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    pose_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    image_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("images.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     embedding: Mapped[Optional[List[float]]] = mapped_column(JSON, nullable=True)
     script: Mapped[str] = mapped_column(Text, nullable=False, default="")
     status_change: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
@@ -75,27 +97,24 @@ class Scene(Base):
     prompt_camera: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     prompt_detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     prompt_negative: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    prompt_situation_embedding: Mapped[Optional[List[float]]] = mapped_column(JSON, nullable=True)
-    prompt_hero_embedding: Mapped[Optional[List[float]]] = mapped_column(JSON, nullable=True)
-    prompt_camera_embedding: Mapped[Optional[List[float]]] = mapped_column(JSON, nullable=True)
-    prompt_detail_embedding: Mapped[Optional[List[float]]] = mapped_column(JSON, nullable=True)
 
-    scene_options: Mapped[List["SceneOption"]] = relationship(
-        "SceneOption",
-        back_populates="scene",
-        cascade="all, delete-orphan",
+    image: Mapped[Optional["Image"]] = relationship(
+        "Image",
+        back_populates="scenes",
+        lazy="selectin",
     )
 
+    @property
+    def image_url(self) -> Optional[str]:
+        return self.image.image_object_key if self.image is not None else None
 
-class SceneOption(Base):
-    __tablename__ = "scene_options"
+    @property
+    def scribble_url(self) -> Optional[str]:
+        return self.image.scribble_object_key if self.image is not None else None
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    scene_id: Mapped[int] = mapped_column(Integer, ForeignKey("scenes.id", ondelete="CASCADE"), nullable=False)
-    option_text: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[Optional[List[float]]] = mapped_column(JSON, nullable=True)
-
-    scene: Mapped["Scene"] = relationship("Scene", back_populates="scene_options")
+    @property
+    def pose_url(self) -> Optional[str]:
+        return self.image.pose_object_key if self.image is not None else None
 
 
 class SelectionModel(Base):

@@ -88,6 +88,7 @@ def selection_model_to_base(selection_model: SelectionModel) -> SelectionModelBa
 def scene_to_base(scene) -> SceneBase:
     return SceneBase(
         id=scene.id,
+        image_id=scene.image_id,
         image_url=public_file_url_from_reference(scene.image_url),
         scribble_url=public_file_url_from_reference(scene.scribble_url),
         pose_url=public_file_url_from_reference(scene.pose_url),
