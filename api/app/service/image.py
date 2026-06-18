@@ -93,7 +93,7 @@ async def generate_images(db: AsyncSession, requests: list[GenerateImageRequestB
         *(generate_image_only_output(prepared_request) for prepared_request in prepared_requests)
     )
     prompt_embeddings = [
-        await make_positive_prompt_embedding(prepared_request["positive_prompt"])
+        await make_optional_positive_prompt_embedding(prepared_request["positive_prompt"])
         for prepared_request in prepared_requests
     ]
 
@@ -214,6 +214,14 @@ async def make_positive_prompt_embedding(positive_prompt: str) -> list[float] | 
             detail=f"scene embedding model must return {VECTOR_DIMENSION} dimensions",
         )
     return embedding
+
+
+async def make_optional_positive_prompt_embedding(positive_prompt: str) -> list[float] | None:
+    try:
+        return await make_positive_prompt_embedding(positive_prompt)
+    except Exception as exc:
+        print(f"Skipping image positive_prompt_embedding: {exc}", flush=True)
+        return None
 
 
 async def upload_generated_image(image: Any, filename_prefix: str) -> str:

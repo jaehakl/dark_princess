@@ -35,8 +35,17 @@ def _get_embedding_model_locked(model_name: str) -> Any:
     if _embedding_model is None or _embedding_model_name != model_name:
         from sentence_transformers import SentenceTransformer
 
-        _embedding_model = SentenceTransformer(model_name, device="cpu")
-        if hasattr(_embedding_model, "to"):
-            _embedding_model = _embedding_model.to("cpu")
+        _embedding_model = _load_sentence_transformer(SentenceTransformer, model_name)
         _embedding_model_name = model_name
     return _embedding_model
+
+
+def _load_sentence_transformer(sentence_transformer_cls: Any, model_name: str) -> Any:
+    try:
+        return sentence_transformer_cls(
+            model_name,
+            device="cpu",
+            model_kwargs={"low_cpu_mem_usage": False},
+        )
+    except TypeError:
+        return sentence_transformer_cls(model_name, device="cpu")
