@@ -18,11 +18,13 @@ export type UpsertResponse = {
   fk_not_found?: Record<string, number[]> | null;
 };
 
+export type CameraSamples = Record<string, Record<string, string>>;
+
 export type ImageGenerationSettings = {
   model_filename: string;
   model_filenames: string[];
   available_gpu_ids: number[];
-  camera_samples: Record<string, string[]>;
+  camera_samples: CameraSamples;
   prompt_default_positive: string;
   prompt_default_negative: string;
   steps: number;

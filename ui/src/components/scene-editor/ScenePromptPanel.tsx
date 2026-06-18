@@ -7,7 +7,7 @@ import type {
   KeyboardEvent as ReactKeyboardEvent,
   SetStateAction,
 } from 'react';
-import type { PromptColumnName } from '../../api/type';
+import type { CameraSamples, PromptColumnName } from '../../api/type';
 import { Button, FieldLabel, FormControl, Spinner } from '../ui';
 import { PROMPT_EDITOR_COLUMNS } from './constants';
 import type {
@@ -70,7 +70,7 @@ type ScenePromptPanelProps = {
   instantPromptDraft: Record<InstantPromptName, string>;
   promptNegativeDraft: string;
   translationDraft: Record<PromptEditorColumnName, string>;
-  cameraSamples: Record<string, string[]>;
+  cameraSamples: CameraSamples;
   isLoadingScene: boolean;
   savingMode: SaveMode | null;
   isTranslatingPromptColumns: boolean;
@@ -205,9 +205,14 @@ export function ScenePromptPanel({
                 : instantPromptDraft[column.key];
             const isCameraColumn = column.key === 'prompt_camera';
             const cameraSampleGroups = Object.entries(cameraSamples)
-              .map(([groupName, samples]) => ({
+              .map(([groupName, samplesByTag]) => ({
                 groupName,
-                samples: samples.filter((sample) => sample.trim().length > 0),
+                samples: Object.entries(samplesByTag)
+                  .map(([tag, description]) => ({
+                    tag: tag.trim(),
+                    description: description.trim(),
+                  }))
+                  .filter((sample) => sample.tag.length > 0),
               }))
               .filter((group) => group.samples.length > 0);
 
@@ -252,8 +257,12 @@ export function ScenePromptPanel({
                         {cameraSampleGroups.map((group) => (
                           <optgroup key={group.groupName} label={group.groupName}>
                             {group.samples.map((sample) => (
-                              <option key={`${group.groupName}:${sample}`} value={sample}>
-                                {sample}
+                              <option
+                                key={`${group.groupName}:${sample.tag}`}
+                                value={sample.tag}
+                                title={sample.description || sample.tag}
+                              >
+                                {sample.tag}
                               </option>
                             ))}
                           </optgroup>

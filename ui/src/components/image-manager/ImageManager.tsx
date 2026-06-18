@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { dbTables } from '../../api/api';
-import type { GenerateImageRequest, GetListRequest, ImageGenerationSettings, ImageRecord, SceneRecord } from '../../api/type';
+import type {
+  CameraSamples,
+  GenerateImageRequest,
+  GetListRequest,
+  ImageGenerationSettings,
+  ImageRecord,
+  SceneRecord,
+} from '../../api/type';
 import { readSessionImageSettings } from '../../lib/scene-image';
 import {
   Button,
@@ -93,9 +100,9 @@ function getRandomItem<T>(items: T[]) {
   return items[Math.floor(Math.random() * items.length)] ?? null;
 }
 
-function getCameraSamplePool(cameraSamples: Record<string, string[]>) {
+function getCameraSamplePool(cameraSamples: CameraSamples) {
   return Object.values(cameraSamples)
-    .flat()
+    .flatMap((samplesByTag) => Object.keys(samplesByTag))
     .map((sample) => sample.trim())
     .filter((sample) => sample.length > 0);
 }
@@ -133,7 +140,7 @@ function buildAutoGeneratePrompt(settings: ImageGenerationSettings, scenes: Scen
 
 export function ImageManager() {
   const [images, setImages] = useState<ImageRecord[]>([]);
-  const [cameraSamples, setCameraSamples] = useState<Record<string, string[]>>({});
+  const [cameraSamples, setCameraSamples] = useState<CameraSamples>({});
   const [searchText, setSearchText] = useState('');
   const [searchTerms, setSearchTerms] = useState<string[]>([]);
   const [sortValue, setSortValue] = useState<ImageSortValue>(DEFAULT_IMAGE_SORT_VALUE);

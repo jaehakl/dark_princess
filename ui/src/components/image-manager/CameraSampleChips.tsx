@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
+import type { CameraSamples } from '../../api/type';
 import { cx } from '../ui';
 
 type CameraSampleChipsProps = {
-  cameraSamples: Record<string, string[]>;
+  cameraSamples: CameraSamples;
   onSelectSample: (sample: string) => void;
 };
 
@@ -13,9 +14,14 @@ export function CameraSampleChips({
   const groups = useMemo(
     () =>
       Object.entries(cameraSamples)
-        .map(([key, samples]) => ({
+        .map(([key, samplesByTag]) => ({
           key,
-          samples: samples.filter((sample) => sample.trim().length > 0),
+          samples: Object.entries(samplesByTag)
+            .map(([tag, description]) => ({
+              tag: tag.trim(),
+              description: description.trim(),
+            }))
+            .filter((sample) => sample.tag.length > 0),
         }))
         .filter((group) => group.samples.length > 0),
     [cameraSamples],
@@ -63,7 +69,7 @@ export function CameraSampleChips({
       <div className="flex flex-wrap gap-1.5">
         {activeGroup.samples.map((sample) => (
           <button
-            key={`${activeGroup.key}:${sample}`}
+            key={`${activeGroup.key}:${sample.tag}`}
             type="button"
             className="border font-semibold transition-[border-color,filter] hover:brightness-105"
             style={{
@@ -75,9 +81,11 @@ export function CameraSampleChips({
               lineHeight: '16px',
               padding: '2px 10px',
             }}
-            onClick={() => onSelectSample(sample)}
+            title={sample.description || sample.tag}
+            aria-label={`${sample.tag}: ${sample.description || sample.tag}`}
+            onClick={() => onSelectSample(sample.tag)}
           >
-            {sample}
+            {sample.tag}
           </button>
         ))}
       </div>
