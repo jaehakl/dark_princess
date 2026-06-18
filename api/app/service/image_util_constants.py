@@ -368,26 +368,6 @@ GEN_IMAGE_CAMERA_SAMPLES ={
     "pixel art": "픽셀 단위로 구성된 레트로 게임풍",
   },
 
-  "재질과_표면": {
-    "realistic skin texture": "피부의 모공, 결, 자연스러운 표면감",
-    "rough stone": "거친 돌 질감",
-    "weathered wood": "낡고 풍화된 나무 질감",
-    "brushed metal": "결이 있는 금속 표면",
-    "polished metal": "매끈하고 반짝이는 금속",
-    "translucent glass": "반투명 유리",
-    "reflective surfaces": "반사가 강한 표면",
-    "matte surfaces": "빛 반사가 적은 무광 표면",
-    "glossy surfaces": "광택이 있는 표면",
-    "wet surfaces": "젖어서 반짝이는 표면",
-    "dusty surfaces": "먼지가 쌓인 표면",
-    "worn fabric": "낡고 해진 천 질감",
-    "intricate fabric texture": "복잡하고 섬세한 직물 질감",
-    "tactile textures": "손으로 만질 수 있을 듯한 촉각적 질감",
-    "organic textures": "나무, 피부, 식물처럼 자연적인 질감",
-    "layered textures": "여러 질감이 겹쳐 있는 표면",
-    "fine surface detail": "표면의 작은 디테일까지 강조"
-  },
-
   "광학효과와_후처리": {
     "fine film grain": "필름 사진의 미세한 입자감",
     "halation": "밝은 부분 주변이 부드럽게 번지는 필름 효과",
