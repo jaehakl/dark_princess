@@ -159,12 +159,10 @@ GEN_IMAGE_CAMERA_SAMPLES ={
     "three-point perspective": "높이감이나 극적인 건축물을 표현하는 세 소실점 원근",
     "linear perspective": "선들이 소실점으로 모이는 전통적 원근법",
     "atmospheric perspective": "먼 곳이 흐리고 옅어지는 대기 원근",
-    "forced perspective": "크기와 거리 착시를 이용한 과장된 원근",
     "exaggerated perspective": "공간감과 깊이를 일부러 크게 과장",
     "compressed perspective": "망원렌즈처럼 앞뒤 거리가 납작하게 압축된 느낌",
     "deep perspective": "화면 깊숙이 들어가는 강한 거리감",
     "isometric view": "게임 맵이나 설계도처럼 축이 일정한 등각 시점",
-    "orthographic view": "원근 왜곡이 거의 없는 평면적 투영",
     "foreshortening": "몸이나 사물이 카메라를 향해 짧게 압축되어 보이는 효과"
   },
 
