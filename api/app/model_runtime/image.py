@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import gc
 import random
+import threading
 from typing import Any
 
 
@@ -11,6 +12,7 @@ _image_ckpt_paths: dict[int, str] = {}
 _image_pipe_modes: dict[int, str] = {}
 _image_controlnet_model_ids_by_device: dict[int, tuple[str, ...] | None] = {}
 _image_pipes: dict[int, Any] = {}
+_diffusers_import_lock = threading.Lock()
 
 
 async def generate_images_batch(
@@ -123,18 +125,18 @@ def _generate_images_batch_locked(
     scheduler_key = scheduler.strip().lower()
     if sampler_key:
         if sampler_key == "euler":
-            from diffusers import EulerDiscreteScheduler
+            EulerDiscreteScheduler = _load_diffusers_attr("EulerDiscreteScheduler")
 
             pipe.scheduler = EulerDiscreteScheduler.from_config(
                 pipe.scheduler.config,
                 use_karras_sigmas=scheduler_key == "karras",
             )
         elif sampler_key == "euler_a":
-            from diffusers import EulerAncestralDiscreteScheduler
+            EulerAncestralDiscreteScheduler = _load_diffusers_attr("EulerAncestralDiscreteScheduler")
 
             pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
         elif sampler_key == "dpmpp_2m":
-            from diffusers import DPMSolverMultistepScheduler
+            DPMSolverMultistepScheduler = _load_diffusers_attr("DPMSolverMultistepScheduler")
 
             pipe.scheduler = DPMSolverMultistepScheduler.from_config(
                 pipe.scheduler.config,
@@ -143,7 +145,7 @@ def _generate_images_batch_locked(
                 use_karras_sigmas=scheduler_key == "karras",
             )
         elif sampler_key == "unipc":
-            from diffusers import UniPCMultistepScheduler
+            UniPCMultistepScheduler = _load_diffusers_attr("UniPCMultistepScheduler")
 
             pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
         else:
@@ -267,23 +269,22 @@ def _get_image_pipe_locked(
 
     if pipe is None:
         if image_mode == "t2i":
-            from diffusers import StableDiffusionXLPipeline
-
-            pipeline_cls = StableDiffusionXLPipeline
+            pipeline_cls = _load_diffusers_attr("StableDiffusionXLPipeline")
         elif image_mode == "i2i":
-            from diffusers import StableDiffusionXLImg2ImgPipeline
-
-            pipeline_cls = StableDiffusionXLImg2ImgPipeline
+            pipeline_cls = _load_diffusers_attr("StableDiffusionXLImg2ImgPipeline")
         elif image_mode == "inpaint":
-            from diffusers import StableDiffusionXLInpaintPipeline
-
-            pipeline_cls = StableDiffusionXLInpaintPipeline
+            pipeline_cls = _load_diffusers_attr("StableDiffusionXLInpaintPipeline")
         elif is_controlnet_mode:
-            from diffusers import (
+            (
                 ControlNetModel,
                 StableDiffusionXLControlNetImg2ImgPipeline,
                 StableDiffusionXLControlNetInpaintPipeline,
                 StableDiffusionXLControlNetPipeline,
+            ) = _load_diffusers_attrs(
+                "ControlNetModel",
+                "StableDiffusionXLControlNetImg2ImgPipeline",
+                "StableDiffusionXLControlNetInpaintPipeline",
+                "StableDiffusionXLControlNetPipeline",
             )
 
             if not controlnet_model_ids:
@@ -338,6 +339,17 @@ def _load_image_torch() -> Any:
     import torch
 
     return torch
+
+
+def _load_diffusers_attr(name: str) -> Any:
+    return _load_diffusers_attrs(name)[0]
+
+
+def _load_diffusers_attrs(*names: str) -> tuple[Any, ...]:
+    with _diffusers_import_lock:
+        import diffusers
+
+        return tuple(getattr(diffusers, name) for name in names)
 
 
 def _get_image_lock(device_id: int) -> asyncio.Lock:
