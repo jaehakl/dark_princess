@@ -10,6 +10,7 @@ from models import (
     SceneBase,
     StatusBase,
     UpdateSceneContextRequestBase,
+    UpdateSceneImageRequestBase,
     UpsertResponseBase,
 )
 from service.scene import (
@@ -17,6 +18,7 @@ from service.scene import (
     get_similar_scenes,
     scene_image_load_option,
     update_scene_context,
+    update_scene_image,
     upsert_scenes,
 )
 from utils.crud_helpers import CrudSpec, delete_items, get_list_response
@@ -55,6 +57,15 @@ async def api_generate_scene(
     db: AsyncSession = Depends(get_db),
 ):
     scene = await generate_scene_from_form(db, await request.form())
+    return scene_to_base(scene)
+
+
+@router.post("/update-image", response_model=SceneBase)
+async def api_update_scene_image(
+    request: UpdateSceneImageRequestBase,
+    db: AsyncSession = Depends(get_db),
+):
+    scene = await update_scene_image(db, request)
     return scene_to_base(scene)
 
 

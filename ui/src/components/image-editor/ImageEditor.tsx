@@ -134,6 +134,7 @@ export function ImageEditor({
   const [scribbleOpacity, setScribbleOpacity] = useState(DEFAULT_SCRIBBLE_OPACITY);
   const [featherBrushSize, setFeatherBrushSize] = useState(DEFAULT_FEATHER_BRUSH_SIZE);
   const [scribbleBrushSize, setScribbleBrushSize] = useState(DEFAULT_SCRIBBLE_BRUSH_SIZE);
+  const [scribbleMode, setScribbleMode] = useState<'draw' | 'erase'>('draw');
   const [scribbleModified, setScribbleModified] = useState(false);
   const [isLineageOpen, setIsLineageOpen] = useState(false);
   const [isImageSearchOpen, setIsImageSearchOpen] = useState(false);
@@ -416,8 +417,8 @@ export function ImageEditor({
     }
     if (hoverPoint && tab === 'scribble') {
       context.save();
-      context.strokeStyle = 'rgba(255,244,220,0.96)';
-      context.fillStyle = 'rgba(0,0,0,0.08)';
+      context.strokeStyle = scribbleMode === 'erase' ? 'rgba(255,255,255,0.98)' : 'rgba(255,244,220,0.96)';
+      context.fillStyle = scribbleMode === 'erase' ? 'rgba(255,255,255,0.34)' : 'rgba(0,0,0,0.08)';
       context.lineWidth = 2 * viewScale;
       context.beginPath();
       context.arc(hoverPoint.x, hoverPoint.y, scribbleBrushSize / 2, 0, Math.PI * 2);
@@ -447,6 +448,7 @@ export function ImageEditor({
     maskSelectionRect,
     renderVersion,
     scribbleBrushSize,
+    scribbleMode,
     scribbleOpacity,
     scribbleOverlap,
     selectionRect,
@@ -518,7 +520,13 @@ export function ImageEditor({
         return;
       }
       pushScribbleHistorySnapshot();
-      drawRoundStroke(scribbleCanvas, null, point, scribbleBrushSize, '#000000');
+      drawRoundStroke(
+        scribbleCanvas,
+        null,
+        point,
+        scribbleBrushSize,
+        scribbleMode === 'erase' ? '#ffffff' : '#000000',
+      );
       setScribbleModified(true);
       dragStateRef.current = { kind: 'scribble', lastPoint: point };
       requestRender();
@@ -614,7 +622,13 @@ export function ImageEditor({
       if (!scribbleCanvas) {
         return;
       }
-      drawRoundStroke(scribbleCanvas, dragState.lastPoint, point, scribbleBrushSize, '#000000');
+      drawRoundStroke(
+        scribbleCanvas,
+        dragState.lastPoint,
+        point,
+        scribbleBrushSize,
+        scribbleMode === 'erase' ? '#ffffff' : '#000000',
+      );
       dragStateRef.current = { ...dragState, lastPoint: point };
       requestRender();
       return;
@@ -999,6 +1013,7 @@ export function ImageEditor({
         scribbleOpacity={scribbleOpacity}
         featherBrushSize={featherBrushSize}
         scribbleBrushSize={scribbleBrushSize}
+        scribbleMode={scribbleMode}
         scribbleScale={parameters.scribble_scale}
         scribbleGuidanceStart={parameters.scribble_guidance_start}
         scribbleGuidanceEnd={parameters.scribble_guidance_end}
@@ -1029,6 +1044,7 @@ export function ImageEditor({
         onScribbleOpacityChange={setScribbleOpacity}
         onFeatherBrushSizeChange={setFeatherBrushSize}
         onScribbleBrushSizeChange={setScribbleBrushSize}
+        onScribbleModeChange={setScribbleMode}
         onScribbleScaleChange={(value) => updateParameters({ scribble_scale: value })}
         onScribbleGuidanceStartChange={(value) => updateParameters({
           scribble_guidance_start: value,

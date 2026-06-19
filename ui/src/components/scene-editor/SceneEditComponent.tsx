@@ -107,6 +107,7 @@ export function SceneEditComponent({
   const [imageHistory, setImageHistory] = useState({ ids: [] as number[], index: -1 });
   const [selectedImageOverride, setSelectedImageOverride] = useState<ImageRecord | null>(null);
   const [isLoadingHistoryImage, setIsLoadingHistoryImage] = useState(false);
+  const [isUpdatingSceneImage, setIsUpdatingSceneImage] = useState(false);
   const [isTranslatingPromptColumns, setIsTranslatingPromptColumns] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [savingMode, setSavingMode] = useState<SaveMode | null>(null);
@@ -121,7 +122,14 @@ export function SceneEditComponent({
         .join(', '),
     [promptDraft],
   );
-  const isBusy = isLoadingScene || isLoadingHistoryImage || isTranslatingPromptColumns || isDeleting || Boolean(savingMode);
+  const isBusy = (
+    isLoadingScene ||
+    isLoadingHistoryImage ||
+    isUpdatingSceneImage ||
+    isTranslatingPromptColumns ||
+    isDeleting ||
+    Boolean(savingMode)
+  );
   const canEdit = Boolean(activeScene);
   const canSaveData = canEdit && composedPrompt.length > 0 && !isBusy;
   const canDelete = sceneId !== null && !isBusy;
@@ -167,6 +175,7 @@ export function SceneEditComponent({
   useEffect(() => {
     if (sceneId === null) {
       setIsLoadingScene(false);
+      setIsUpdatingSceneImage(false);
       setIsDeleting(false);
       setSavingMode(null);
       preserveInstantPromptSceneIdRef.current = null;
@@ -179,6 +188,7 @@ export function SceneEditComponent({
 
     async function loadScene() {
       setIsLoadingScene(true);
+      setIsUpdatingSceneImage(false);
       setIsDeleting(false);
       setSavingMode(null);
       setActiveScene(null);
@@ -228,6 +238,7 @@ export function SceneEditComponent({
     setImageHistory({ ids: [], index: -1 });
     setSelectedImageOverride(null);
     setIsLoadingHistoryImage(false);
+    setIsUpdatingSceneImage(false);
   }, [sceneId]);
 
   useEffect(() => {
@@ -428,18 +439,7 @@ export function SceneEditComponent({
     void loadHistoryImage(imageHistory.index + 1);
   }
 
-  function selectLineageImage(image: ImageRecord) {
-    const imageId = image.id;
-    if (typeof imageId !== 'number') {
-      setError('Image ID를 확인할 수 없습니다.');
-      return;
-    }
-    if (!image.image_object_key) {
-      setError(`Image #${imageId}에 이미지 URL이 없습니다.`);
-      return;
-    }
-
-    setSelectedImageOverride(image);
+  function addImageToHistory(imageId: number) {
     setImageHistory((current) => {
       const existingIndex = current.ids.indexOf(imageId);
       if (existingIndex >= 0) {
@@ -450,7 +450,50 @@ export function SceneEditComponent({
         : current.ids;
       return { ids: [...baseIds, imageId], index: baseIds.length };
     });
+  }
+
+  async function selectLineageImage(image: ImageRecord) {
+    const imageId = image.id;
+    if (typeof imageId !== 'number') {
+      setError('Image ID를 확인할 수 없습니다.');
+      return;
+    }
+    if (!image.image_object_key) {
+      setError(`Image #${imageId}에 이미지 URL이 없습니다.`);
+      return;
+    }
+
+    if (sceneId === null) {
+      setSelectedImageOverride(image);
+      addImageToHistory(imageId);
+      setError(null);
+      return;
+    }
+
+    setIsUpdatingSceneImage(true);
     setError(null);
+    try {
+      const updatedScene = await dbTables.Scene.updateImage({
+        scene_id: sceneId,
+        image_id: imageId,
+      });
+      setActiveScene((current) => (
+        current
+          ? {
+              ...current,
+              image_id: updatedScene.image_id ?? null,
+              image_url: updatedScene.image_url ?? null,
+              scribble_url: updatedScene.scribble_url ?? null,
+              pose_url: updatedScene.pose_url ?? null,
+            }
+          : updatedScene
+      ));
+      setSelectedImageOverride(null);
+    } catch (selectError) {
+      setError(getErrorMessage(selectError));
+    } finally {
+      setIsUpdatingSceneImage(false);
+    }
   }
 
   async function submitSceneForm(formData: FormData) {

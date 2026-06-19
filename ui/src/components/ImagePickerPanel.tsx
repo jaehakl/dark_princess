@@ -16,6 +16,9 @@ export type ImagePickerItem = {
 type ImagePickerPanelProps = {
   items: ImagePickerItem[];
   currentImageId?: number | null;
+  isSelectionMode?: boolean;
+  selectedIds?: Set<number>;
+  isDeleting?: boolean;
   isLoading: boolean;
   error: string | null;
   emptyMessage: string;
@@ -24,6 +27,7 @@ type ImagePickerPanelProps = {
   totalRows: number;
   onPageChange: (page: number) => void;
   onSelectImage: (image: ImageRecord) => void;
+  onToggleSelection?: (imageId: number) => void;
 };
 
 function summarizeParameters(parameters: Record<string, unknown> | null | undefined) {
@@ -47,6 +51,9 @@ function imageMetaLines(image: ImageRecord) {
 export function ImagePickerPanel({
   items,
   currentImageId,
+  isSelectionMode = false,
+  selectedIds,
+  isDeleting = false,
   isLoading,
   error,
   emptyMessage,
@@ -55,6 +62,7 @@ export function ImagePickerPanel({
   totalRows,
   onPageChange,
   onSelectImage,
+  onToggleSelection,
 }: ImagePickerPanelProps) {
   const [selectionError, setSelectionError] = useState<string | null>(null);
   const visibleError = selectionError ?? error;
@@ -70,6 +78,21 @@ export function ImagePickerPanel({
     }
     setSelectionError(null);
     onSelectImage(image);
+  }
+
+  function handleImageClick(image: ImageRecord | null, isCurrent: boolean) {
+    if (!isSelectionMode) {
+      selectImage(image);
+      return;
+    }
+
+    const imageId = typeof image?.id === 'number' ? image.id : null;
+    if (imageId === null || !image?.image_object_key || isCurrent || !onToggleSelection) {
+      return;
+    }
+
+    setSelectionError(null);
+    onToggleSelection(imageId);
   }
 
   return (
@@ -96,19 +119,31 @@ export function ImagePickerPanel({
           {items.map(({ id, image }) => {
             const imageUrl = image?.image_object_key ?? null;
             const isCurrent = id === currentImageId;
+            const imageId = typeof image?.id === 'number' ? image.id : null;
+            const isSelected = imageId !== null && Boolean(selectedIds?.has(imageId));
+            const canSelectForDelete = (
+              imageId !== null &&
+              Boolean(imageUrl) &&
+              !isCurrent &&
+              (image?.scene_count ?? 0) === 0
+            );
+            const isDisabled = isSelectionMode ? !canSelectForDelete || isDeleting : !imageUrl;
             return (
               <button
                 key={id}
                 type="button"
                 className={cx(
                   'group relative min-w-0 rounded-[8px] border bg-[rgba(11,4,16,0.78)] p-1 text-left transition-[border-color,filter,transform]',
-                  imageUrl
+                  imageUrl && !isDeleting
                     ? 'border-[rgba(255,218,228,0.22)] hover:-translate-y-px hover:border-[rgba(255,226,186,0.84)] hover:brightness-[1.08]'
                     : 'cursor-not-allowed border-[rgba(188,144,158,0.22)] opacity-60',
+                  isSelectionMode && !canSelectForDelete && imageUrl && 'cursor-not-allowed opacity-70 hover:translate-y-0',
+                  isSelected && 'border-[rgba(255,226,186,0.95)] shadow-[0_0_22px_rgba(240,179,95,0.22)]',
                   isCurrent && 'border-[rgba(255,226,186,0.95)] shadow-[0_0_22px_rgba(240,179,95,0.14)]',
                 )}
-                onClick={() => selectImage(image)}
-                aria-disabled={!imageUrl}
+                onClick={() => handleImageClick(image, isCurrent)}
+                disabled={isDisabled}
+                aria-pressed={isSelectionMode ? isSelected : undefined}
               >
                 <ImageFrame className="rounded-[6px]">
                   {imageUrl ? (
@@ -132,6 +167,17 @@ export function ImagePickerPanel({
                   <span className="pointer-events-none absolute right-2 top-2 rounded-full bg-[rgba(244,191,103,0.92)] px-2 py-0.5 text-[0.65rem] font-extrabold text-[#25101e]">
                     현재
                   </span>
+                ) : null}
+                {isSelectionMode && canSelectForDelete ? (
+                  <span
+                    aria-hidden="true"
+                    className={cx(
+                      'pointer-events-none absolute right-2 top-2 grid h-5 w-5 place-items-center rounded-[6px] border bg-[rgba(8,2,13,0.82)] shadow-[0_8px_18px_rgba(0,0,0,0.34)] after:block after:h-2.5 after:w-2.5 after:rounded-[3px]',
+                      isSelected
+                        ? 'border-[rgba(255,226,186,0.95)] after:bg-[#fff5eb]'
+                        : 'border-[rgba(255,218,228,0.42)] after:bg-transparent',
+                    )}
+                  />
                 ) : null}
 
                 {image ? (
@@ -157,14 +203,14 @@ export function ImagePickerPanel({
           <Button
             className="px-4 py-2 text-xs"
             onClick={() => onPageChange(Math.max(1, page - 1))}
-            disabled={page <= 1 || isLoading}
+            disabled={page <= 1 || isLoading || isDeleting}
           >
             이전
           </Button>
           <Button
             className="px-4 py-2 text-xs"
             onClick={() => onPageChange(Math.min(totalPages, page + 1))}
-            disabled={page >= totalPages || isLoading}
+            disabled={page >= totalPages || isLoading || isDeleting}
           >
             다음
           </Button>

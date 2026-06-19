@@ -38,6 +38,11 @@ class UpdateSceneContextRequestBase(BaseModel):
     scene_id: int
 
 
+class UpdateSceneImageRequestBase(BaseModel):
+    scene_id: int
+    image_id: Optional[int] = None
+
+
 class ImageGenerationSettingsBase(BaseModel):
     model_filename: Optional[str] = None
     model_filenames: Optional[List[str]] = None

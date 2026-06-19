@@ -72,6 +72,11 @@ export type GenerateSceneRequest = {
   prompt_negative?: string | null;
 };
 
+export type UpdateSceneImageRequest = {
+  scene_id: number;
+  image_id: number | null;
+};
+
 export type PromptColumnName = 'prompt_situation' | 'prompt_hero' | 'prompt_camera' | 'prompt_detail';
 
 export type SceneRecord = {

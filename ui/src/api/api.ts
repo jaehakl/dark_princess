@@ -14,6 +14,7 @@ import type {
   SelectionModelRecord,
   StatusRecord,
   UpdateSceneContextRequest,
+  UpdateSceneImageRequest,
   UpsertResponse,
 } from './type';
 
@@ -45,6 +46,8 @@ export const dbTables = {
       request<SceneRecord[]>('post', '/scene/similar', { text }),
     updateContext: (item: UpdateSceneContextRequest) =>
       request<StatusRecord>('post', '/scene/update-context', item),
+    updateImage: (item: UpdateSceneImageRequest) =>
+      request<SceneRecord>('post', '/scene/update-image', item),
     deleteRows: (ids: number[]) => request<null>('delete', '/scene/', ids).then(() => undefined),
   },
 

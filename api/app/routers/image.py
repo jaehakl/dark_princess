@@ -11,7 +11,12 @@ from models import (
     ImageBase,
     UpsertResponseBase,
 )
-from service.image import generate_images, get_image_lineage_ids, get_image_list_response
+from service.image import (
+    forward_deleted_image_seed_links,
+    generate_images,
+    get_image_lineage_ids,
+    get_image_list_response,
+)
 from utils.crud_helpers import CrudSpec, delete_items, upsert_items
 from utils.router_helpers import field_ids, require_existing_ids
 
@@ -69,6 +74,7 @@ async def api_delete_image_list(
     ids: List[int] = Body(...),
     db: AsyncSession = Depends(get_db),
 ):
+    await forward_deleted_image_seed_links(db, ids)
     await delete_items(
         db,
         IMAGE_CRUD_SPEC,

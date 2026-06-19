@@ -31,6 +31,7 @@ type ImageEditorToolbarProps = {
   scribbleOpacity: number;
   featherBrushSize: number;
   scribbleBrushSize: number;
+  scribbleMode: 'draw' | 'erase';
   scribbleScale: number;
   scribbleGuidanceStart: number;
   scribbleGuidanceEnd: number;
@@ -61,6 +62,7 @@ type ImageEditorToolbarProps = {
   onScribbleOpacityChange: (value: number) => void;
   onFeatherBrushSizeChange: (value: number) => void;
   onScribbleBrushSizeChange: (value: number) => void;
+  onScribbleModeChange: (mode: 'draw' | 'erase') => void;
   onScribbleScaleChange: (value: number) => void;
   onScribbleGuidanceStartChange: (value: number) => void;
   onScribbleGuidanceEndChange: (value: number) => void;
@@ -140,6 +142,7 @@ export function ImageEditorToolbar({
   scribbleOpacity,
   featherBrushSize,
   scribbleBrushSize,
+  scribbleMode,
   scribbleScale,
   scribbleGuidanceStart,
   scribbleGuidanceEnd,
@@ -170,6 +173,7 @@ export function ImageEditorToolbar({
   onScribbleOpacityChange,
   onFeatherBrushSizeChange,
   onScribbleBrushSizeChange,
+  onScribbleModeChange,
   onScribbleScaleChange,
   onScribbleGuidanceStartChange,
   onScribbleGuidanceEndChange,
@@ -290,6 +294,8 @@ export function ImageEditorToolbar({
               <input type="range" min={2} max={120} step={1} value={scribbleBrushSize || DEFAULT_SCRIBBLE_BRUSH_SIZE} onChange={(event) => onScribbleBrushSizeChange(Number(event.target.value))} className="w-20 accent-[#ffe2ba]" disabled={disabled} />
               <span className="w-9 text-right">{scribbleBrushSize}px</span>
             </label>
+            <Button className={TOOL_BUTTON_CLASS} variant={scribbleMode === 'draw' ? 'primary' : 'default'} onClick={() => onScribbleModeChange('draw')} disabled={disabled} title="그리기">B</Button>
+            <Button className={TOOL_BUTTON_CLASS} variant={scribbleMode === 'erase' ? 'primary' : 'default'} onClick={() => onScribbleModeChange('erase')} disabled={disabled} title="지우개">E</Button>
             <span className="flex items-center gap-1 text-xs font-semibold text-[var(--app-muted)]">scale <ControlNumber value={scribbleScale} min={CONTROL_SCALE_MIN} max={CONTROL_SCALE_MAX} step={0.05} disabled={disabled} onChange={onScribbleScaleChange} /></span>
             <span className="flex items-center gap-1 text-xs font-semibold text-[var(--app-muted)]">start <ControlNumber value={scribbleGuidanceStart} min={CONTROL_GUIDANCE_MIN} max={CONTROL_GUIDANCE_MAX} step={0.05} disabled={disabled} onChange={onScribbleGuidanceStartChange} /></span>
             <span className="flex items-center gap-1 text-xs font-semibold text-[var(--app-muted)]">end <ControlNumber value={scribbleGuidanceEnd} min={CONTROL_GUIDANCE_MIN} max={CONTROL_GUIDANCE_MAX} step={0.05} disabled={disabled} onChange={onScribbleGuidanceEndChange} /></span>

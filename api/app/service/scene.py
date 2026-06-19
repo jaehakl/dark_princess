@@ -18,6 +18,7 @@ from models import (
     GenerateSceneRequestBase,
     ImageGenerationSettingsBase,
     UpdateSceneContextRequestBase,
+    UpdateSceneImageRequestBase,
     UpsertResponseBase,
     SceneBase,
 )
@@ -295,6 +296,38 @@ async def upsert_scenes(db: AsyncSession, items: list[SceneBase]) -> list[Upsert
         raise
 
     return [UpsertResponseBase(id=scene.id) for scene in pending_results]
+
+
+async def update_scene_image(db: AsyncSession, request: UpdateSceneImageRequestBase) -> Scene:
+    scene = (
+        await db.execute(
+            select(Scene)
+            .options(scene_image_load_option())
+            .where(Scene.id == request.scene_id)
+        )
+    ).scalar_one_or_none()
+    if scene is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="scene not found")
+
+    image_id = None
+    if request.image_id is not None:
+        image_id = await validate_image_id(db, request.image_id)
+
+    try:
+        scene.image_id = image_id
+        if image_id is None:
+            scene.image = None
+        await db.commit()
+        await db.refresh(scene)
+        if scene.image_id is not None:
+            await db.refresh(scene, attribute_names=["image"])
+        else:
+            scene.image = None
+    except Exception:
+        await db.rollback()
+        raise
+
+    return scene
 
 
 async def validate_image_id(db: AsyncSession, image_id: int) -> int:

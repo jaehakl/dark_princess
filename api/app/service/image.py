@@ -4,7 +4,7 @@ from io import BytesIO
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import Image, Scene
@@ -278,6 +278,38 @@ async def get_image_lineage_ids(db: AsyncSession, image_id: int) -> list[int]:
         frontier_ids = next_frontier_ids
 
     return sorted(lineage_ids)
+
+
+async def forward_deleted_image_seed_links(db: AsyncSession, ids: list[int]) -> None:
+    deleted_ids = normalize_int_ids(ids, sort=True)
+    if not deleted_ids:
+        return
+
+    rows = (
+        await db.execute(
+            select(Image.id, Image.seed_image_id).where(Image.id.in_(deleted_ids))
+        )
+    ).all()
+    parent_ids = {row.id: row.seed_image_id for row in rows}
+    if not parent_ids:
+        return
+
+    existing_deleted_ids = set(parent_ids)
+    for deleted_id in sorted(existing_deleted_ids):
+        forward_id = parent_ids[deleted_id]
+        visited_ids = {deleted_id}
+        while forward_id in existing_deleted_ids:
+            if forward_id in visited_ids:
+                forward_id = None
+                break
+            visited_ids.add(forward_id)
+            forward_id = parent_ids.get(forward_id)
+
+        await db.execute(
+            update(Image)
+            .where(Image.seed_image_id == deleted_id)
+            .values(seed_image_id=forward_id)
+        )
 
 
 async def get_image_list_response(
