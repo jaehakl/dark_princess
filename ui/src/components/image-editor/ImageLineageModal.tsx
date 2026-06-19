@@ -102,13 +102,6 @@ export function ImageLineageModal({
     [lineageItems, page],
   );
 
-  useEffect(() => {
-    if (page <= totalPages) {
-      return;
-    }
-    setPage(totalPages);
-  }, [page, totalPages]);
-
   const selectedImages = useMemo(
     () => lineageItems
       .map((item) => item.image)

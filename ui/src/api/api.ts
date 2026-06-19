@@ -21,6 +21,18 @@ import type {
 
 export { API_URL };
 
+async function readResponseError(response: Response, fallbackMessage: string) {
+  try {
+    const body = await response.json();
+    if (typeof body?.detail === 'string' && body.detail) {
+      return body.detail;
+    }
+  } catch {
+    // Use fallback below when the server does not return JSON.
+  }
+  return fallbackMessage;
+}
+
 export const dbTables = {
   Scene: {
     label: '장면',
@@ -117,5 +129,24 @@ export const dbTables = {
       request<ImageGenerationSettings>('get', '/image-util/image-settings/defaults'),
     translateCommaTexts: (texts: string[]) =>
       request<string[]>('post', '/image-util/translate-comma-texts', texts),
+    postprocessImage: async (
+      image: Blob,
+      operation: string,
+      parameters: Record<string, unknown> = {},
+    ) => {
+      const formData = new FormData();
+      formData.append('image', image, 'image.png');
+      formData.append('operation', operation);
+      formData.append('parameters', JSON.stringify(parameters));
+
+      const response = await fetch(`${API_URL}/image-util/postprocess`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!response.ok) {
+        throw new Error(await readResponseError(response, '이미지 후처리에 실패했습니다.'));
+      }
+      return await response.blob();
+    },
   },
 };

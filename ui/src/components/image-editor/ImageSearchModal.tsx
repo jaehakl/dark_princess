@@ -63,6 +63,11 @@ export function ImageSearchModal({
           offset: (page - 1) * PAGE_SIZE,
         });
         if (!isCancelled) {
+          const nextTotalPages = Math.max(1, Math.ceil(response.total / PAGE_SIZE));
+          if (page > nextTotalPages) {
+            setPage(nextTotalPages);
+            return;
+          }
           setItems(response.items.map((image, index) => ({ id: image.id ?? -(index + 1), image })));
           setTotalRows(response.total);
         }
@@ -86,13 +91,6 @@ export function ImageSearchModal({
   }, [page, reloadKey]);
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(totalRows / PAGE_SIZE)), [totalRows]);
-
-  useEffect(() => {
-    if (page <= totalPages) {
-      return;
-    }
-    setPage(totalPages);
-  }, [page, totalPages]);
 
   const selectedImages = useMemo(
     () => items

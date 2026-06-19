@@ -23,6 +23,7 @@ type ImageEditorToolbarProps = {
   canGoNextImage: boolean;
   canOpenLineage: boolean;
   canOpenImageSearch: boolean;
+  canOpenPostprocess: boolean;
   hasActiveObject: boolean;
   hasBaseImage: boolean;
   hasScribble: boolean;
@@ -51,6 +52,7 @@ type ImageEditorToolbarProps = {
   onNextImage: () => void;
   onOpenLineage: () => void;
   onOpenImageSearch: () => void;
+  onOpenPostprocess: () => void;
   onFlip: () => void;
   onClearImage: () => void;
   onToggleMaskOverlap: () => void;
@@ -134,6 +136,7 @@ export function ImageEditorToolbar({
   canGoNextImage,
   canOpenLineage,
   canOpenImageSearch,
+  canOpenPostprocess,
   hasActiveObject,
   hasBaseImage,
   hasScribble,
@@ -162,6 +165,7 @@ export function ImageEditorToolbar({
   onNextImage,
   onOpenLineage,
   onOpenImageSearch,
+  onOpenPostprocess,
   onFlip,
   onClearImage,
   onToggleMaskOverlap,
@@ -240,6 +244,7 @@ export function ImageEditorToolbar({
             <Button className={TOOL_BUTTON_CLASS} variant={tool === 'select' ? 'primary' : 'default'} onClick={() => onToolChange('select')} disabled={disabled} title="사각형 select">▭</Button>
             <Button className={TOOL_BUTTON_CLASS} variant={tool === 'object' ? 'primary' : 'default'} onClick={() => onToolChange('object')} disabled={disabled} title="object 선택">✋</Button>
             <Button className={TOOL_BUTTON_CLASS} variant={tool === 'feather' ? 'primary' : 'default'} onClick={() => onToolChange('feather')} disabled={disabled} title="Feather 브러시">F</Button>
+            <Button className={TOOL_BUTTON_CLASS} onClick={onOpenPostprocess} disabled={disabled || !canOpenPostprocess} title="이미지 후처리">FX</Button>
             <Button className={TOOL_BUTTON_CLASS} onClick={onUndo} disabled={disabled || !canUndo} title="undo">↩</Button>
             <Button className={TOOL_BUTTON_CLASS} onClick={onRedo} disabled={disabled || !canRedo} title="redo">↪</Button>
             <Button className={TOOL_BUTTON_CLASS} variant={maskOverlap ? 'primary' : 'default'} onClick={onToggleMaskOverlap} disabled={disabled} title="mask overlap">M</Button>

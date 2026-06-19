@@ -32,6 +32,7 @@ import {
 import { createHistory, pushHistory, redoHistory, undoHistory } from './history';
 import { ImageEditorStage } from './ImageEditorStage';
 import { ImageLineageModal } from './ImageLineageModal';
+import { ImagePostprocessModal } from './ImagePostprocessModal';
 import { ImageSearchModal } from './ImageSearchModal';
 import { ImageEditorToolbar } from './ImageEditorToolbar';
 import {
@@ -138,6 +139,7 @@ export function ImageEditor({
   const [scribbleModified, setScribbleModified] = useState(false);
   const [isLineageOpen, setIsLineageOpen] = useState(false);
   const [isImageSearchOpen, setIsImageSearchOpen] = useState(false);
+  const [postprocessSourceBlob, setPostprocessSourceBlob] = useState<Blob | null>(null);
   const [isLoadingSource, setIsLoadingSource] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -469,6 +471,24 @@ export function ImageEditor({
     setTab('image');
     setTool('object');
     setSelectionRect(null);
+  }
+
+  async function openPostprocessModal() {
+    if (isDisabled || !hasImage) {
+      return;
+    }
+    setError(null);
+    try {
+      const imageCanvas = renderImageLayer(width, height, baseImageRef.current, objectsRef.current);
+      setPostprocessSourceBlob(await canvasToPngBlob(imageCanvas));
+    } catch (postprocessError) {
+      setError(getErrorMessage(postprocessError));
+    }
+  }
+
+  async function confirmPostprocess(blob: Blob) {
+    await addImageObject(blob);
+    setPostprocessSourceBlob(null);
   }
 
   async function replacePoseFromBlob(blob: Blob) {
@@ -1005,6 +1025,7 @@ export function ImageEditor({
         canGoNextImage={canGoNextImage}
         canOpenLineage={Boolean(imageId && onSelectLineageImage)}
         canOpenImageSearch={Boolean(onSelectLineageImage)}
+        canOpenPostprocess={hasImage}
         hasActiveObject={Boolean(activeObject)}
         hasBaseImage={hasImage}
         hasScribble={hasScribble}
@@ -1033,6 +1054,7 @@ export function ImageEditor({
         onNextImage={() => onNextImage?.()}
         onOpenLineage={() => setIsLineageOpen(true)}
         onOpenImageSearch={() => setIsImageSearchOpen(true)}
+        onOpenPostprocess={() => void openPostprocessModal()}
         onFlip={flipActiveObject}
         onClearImage={clearImage}
         onToggleMaskOverlap={() => setMaskOverlap((current) => !current)}
@@ -1114,6 +1136,14 @@ export function ImageEditor({
           currentImageId={imageId}
           onClose={() => setIsImageSearchOpen(false)}
           onSelectImage={onSelectLineageImage}
+        />
+      ) : null}
+
+      {postprocessSourceBlob ? (
+        <ImagePostprocessModal
+          sourceBlob={postprocessSourceBlob}
+          onClose={() => setPostprocessSourceBlob(null)}
+          onConfirm={confirmPostprocess}
         />
       ) : null}
     </div>
