@@ -29,10 +29,17 @@ type RgbColor = {
 };
 
 type ImageObjectGenerateModalProps = {
+  mode: 'generate' | 'edit';
   parameters: ImageGenerationSettings;
+  sourceCanvas?: HTMLCanvasElement | null;
   initialRect: Rect | null;
   onClose: () => void;
-  onConfirm: (blob: Blob, placementRect: Rect | null) => Promise<void> | void;
+  onConfirm: (
+    blob: Blob,
+    placementRect: Rect | null,
+    cropRect: Rect | null,
+    sourceSize: { width: number; height: number },
+  ) => Promise<void> | void;
 };
 
 const DEFAULT_POSITIVE_PROMPT = 'no background, single shot, full shot, centered';
@@ -105,21 +112,29 @@ function isValidCropRect(rect: Rect | null): rect is Rect {
 }
 
 export function ImageObjectGenerateModal({
+  mode,
   parameters,
+  sourceCanvas,
   initialRect,
   onClose,
   onConfirm,
 }: ImageObjectGenerateModalProps) {
-  const sourceCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [initialEditSourceCanvas] = useState(() => (
+    mode === 'edit' && sourceCanvas ? cloneCanvas(sourceCanvas) : null
+  ));
+  const sourceCanvasRef = useRef<HTMLCanvasElement | null>(initialEditSourceCanvas);
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const cropDragStartRef = useRef<Point | null>(null);
   const eraseDragStartRef = useRef<Point | null>(null);
   const [positivePrompt, setPositivePrompt] = useState(DEFAULT_POSITIVE_PROMPT);
   const [negativePrompt, setNegativePrompt] = useState(parameters.prompt_default_negative);
-  const [imageWidth, setImageWidth] = useState(DEFAULT_IMAGE_WIDTH);
-  const [imageHeight, setImageHeight] = useState(DEFAULT_IMAGE_HEIGHT);
-  const [hasGeneratedImage, setHasGeneratedImage] = useState(false);
-  const [previewSize, setPreviewSize] = useState({ width: 1, height: 1 });
+  const [imageWidth, setImageWidth] = useState(initialEditSourceCanvas?.width ?? DEFAULT_IMAGE_WIDTH);
+  const [imageHeight, setImageHeight] = useState(initialEditSourceCanvas?.height ?? DEFAULT_IMAGE_HEIGHT);
+  const [hasGeneratedImage, setHasGeneratedImage] = useState(Boolean(initialEditSourceCanvas));
+  const [previewSize, setPreviewSize] = useState({
+    width: initialEditSourceCanvas?.width ?? 1,
+    height: initialEditSourceCanvas?.height ?? 1,
+  });
   const [generatedSeed, setGeneratedSeed] = useState<number | null>(null);
   const [transparentColor, setTransparentColor] = useState<RgbColor>(DEFAULT_TRANSPARENT_COLOR);
   const [tolerance, setTolerance] = useState(DEFAULT_TOLERANCE);
@@ -136,6 +151,7 @@ export function ImageObjectGenerateModal({
   const [error, setError] = useState<string | null>(null);
   const [renderVersion, setRenderVersion] = useState(0);
 
+  const isEditMode = mode === 'edit';
   const isBusy = isGenerating || isConfirming;
   const previewMaxHeightRem = 34;
   const previewMaxWidthRem = Math.min(previewMaxHeightRem, previewMaxHeightRem * (imageWidth / imageHeight));
@@ -165,10 +181,7 @@ export function ImageObjectGenerateModal({
     : null;
   const previewCursor = isPickingColor || isCropMode || isEraseMode ? 'crosshair' : 'default';
 
-  function clearGeneratedPreview(nextWidth = imageWidth, nextHeight = imageHeight) {
-    sourceCanvasRef.current = null;
-    setHasGeneratedImage(false);
-    setPreviewSize({ width: nextWidth, height: nextHeight });
+  const resetPreviewEdits = useCallback(() => {
     setGeneratedSeed(null);
     setTransparencyEnabled(false);
     setIsPickingColor(false);
@@ -180,6 +193,13 @@ export function ImageObjectGenerateModal({
     setDraftEraseRect(null);
     cropDragStartRef.current = null;
     eraseDragStartRef.current = null;
+  }, []);
+
+  function clearGeneratedPreview(nextWidth = imageWidth, nextHeight = imageHeight) {
+    sourceCanvasRef.current = null;
+    setHasGeneratedImage(false);
+    setPreviewSize({ width: nextWidth, height: nextHeight });
+    resetPreviewEdits();
     setRenderVersion((version) => version + 1);
   }
 
@@ -272,17 +292,8 @@ export function ImageObjectGenerateModal({
       sourceCanvasRef.current = sourceCanvas;
       setPreviewSize({ width: sourceCanvas.width, height: sourceCanvas.height });
       setHasGeneratedImage(true);
+      resetPreviewEdits();
       setGeneratedSeed(result.seed);
-      setTransparencyEnabled(false);
-      setIsPickingColor(false);
-      setIsCropMode(false);
-      setIsEraseMode(false);
-      setCropRect(null);
-      setDraftCropRect(null);
-      setEraseRects([]);
-      setDraftEraseRect(null);
-      cropDragStartRef.current = null;
-      eraseDragStartRef.current = null;
       setRenderVersion((version) => version + 1);
     } catch (generateError) {
       setError(getErrorMessage(generateError));
@@ -413,10 +424,16 @@ export function ImageObjectGenerateModal({
     setIsConfirming(true);
     setError(null);
     try {
-      const croppedCanvas = isValidCropRect(cropRect)
-        ? copyCanvasRegion(previewCanvas, cropRect)
+      const nextCropRect = isValidCropRect(cropRect) ? cropRect : null;
+      const croppedCanvas = nextCropRect
+        ? copyCanvasRegion(previewCanvas, nextCropRect)
         : null;
-      await onConfirm(await canvasToPngBlob(croppedCanvas ?? cloneCanvas(previewCanvas)), initialRect);
+      await onConfirm(
+        await canvasToPngBlob(croppedCanvas ?? cloneCanvas(previewCanvas)),
+        initialRect,
+        nextCropRect,
+        { width: sourceCanvas.width, height: sourceCanvas.height },
+      );
     } catch (confirmError) {
       setError(getErrorMessage(confirmError));
       setIsConfirming(false);
@@ -434,7 +451,7 @@ export function ImageObjectGenerateModal({
         <PanelHeader>
           <div className="min-w-0">
             <h2 id="image-object-generate-title" className="text-base font-extrabold text-[#fff5eb]">
-              object 생성
+              {isEditMode ? 'object 편집' : 'object 생성'}
             </h2>
           </div>
           <Button className="h-8 px-3 py-0 text-xs" onClick={onClose} disabled={isBusy}>
@@ -478,73 +495,77 @@ export function ImageObjectGenerateModal({
             </div>
             {!isGenerating && !hasGeneratedImage ? (
               <span className="px-4 text-center text-sm font-semibold text-[var(--app-muted)]">
-                생성된 object preview
+                {isEditMode ? 'object preview' : '생성된 object preview'}
               </span>
             ) : null}
           </div>
 
           <div className="flex min-h-[26rem] flex-col gap-3">
-            <label className="block space-y-1">
-              <FieldLabel required>positive prompt</FieldLabel>
-              <FormControl
-                as="textarea"
-                value={positivePrompt}
-                onChange={(event) => setPositivePrompt(event.target.value)}
-                className="min-h-28 w-full resize-y px-3 py-2 text-sm leading-5"
-                disabled={isBusy}
-              />
-            </label>
+            {!isEditMode ? (
+              <>
+                <label className="block space-y-1">
+                  <FieldLabel required>positive prompt</FieldLabel>
+                  <FormControl
+                    as="textarea"
+                    value={positivePrompt}
+                    onChange={(event) => setPositivePrompt(event.target.value)}
+                    className="min-h-28 w-full resize-y px-3 py-2 text-sm leading-5"
+                    disabled={isBusy}
+                  />
+                </label>
 
-            <label className="block space-y-1">
-              <FieldLabel>negative prompt</FieldLabel>
-              <FormControl
-                as="textarea"
-                value={negativePrompt}
-                onChange={(event) => setNegativePrompt(event.target.value)}
-                className="min-h-20 w-full resize-y px-3 py-2 text-sm leading-5"
-                disabled={isBusy}
-              />
-            </label>
+                <label className="block space-y-1">
+                  <FieldLabel>negative prompt</FieldLabel>
+                  <FormControl
+                    as="textarea"
+                    value={negativePrompt}
+                    onChange={(event) => setNegativePrompt(event.target.value)}
+                    className="min-h-20 w-full resize-y px-3 py-2 text-sm leading-5"
+                    disabled={isBusy}
+                  />
+                </label>
 
-            <div className="grid gap-2">
-              <div className="rounded-[8px] border border-[rgba(255,226,186,0.22)] bg-[rgba(8,2,13,0.42)] px-3 py-2 text-center text-sm font-extrabold text-[#fff5eb]">
-                {imageWidth} x {imageHeight}
-              </div>
-              <div className="space-y-1">
-                <FieldLabel>width</FieldLabel>
-                <div className="grid grid-cols-5 gap-1">
-                  {IMAGE_SIZE_OPTIONS.map((size) => (
-                    <Button
-                      key={`width-${size}`}
-                      className={resolutionButtonClass(imageWidth === size)}
-                      variant={imageWidth === size ? 'primary' : 'default'}
-                      onClick={() => changeImageWidth(size)}
-                      disabled={isBusy}
-                      aria-pressed={imageWidth === size}
-                    >
-                      {size}
-                    </Button>
-                  ))}
+                <div className="grid gap-2">
+                  <div className="rounded-[8px] border border-[rgba(255,226,186,0.22)] bg-[rgba(8,2,13,0.42)] px-3 py-2 text-center text-sm font-extrabold text-[#fff5eb]">
+                    {imageWidth} x {imageHeight}
+                  </div>
+                  <div className="space-y-1">
+                    <FieldLabel>width</FieldLabel>
+                    <div className="grid grid-cols-5 gap-1">
+                      {IMAGE_SIZE_OPTIONS.map((size) => (
+                        <Button
+                          key={`width-${size}`}
+                          className={resolutionButtonClass(imageWidth === size)}
+                          variant={imageWidth === size ? 'primary' : 'default'}
+                          onClick={() => changeImageWidth(size)}
+                          disabled={isBusy}
+                          aria-pressed={imageWidth === size}
+                        >
+                          {size}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <FieldLabel>height</FieldLabel>
+                    <div className="grid grid-cols-5 gap-1">
+                      {IMAGE_SIZE_OPTIONS.map((size) => (
+                        <Button
+                          key={`height-${size}`}
+                          className={resolutionButtonClass(imageHeight === size)}
+                          variant={imageHeight === size ? 'primary' : 'default'}
+                          onClick={() => changeImageHeight(size)}
+                          disabled={isBusy}
+                          aria-pressed={imageHeight === size}
+                        >
+                          {size}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="space-y-1">
-                <FieldLabel>height</FieldLabel>
-                <div className="grid grid-cols-5 gap-1">
-                  {IMAGE_SIZE_OPTIONS.map((size) => (
-                    <Button
-                      key={`height-${size}`}
-                      className={resolutionButtonClass(imageHeight === size)}
-                      variant={imageHeight === size ? 'primary' : 'default'}
-                      onClick={() => changeImageHeight(size)}
-                      disabled={isBusy}
-                      aria-pressed={imageHeight === size}
-                    >
-                      {size}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            </div>
+              </>
+            ) : null}
 
             <div className="min-w-0 text-xs font-semibold text-[#fff5eb]">
               transparent rgb({transparentColor.red}, {transparentColor.green}, {transparentColor.blue})
@@ -593,7 +614,7 @@ export function ImageObjectGenerateModal({
               />
             </label>
 
-            {generatedSeed !== null ? (
+            {!isEditMode && generatedSeed !== null ? (
               <p className="text-xs font-semibold text-[var(--app-muted)]">seed #{generatedSeed}</p>
             ) : null}
             {error ? <p className="text-sm font-semibold text-[#ff9ab8]">{error}</p> : null}
@@ -663,10 +684,12 @@ export function ImageObjectGenerateModal({
               >
                 alpha
               </Button>
-              <Button className="inline-flex h-8 items-center gap-2 px-3 py-0 text-xs" onClick={() => void generateImage()} disabled={isBusy}>
-                {isGenerating ? <Spinner aria-hidden="true" /> : null}
-                생성
-              </Button>
+              {!isEditMode ? (
+                <Button className="inline-flex h-8 items-center gap-2 px-3 py-0 text-xs" onClick={() => void generateImage()} disabled={isBusy}>
+                  {isGenerating ? <Spinner aria-hidden="true" /> : null}
+                  생성
+                </Button>
+              ) : null}
               <Button variant="primary" className="ml-auto inline-flex h-8 items-center gap-2 px-3 py-0 text-xs" onClick={() => void confirm()} disabled={isBusy || !hasGeneratedImage}>
                 {isConfirming ? <Spinner aria-hidden="true" /> : null}
                 확인

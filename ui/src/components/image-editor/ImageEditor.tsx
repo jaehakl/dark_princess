@@ -142,6 +142,7 @@ export function ImageEditor({
   const [isLineageOpen, setIsLineageOpen] = useState(false);
   const [isImageSearchOpen, setIsImageSearchOpen] = useState(false);
   const [isObjectGenerateOpen, setIsObjectGenerateOpen] = useState(false);
+  const [objectEditSource, setObjectEditSource] = useState<{ objectId: string; canvas: HTMLCanvasElement } | null>(null);
   const [postprocessSourceBlob, setPostprocessSourceBlob] = useState<Blob | null>(null);
   const [isLoadingSource, setIsLoadingSource] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -496,6 +497,65 @@ export function ImageEditor({
   async function confirmGeneratedObject(blob: Blob, placementRect: Rect | null) {
     await addImageObject(blob, placementRect);
     setIsObjectGenerateOpen(false);
+  }
+
+  function openObjectEditModal() {
+    if (isDisabled || !activeObject) {
+      return;
+    }
+    setIsObjectGenerateOpen(false);
+    setObjectEditSource({
+      objectId: activeObject.id,
+      canvas: cloneCanvas(activeObject.canvas),
+    });
+  }
+
+  async function confirmEditedObject(
+    blob: Blob,
+    _placementRect: Rect | null,
+    cropRect: Rect | null,
+    sourceSize: { width: number; height: number },
+  ) {
+    const editSource = objectEditSource;
+    if (!editSource) {
+      return;
+    }
+    const editedCanvas = await createCanvasFromBlob(blob);
+    const sourceWidth = Math.max(1, sourceSize.width);
+    const sourceHeight = Math.max(1, sourceSize.height);
+    const nextObjects = objectsRef.current.map((object) => {
+      if (object.id !== editSource.objectId) {
+        return object;
+      }
+      if (!cropRect) {
+        return { ...object, canvas: editedCanvas };
+      }
+      const nextWidth = Math.max(1, Math.round(object.width * cropRect.width / sourceWidth));
+      const nextHeight = Math.max(1, Math.round(object.height * cropRect.height / sourceHeight));
+      const localX = (((cropRect.x + cropRect.width / 2) / sourceWidth) - 0.5) * object.width;
+      const localY = (((cropRect.y + cropRect.height / 2) / sourceHeight) - 0.5) * object.height;
+      const adjustedLocalX = object.flipX ? -localX : localX;
+      const cos = Math.cos(object.rotation);
+      const sin = Math.sin(object.rotation);
+      return {
+        ...object,
+        canvas: editedCanvas,
+        x: object.x + adjustedLocalX * cos - localY * sin,
+        y: object.y + adjustedLocalX * sin + localY * cos,
+        width: nextWidth,
+        height: nextHeight,
+      };
+    });
+    if (!nextObjects.some((object) => object.id === editSource.objectId)) {
+      setError('편집할 object를 찾지 못했습니다.');
+      setObjectEditSource(null);
+      return;
+    }
+    pushImageHistory();
+    replaceObjects(nextObjects, editSource.objectId);
+    setTab('image');
+    setTool('object');
+    setObjectEditSource(null);
   }
 
   async function openPostprocessModal() {
@@ -1052,6 +1112,7 @@ export function ImageEditor({
         canOpenImageSearch={Boolean(onSelectLineageImage)}
         canOpenPostprocess={hasImage}
         canOpenObjectGenerate
+        canOpenObjectEdit={Boolean(activeObject)}
         hasActiveObject={Boolean(activeObject)}
         hasBaseImage={hasImage}
         hasScribble={hasScribble}
@@ -1081,7 +1142,11 @@ export function ImageEditor({
         onOpenLineage={() => setIsLineageOpen(true)}
         onOpenImageSearch={() => setIsImageSearchOpen(true)}
         onOpenPostprocess={() => void openPostprocessModal()}
-        onOpenObjectGenerate={() => setIsObjectGenerateOpen(true)}
+        onOpenObjectGenerate={() => {
+          setObjectEditSource(null);
+          setIsObjectGenerateOpen(true);
+        }}
+        onOpenObjectEdit={openObjectEditModal}
         onFlip={flipActiveObject}
         onClearImage={clearImage}
         onToggleMaskOverlap={() => setMaskOverlap((current) => !current)}
@@ -1168,10 +1233,22 @@ export function ImageEditor({
 
       {isObjectGenerateOpen ? (
         <ImageObjectGenerateModal
+          mode="generate"
           parameters={parameters}
           initialRect={objectGenerateRect}
           onClose={() => setIsObjectGenerateOpen(false)}
           onConfirm={confirmGeneratedObject}
+        />
+      ) : null}
+
+      {objectEditSource ? (
+        <ImageObjectGenerateModal
+          mode="edit"
+          parameters={parameters}
+          sourceCanvas={objectEditSource.canvas}
+          initialRect={null}
+          onClose={() => setObjectEditSource(null)}
+          onConfirm={confirmEditedObject}
         />
       ) : null}
 
