@@ -42,7 +42,6 @@ GEN_IMAGE_CAMERA_SAMPLES ={
     "full shot": "인물의 전신을 화면 안에 담는 샷",
     "centered composition": "주 피사체를 화면 중앙에 배치해 안정감과 상징성을 주는 구도",
     "rule of thirds": "화면을 3분할해 자연스럽고 균형 잡힌 배치를 만드는 구도",
-    "cinematic composition": "영화 장면처럼 인물, 배경, 빛, 시선 흐름이 연출된 구도",
     "face-to-face": "두 인물이 마주 보는 대립, 대화, 친밀감의 구도",
     "side-by-side": "인물들이 나란히 있어 동행, 연대, 비교를 표현",
     "back-to-back": "등을 맞대고 있는 구도, 협력이나 긴장감을 표현",
@@ -108,32 +107,22 @@ GEN_IMAGE_CAMERA_SAMPLES ={
   },
 
   "배경": {
-    "industrial interior": "공장, 기계실 같은 산업적 실내",
-    "domestic interior": "집 안, 생활 공간",
+    "industrial": "공장, 기계실 같은 산업적 실내 (interior)",
+    "domestic": "집 안, 생활 공간 (interior)",
     "grand architecture": "웅장한 건축물",
     "ruined architecture": "폐허가 된 건축물",
     "cluttered environment": "물건이 많고 복잡한 환경",
     "drifting embers": "날리는 불씨",
+    "detailed environment": "배경과 공간 디테일을 풍부하게 유도",
   },
 
   "시각_스타일": {
     "photorealistic": "사진처럼 사실적인 표현",
     "film still": "영화의 한 프레임처럼 보이는 이미지",
     "storytelling": "이야기 전달을 목적으로 한 일러스트",
-    "narrative illustration": "이야기 전달을 목적으로 한 일러스트",
+    "narrative": "이야기 전달을 목적으로 한 일러스트",
     "collage": "여러 재료를 붙여 만든 콜라주 느낌",
     "3D render": "3D 그래픽 렌더링 느낌",
-  },
-
-  "품질과_디테일": {
-    "highly detailed": "디테일이 풍부하도록 유도",
-    "intricate details": "복잡하고 정교한 세부 요소 강조",
-    "polished finish": "완성도가 높은 마감 느낌",
-    "refined composition": "정제되고 세련된 구도",
-    "coherent composition": "장면 요소들이 서로 어색하지 않게 맞물린 구도",
-    "accurate perspective": "원근과 공간감이 자연스럽도록 유도",
-    "natural proportions": "인체나 사물 비율이 자연스럽도록 유도",
-    "cinematic detail": "영화 장면처럼 디테일과 연출감이 있는 표현",
-    "detailed environment": "배경과 공간 디테일을 풍부하게 유도",
+    "cinematic": "영화 장면처럼 인물, 배경, 빛, 시선 흐름, 디테일과 연출감 표현",
   },
 }
