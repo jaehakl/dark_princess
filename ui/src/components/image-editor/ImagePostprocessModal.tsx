@@ -16,6 +16,7 @@ import { createHistory, pushHistory, redoHistory, undoHistory } from './history'
 type NumberField = {
   name: string;
   label: string;
+  description: string;
   min: number;
   max: number;
   step: number;
@@ -29,77 +30,77 @@ type ImagePostprocessModalProps = {
 };
 
 const OPERATIONS = [
-  { value: 'cleanup', label: 'cleanup' },
-  { value: 'enhance', label: 'enhance' },
-  { value: 'line_art', label: 'line_art' },
-  { value: 'upscale_cleanup', label: 'upscale_cleanup' },
-  { value: 'auto_contrast', label: 'auto contrast' },
-  { value: 'saturation', label: 'saturation' },
-  { value: 'contrast', label: 'contrast' },
-  { value: 'sharpness', label: 'sharpness' },
-  { value: 'gamma', label: 'gamma' },
-  { value: 'clahe', label: 'CLAHE' },
-  { value: 'denoise', label: 'denoise' },
-  { value: 'resize', label: 'resize' },
-  { value: 'line_boost', label: 'line boost' },
-  { value: 'edges', label: 'edges' },
+  { value: 'cleanup', label: 'cleanup', description: '뿌연 느낌을 줄이고 대비, 선명도, 약한 노이즈 제거를 한 번에 적용합니다.' },
+  { value: 'enhance', label: 'enhance', description: '밋밋한 색감, 대비, 선명도를 자연스럽게 올리는 기본 보정입니다.' },
+  { value: 'line_art', label: 'line_art', description: '선화를 더 진하게 만들어 캐릭터 윤곽과 펜선을 강조합니다.' },
+  { value: 'upscale_cleanup', label: 'upscale_cleanup', description: '이미지를 확대한 뒤 약한 노이즈 제거와 샤픈을 적용합니다.' },
+  { value: 'auto_contrast', label: 'auto contrast', description: '가장 어두운 톤과 밝은 톤을 재분배해 전체 대비를 자동으로 맞춥니다.' },
+  { value: 'saturation', label: 'saturation', description: '색의 선명함을 올려 흐릿하거나 칙칙한 색감을 개선합니다.' },
+  { value: 'contrast', label: 'contrast', description: '밝고 어두운 영역의 차이를 키워 이미지가 더 또렷해 보이게 합니다.' },
+  { value: 'sharpness', label: 'sharpness', description: '경계와 디테일을 강조해 흐린 이미지를 선명하게 만듭니다.' },
+  { value: 'gamma', label: 'gamma', description: '중간 밝기 톤을 조절해 어둡거나 탁한 이미지를 밝고 맑게 보정합니다.' },
+  { value: 'clahe', label: 'CLAHE', description: '밝기 채널의 지역 대비를 올려 흐릿한 이미지를 또렷하게 보정합니다.' },
+  { value: 'denoise', label: 'denoise', description: '작은 색 노이즈를 줄여 표면을 부드럽게 정리합니다.' },
+  { value: 'resize', label: 'resize', description: '이미지를 지정 배율로 확대하거나 축소합니다.' },
+  { value: 'line_boost', label: 'line boost', description: '어두운 선과 윤곽을 감지해 더 진하게 덧입힙니다.' },
+  { value: 'edges', label: 'edges', description: 'Canny edge를 이용해 감지된 윤곽선을 어둡게 덧입힙니다.' },
 ] as const;
 
 type OperationValue = typeof OPERATIONS[number]['value'];
 
 const PARAM_FIELDS: Record<string, NumberField[]> = {
   cleanup: [
-    { name: 'denoise_h', label: 'denoise', min: 0, max: 30, step: 0.5, defaultValue: 2.5 },
-    { name: 'saturation_factor', label: 'saturation', min: 0, max: 5, step: 0.05, defaultValue: 1.08 },
-    { name: 'gamma', label: 'gamma', min: 0.1, max: 5, step: 0.05, defaultValue: 0.95 },
-    { name: 'sharpness_factor', label: 'sharpness', min: 0, max: 5, step: 0.05, defaultValue: 1.15 },
+    { name: 'denoise_h', label: 'denoise', description: '노이즈 제거 강도입니다. 높을수록 부드러워지지만 디테일이 줄 수 있습니다.', min: 0, max: 30, step: 0.5, defaultValue: 2.5 },
+    { name: 'saturation_factor', label: 'saturation', description: '색감 강화 배율입니다. 1보다 크면 색이 더 선명해집니다.', min: 0, max: 5, step: 0.05, defaultValue: 1.08 },
+    { name: 'gamma', label: 'gamma', description: '중간 톤 밝기입니다. 1보다 작으면 밝고 선명하게, 1보다 크면 어둡게 보정합니다.', min: 0.1, max: 5, step: 0.05, defaultValue: 0.95 },
+    { name: 'sharpness_factor', label: 'sharpness', description: '샤픈 강도입니다. 1보다 크면 경계와 디테일이 더 또렷해집니다.', min: 0, max: 5, step: 0.05, defaultValue: 1.15 },
   ],
   enhance: [
-    { name: 'saturation_factor', label: 'saturation', min: 0, max: 5, step: 0.05, defaultValue: 1.2 },
-    { name: 'contrast_factor', label: 'contrast', min: 0, max: 5, step: 0.05, defaultValue: 1.15 },
-    { name: 'sharpness_factor', label: 'sharpness', min: 0, max: 5, step: 0.05, defaultValue: 1.25 },
+    { name: 'saturation_factor', label: 'saturation', description: '색감 강화 배율입니다. 1보다 크면 색이 더 선명해집니다.', min: 0, max: 5, step: 0.05, defaultValue: 1.2 },
+    { name: 'contrast_factor', label: 'contrast', description: '대비 강화 배율입니다. 1보다 크면 밝고 어두운 차이가 커집니다.', min: 0, max: 5, step: 0.05, defaultValue: 1.15 },
+    { name: 'sharpness_factor', label: 'sharpness', description: '샤픈 강도입니다. 1보다 크면 경계와 디테일이 더 또렷해집니다.', min: 0, max: 5, step: 0.05, defaultValue: 1.25 },
   ],
   line_art: [
-    { name: 'line_amount', label: 'line', min: 0, max: 1, step: 0.05, defaultValue: 0.55 },
-    { name: 'sharpness_factor', label: 'sharpness', min: 0, max: 5, step: 0.05, defaultValue: 1.4 },
+    { name: 'line_amount', label: 'line', description: '선화를 얼마나 진하게 반영할지 정합니다. 높을수록 윤곽이 강해집니다.', min: 0, max: 1, step: 0.05, defaultValue: 0.55 },
+    { name: 'sharpness_factor', label: 'sharpness', description: '샤픈 강도입니다. 1보다 크면 경계와 디테일이 더 또렷해집니다.', min: 0, max: 5, step: 0.05, defaultValue: 1.4 },
   ],
   upscale_cleanup: [
-    { name: 'scale', label: 'scale', min: 0.1, max: 8, step: 0.1, defaultValue: 2 },
-    { name: 'denoise_h', label: 'denoise', min: 0, max: 30, step: 0.5, defaultValue: 2 },
-    { name: 'sharpness_factor', label: 'sharpness', min: 0, max: 5, step: 0.05, defaultValue: 1.2 },
+    { name: 'scale', label: 'scale', description: '이미지 확대 배율입니다. 2는 가로와 세로를 각각 2배로 키웁니다.', min: 0.1, max: 8, step: 0.1, defaultValue: 2 },
+    { name: 'denoise_h', label: 'denoise', description: '노이즈 제거 강도입니다. 높을수록 부드러워지지만 디테일이 줄 수 있습니다.', min: 0, max: 30, step: 0.5, defaultValue: 2 },
+    { name: 'sharpness_factor', label: 'sharpness', description: '샤픈 강도입니다. 1보다 크면 확대 후 흐려진 경계가 또렷해집니다.', min: 0, max: 5, step: 0.05, defaultValue: 1.2 },
   ],
   auto_contrast: [
-    { name: 'cutoff', label: 'cutoff', min: 0, max: 50, step: 1, defaultValue: 0 },
+    { name: 'cutoff', label: 'cutoff', description: '자동 대비에서 양끝 톤을 얼마나 잘라낼지 정합니다. 높을수록 대비가 강해집니다.', min: 0, max: 50, step: 1, defaultValue: 0 },
   ],
   saturation: [
-    { name: 'factor', label: 'factor', min: 0, max: 5, step: 0.05, defaultValue: 1.2 },
+    { name: 'factor', label: 'factor', description: '채도 배율입니다. 1은 원본 수준이고, 1보다 크면 색이 더 진해집니다.', min: 0, max: 5, step: 0.05, defaultValue: 1.2 },
   ],
   contrast: [
-    { name: 'factor', label: 'factor', min: 0, max: 5, step: 0.05, defaultValue: 1.15 },
+    { name: 'factor', label: 'factor', description: '대비 배율입니다. 1은 원본 수준이고, 1보다 크면 명암 차이가 커집니다.', min: 0, max: 5, step: 0.05, defaultValue: 1.15 },
   ],
   sharpness: [
-    { name: 'factor', label: 'factor', min: 0, max: 5, step: 0.05, defaultValue: 1.4 },
+    { name: 'factor', label: 'factor', description: '샤픈 배율입니다. 1은 원본 수준이고, 1보다 크면 경계가 선명해집니다.', min: 0, max: 5, step: 0.05, defaultValue: 1.4 },
   ],
   gamma: [
-    { name: 'gamma', label: 'gamma', min: 0.1, max: 5, step: 0.05, defaultValue: 0.95 },
+    { name: 'gamma', label: 'gamma', description: '중간 톤 밝기입니다. 1보다 작으면 밝고 선명하게, 1보다 크면 어둡게 보정합니다.', min: 0.1, max: 5, step: 0.05, defaultValue: 0.95 },
   ],
   clahe: [
-    { name: 'clip_limit', label: 'clip', min: 0.1, max: 10, step: 0.1, defaultValue: 2 },
-    { name: 'tile_grid_size', label: 'tile', min: 2, max: 32, step: 1, defaultValue: 8 },
+    { name: 'clip_limit', label: 'clip', description: 'CLAHE 대비 강화 강도입니다. 높을수록 지역 대비가 강해집니다.', min: 0.1, max: 10, step: 0.1, defaultValue: 2 },
+    { name: 'tile_grid_size', label: 'tile', description: 'CLAHE가 이미지를 나누어 분석하는 블록 크기입니다.', min: 2, max: 32, step: 1, defaultValue: 8 },
   ],
   denoise: [
-    { name: 'h', label: 'h', min: 0, max: 30, step: 0.5, defaultValue: 3 },
+    { name: 'h', label: 'h', description: '노이즈 제거 강도입니다. 높을수록 부드러워지지만 세부 질감이 줄 수 있습니다.', min: 0, max: 30, step: 0.5, defaultValue: 3 },
   ],
   resize: [
-    { name: 'scale', label: 'scale', min: 0.1, max: 8, step: 0.1, defaultValue: 2 },
+    { name: 'scale', label: 'scale', description: '크기 변경 배율입니다. 2는 2배 확대, 0.5는 절반 축소입니다.', min: 0.1, max: 8, step: 0.1, defaultValue: 2 },
   ],
   line_boost: [
-    { name: 'amount', label: 'amount', min: 0, max: 1, step: 0.05, defaultValue: 0.45 },
+    { name: 'amount', label: 'amount', description: '선화를 얼마나 진하게 반영할지 정합니다. 높을수록 어두운 선이 강해집니다.', min: 0, max: 1, step: 0.05, defaultValue: 0.45 },
   ],
   edges: [
-    { name: 'amount', label: 'amount', min: 0, max: 1, step: 0.05, defaultValue: 0.65 },
-    { name: 'low_threshold', label: 'low', min: 0, max: 255, step: 1, defaultValue: 80 },
-    { name: 'high_threshold', label: 'high', min: 0, max: 255, step: 1, defaultValue: 160 },
+    { name: 'amount', label: 'amount', description: '감지된 edge를 얼마나 진하게 덧입힐지 정합니다.', min: 0, max: 1, step: 0.05, defaultValue: 0.65 },
+    { name: 'low_threshold', label: 'low', description: 'edge 감지의 낮은 민감도 기준입니다. 낮을수록 더 많은 약한 선을 잡습니다.', min: 0, max: 255, step: 1, defaultValue: 80 },
+    { name: 'high_threshold', label: 'high', description: 'edge 감지의 높은 민감도 기준입니다. 높을수록 강한 윤곽만 남기기 쉽습니다.', min: 0, max: 255, step: 1, defaultValue: 160 },
   ],
 };
 
@@ -117,6 +118,96 @@ function readNumber(value: string) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
+}
+
+function TooltipHint({
+  text,
+  className = '',
+}: {
+  text: string;
+  className?: string;
+}) {
+  return (
+    <span
+      role="tooltip"
+      className={
+        'pointer-events-none absolute left-0 top-full z-[90] mt-1 w-64 max-w-[min(18rem,calc(100vw-4rem))] ' +
+        'rounded-[8px] border border-[rgba(255,226,186,0.36)] bg-[rgba(8,2,13,0.96)] px-3 py-2 ' +
+        'text-left text-xs font-semibold leading-5 text-[#fff5eb] opacity-0 shadow-[0_18px_36px_rgba(0,0,0,0.38)] ' +
+        'transition-[opacity,transform] group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100 ' +
+        className
+      }
+    >
+      {text}
+    </span>
+  );
+}
+
+function OperationDropdown({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: OperationValue;
+  disabled: boolean;
+  onChange: (value: OperationValue) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const selectedOperation = OPERATIONS.find((item) => item.value === value) ?? OPERATIONS[0];
+
+  return (
+    <div
+      className="relative"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setIsOpen(false);
+        }
+      }}
+    >
+      <div className="group relative">
+        <button
+          type="button"
+          className="h-9 w-full rounded-[8px] border border-[rgba(255,196,214,0.34)] bg-[linear-gradient(180deg,rgba(255,255,255,0.09),rgba(255,255,255,0.035)),rgba(13,5,19,0.72)] px-3 text-left text-sm font-semibold text-[var(--app-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_12px_24px_rgba(0,0,0,0.18)] transition-[border-color,background] hover:border-[rgba(255,226,186,0.7)] focus:border-[rgba(255,226,186,0.95)] disabled:cursor-not-allowed disabled:opacity-60"
+          onClick={() => setIsOpen((current) => !current)}
+          disabled={disabled}
+          aria-haspopup="listbox"
+          aria-expanded={isOpen}
+        >
+          <span className="flex min-w-0 items-center justify-between gap-2">
+            <span className="truncate">{selectedOperation.label}</span>
+            <span aria-hidden="true" className="text-xs text-[#f1c4d0]">▾</span>
+          </span>
+        </button>
+        <TooltipHint text={selectedOperation.description} />
+      </div>
+
+      {isOpen ? (
+        <div
+          role="listbox"
+          className="absolute left-0 right-0 top-full z-[80] mt-1 space-y-1 rounded-[8px] border border-[rgba(255,196,214,0.3)] bg-[rgba(12,4,18,0.98)] p-1 shadow-[0_24px_48px_rgba(0,0,0,0.45)]"
+        >
+          {OPERATIONS.map((item) => (
+            <div key={item.value} className="group relative">
+              <button
+                type="button"
+                role="option"
+                aria-selected={item.value === value}
+                className="flex h-8 w-full items-center justify-between gap-2 rounded-[6px] px-2 text-left text-xs font-bold text-[#fff5eb] hover:bg-[rgba(255,226,186,0.14)] focus:bg-[rgba(255,226,186,0.18)] focus:outline-none"
+                onClick={() => {
+                  onChange(item.value);
+                  setIsOpen(false);
+                }}
+              >
+                <span className="truncate">{item.label}</span>
+                {item.value === value ? <span aria-hidden="true">●</span> : null}
+              </button>
+              <TooltipHint text={item.description} className="left-1 top-[calc(100%+0.125rem)]" />
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function ImagePostprocessModal({
@@ -261,28 +352,20 @@ export function ImagePostprocessModal({
           <div className="space-y-3">
             <label className="block space-y-1">
               <FieldLabel>operation</FieldLabel>
-              <FormControl
-                as="select"
+              <OperationDropdown
                 value={operation}
-                onChange={(event) => {
-                  setOperation(event.target.value as OperationValue);
+                disabled={isBusy}
+                onChange={(nextOperation) => {
+                  setOperation(nextOperation);
                   setParameterDraft({});
                   setError(null);
                 }}
-                disabled={isBusy}
-                className="h-9 w-full px-3 text-sm"
-              >
-                {OPERATIONS.map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {item.label}
-                  </option>
-                ))}
-              </FormControl>
+              />
             </label>
 
             <div className="grid grid-cols-2 gap-2">
               {fields.map((field) => (
-                <label key={field.name} className="min-w-0 space-y-1">
+                <label key={field.name} className="group relative min-w-0 space-y-1">
                   <FieldLabel>{field.label}</FieldLabel>
                   <FormControl
                     type="number"
@@ -299,6 +382,7 @@ export function ImagePostprocessModal({
                     disabled={isBusy}
                     className="h-9 w-full px-2 text-right text-sm"
                   />
+                  <TooltipHint text={field.description} />
                 </label>
               ))}
             </div>
