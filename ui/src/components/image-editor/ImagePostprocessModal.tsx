@@ -120,37 +120,16 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-function TooltipHint({
-  text,
-  className = '',
-}: {
-  text: string;
-  className?: string;
-}) {
-  return (
-    <span
-      role="tooltip"
-      className={
-        'pointer-events-none absolute left-0 top-full z-[90] mt-1 w-64 max-w-[min(18rem,calc(100vw-4rem))] ' +
-        'rounded-[8px] border border-[rgba(255,226,186,0.36)] bg-[rgba(8,2,13,0.96)] px-3 py-2 ' +
-        'text-left text-xs font-semibold leading-5 text-[#fff5eb] opacity-0 shadow-[0_18px_36px_rgba(0,0,0,0.38)] ' +
-        'transition-[opacity,transform] group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100 ' +
-        className
-      }
-    >
-      {text}
-    </span>
-  );
-}
-
 function OperationDropdown({
   value,
   disabled,
   onChange,
+  onHelpChange,
 }: {
   value: OperationValue;
   disabled: boolean;
   onChange: (value: OperationValue) => void;
+  onHelpChange: (text: string | null) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const selectedOperation = OPERATIONS.find((item) => item.value === value) ?? OPERATIONS[0];
@@ -163,12 +142,15 @@ function OperationDropdown({
           setIsOpen(false);
         }
       }}
+      onMouseLeave={() => onHelpChange(null)}
     >
-      <div className="group relative">
+      <div>
         <button
           type="button"
           className="h-9 w-full rounded-[8px] border border-[rgba(255,196,214,0.34)] bg-[linear-gradient(180deg,rgba(255,255,255,0.09),rgba(255,255,255,0.035)),rgba(13,5,19,0.72)] px-3 text-left text-sm font-semibold text-[var(--app-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_12px_24px_rgba(0,0,0,0.18)] transition-[border-color,background] hover:border-[rgba(255,226,186,0.7)] focus:border-[rgba(255,226,186,0.95)] disabled:cursor-not-allowed disabled:opacity-60"
           onClick={() => setIsOpen((current) => !current)}
+          onFocus={() => onHelpChange(selectedOperation.description)}
+          onMouseEnter={() => onHelpChange(selectedOperation.description)}
           disabled={disabled}
           aria-haspopup="listbox"
           aria-expanded={isOpen}
@@ -178,7 +160,6 @@ function OperationDropdown({
             <span aria-hidden="true" className="text-xs text-[#f1c4d0]">▾</span>
           </span>
         </button>
-        <TooltipHint text={selectedOperation.description} />
       </div>
 
       {isOpen ? (
@@ -187,21 +168,23 @@ function OperationDropdown({
           className="absolute left-0 right-0 top-full z-[80] mt-1 space-y-1 rounded-[8px] border border-[rgba(255,196,214,0.3)] bg-[rgba(12,4,18,0.98)] p-1 shadow-[0_24px_48px_rgba(0,0,0,0.45)]"
         >
           {OPERATIONS.map((item) => (
-            <div key={item.value} className="group relative">
+            <div key={item.value}>
               <button
                 type="button"
                 role="option"
                 aria-selected={item.value === value}
                 className="flex h-8 w-full items-center justify-between gap-2 rounded-[6px] px-2 text-left text-xs font-bold text-[#fff5eb] hover:bg-[rgba(255,226,186,0.14)] focus:bg-[rgba(255,226,186,0.18)] focus:outline-none"
+                onFocus={() => onHelpChange(item.description)}
+                onMouseEnter={() => onHelpChange(item.description)}
                 onClick={() => {
                   onChange(item.value);
+                  onHelpChange(item.description);
                   setIsOpen(false);
                 }}
               >
                 <span className="truncate">{item.label}</span>
                 {item.value === value ? <span aria-hidden="true">●</span> : null}
               </button>
-              <TooltipHint text={item.description} className="left-1 top-[calc(100%+0.125rem)]" />
             </div>
           ))}
         </div>
@@ -222,11 +205,14 @@ export function ImagePostprocessModal({
   const [historyCounts, setHistoryCounts] = useState({ past: 0, future: 0 });
   const [operation, setOperation] = useState<OperationValue>(OPERATIONS[0].value);
   const [parameterDraft, setParameterDraft] = useState<Record<string, number>>({});
+  const [activeHelpText, setActiveHelpText] = useState<string | null>(null);
   const [isApplying, setIsApplying] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fields = useMemo(() => PARAM_FIELDS[operation] ?? [], [operation]);
+  const selectedOperation = OPERATIONS.find((item) => item.value === operation) ?? OPERATIONS[0];
+  const helpText = activeHelpText ?? selectedOperation.description;
   const isBusy = isApplying || isConfirming;
   const canUndo = historyCounts.past > 0;
   const canRedo = historyCounts.future > 0;
@@ -349,12 +335,13 @@ export function ImagePostprocessModal({
             ) : null}
           </ImageFrame>
 
-          <div className="space-y-3">
+          <div className="flex min-h-[24rem] flex-col gap-3">
             <label className="block space-y-1">
               <FieldLabel>operation</FieldLabel>
               <OperationDropdown
                 value={operation}
                 disabled={isBusy}
+                onHelpChange={setActiveHelpText}
                 onChange={(nextOperation) => {
                   setOperation(nextOperation);
                   setParameterDraft({});
@@ -365,7 +352,18 @@ export function ImagePostprocessModal({
 
             <div className="grid grid-cols-2 gap-2">
               {fields.map((field) => (
-                <label key={field.name} className="group relative min-w-0 space-y-1">
+                <label
+                  key={field.name}
+                  className="min-w-0 space-y-1"
+                  onBlur={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget)) {
+                      setActiveHelpText(null);
+                    }
+                  }}
+                  onFocus={() => setActiveHelpText(field.description)}
+                  onMouseEnter={() => setActiveHelpText(field.description)}
+                  onMouseLeave={() => setActiveHelpText(null)}
+                >
                   <FieldLabel>{field.label}</FieldLabel>
                   <FormControl
                     type="number"
@@ -382,7 +380,6 @@ export function ImagePostprocessModal({
                     disabled={isBusy}
                     className="h-9 w-full px-2 text-right text-sm"
                   />
-                  <TooltipHint text={field.description} />
                 </label>
               ))}
             </div>
@@ -404,6 +401,10 @@ export function ImagePostprocessModal({
                 {isConfirming ? <Spinner aria-hidden="true" /> : null}
                 확인
               </Button>
+            </div>
+
+            <div className="mt-auto rounded-[8px] border border-[rgba(255,226,186,0.22)] bg-[rgba(8,2,13,0.42)] px-3 py-2 text-xs font-semibold leading-5 text-[#fff5eb]">
+              {helpText}
             </div>
           </div>
         </SectionBody>
