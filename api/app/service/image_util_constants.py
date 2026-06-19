@@ -39,9 +39,7 @@ GEN_IMAGE_CAMERA_SAMPLES ={
   "구도": {
     "close-up": "얼굴이나 특정 사물을 크게 보여 주는 근접 샷",
     "cowboy shot": "허벅지 위까지 잡는 서부극식 인물 샷",
-    "full shot": "인물의 전신을 화면 안에 담는 샷",
-    "centered composition": "주 피사체를 화면 중앙에 배치해 안정감과 상징성을 주는 구도",
-    "rule of thirds": "화면을 3분할해 자연스럽고 균형 잡힌 배치를 만드는 구도",
+    "centered": "주 피사체를 화면 중앙에 배치해 안정감과 상징성을 주는 구도",
     "face-to-face": "두 인물이 마주 보는 대립, 대화, 친밀감의 구도",
     "side-by-side": "인물들이 나란히 있어 동행, 연대, 비교를 표현",
     "back-to-back": "등을 맞대고 있는 구도, 협력이나 긴장감을 표현",
@@ -61,15 +59,10 @@ GEN_IMAGE_CAMERA_SAMPLES ={
   },
 
   "시점": {
-    "front view": "정면에서 보는 시점",
     "side view": "측면에서 보는 시점",
     "profile view": "인물의 옆얼굴을 강조하는 시점",
     "rear view": "뒤에서 바라보는 시점, 미스터리나 여정의 느낌을 줌",
-    "point-of-view shot": "인물의 눈으로 보는 듯한 주관적 시점",
     "first-person perspective": "1인칭 게임이나 체험 장면처럼 보이는 시점",
-  },
-
-  "공간감": {
     "point perspective": "하나의 소실점으로 시선이 모이는 안정적인 원근",
     "linear perspective": "선들이 소실점으로 모이는 전통적 원근법",
     "isometric view": "게임 맵이나 설계도처럼 축이 일정한 등각 시점",
@@ -78,11 +71,9 @@ GEN_IMAGE_CAMERA_SAMPLES ={
   },
 
   "광원 효과": {
-    "front lighting": "정면에서 비추는 빛, 얼굴과 형태가 잘 보임",
     "side lighting": "옆에서 비추는 빛, 입체감과 명암이 강해짐",
     "backlighting": "뒤에서 비추는 빛, 실루엣과 윤곽 강조",
     "rim lighting": "피사체 가장자리에 빛 테두리를 만드는 조명",
-    "top lighting": "위에서 내려오는 빛, 엄숙하거나 극적인 느낌",
     "fine film grain": "필름 사진의 미세한 입자감",
     "halation": "밝은 부분 주변이 부드럽게 번지는 필름 효과",
   },
