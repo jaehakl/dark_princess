@@ -17,6 +17,7 @@ import {
   DEFAULT_SCRIBBLE_BRUSH_SIZE,
   DEFAULT_SCRIBBLE_OPACITY,
   MIN_OBJECT_SIZE,
+  MIN_SELECTION_SIZE,
 } from './constants';
 import {
   canvasToPngBlob,
@@ -32,6 +33,7 @@ import {
 import { createHistory, pushHistory, redoHistory, undoHistory } from './history';
 import { ImageEditorStage } from './ImageEditorStage';
 import { ImageLineageModal } from './ImageLineageModal';
+import { ImageObjectGenerateModal } from './ImageObjectGenerateModal';
 import { ImagePostprocessModal } from './ImagePostprocessModal';
 import { ImageSearchModal } from './ImageSearchModal';
 import { ImageEditorToolbar } from './ImageEditorToolbar';
@@ -139,6 +141,7 @@ export function ImageEditor({
   const [scribbleModified, setScribbleModified] = useState(false);
   const [isLineageOpen, setIsLineageOpen] = useState(false);
   const [isImageSearchOpen, setIsImageSearchOpen] = useState(false);
+  const [isObjectGenerateOpen, setIsObjectGenerateOpen] = useState(false);
   const [postprocessSourceBlob, setPostprocessSourceBlob] = useState<Blob | null>(null);
   const [isLoadingSource, setIsLoadingSource] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -148,6 +151,11 @@ export function ImageEditor({
   const hasImage = Boolean(baseImageRef.current || objectsRef.current.length > 0);
   const hasScribble = Boolean(scribbleCanvasRef.current && !isCanvasSolidColor(scribbleCanvasRef.current, 255, 255, 255));
   const hasPose = Boolean(poseRef.current.canvas);
+  const objectGenerateRect = selectionRect
+    && selectionRect.width >= MIN_SELECTION_SIZE
+    && selectionRect.height >= MIN_SELECTION_SIZE
+    ? selectionRect
+    : null;
   const canvasCursor = tab === 'pose' && hasPose
     ? dragStateRef.current?.kind === 'pose' ? 'grabbing' : 'grab'
     : tab === 'scribble' || (tab === 'image' && tool === 'feather')
@@ -463,14 +471,31 @@ export function ImageEditor({
     redraw();
   }, [redraw]);
 
-  async function addImageObject(blob: Blob) {
+  async function addImageObject(blob: Blob, placementRect: Rect | null = null) {
     pushImageHistory();
     const canvas = await createCanvasFromBlob(blob);
-    const nextObject = createObjectFromCanvas(canvas, width, height);
+    const nextObject = placementRect
+      ? {
+        ...createObjectFromCanvas(
+          canvas,
+          width,
+          height,
+          placementRect.x + placementRect.width / 2,
+          placementRect.y + placementRect.height / 2,
+        ),
+        width: Math.max(1, Math.round(placementRect.width)),
+        height: Math.max(1, Math.round(placementRect.height)),
+      }
+      : createObjectFromCanvas(canvas, width, height);
     replaceObjects([...objectsRef.current, nextObject], nextObject.id);
     setTab('image');
     setTool('object');
     setSelectionRect(null);
+  }
+
+  async function confirmGeneratedObject(blob: Blob, placementRect: Rect | null) {
+    await addImageObject(blob, placementRect);
+    setIsObjectGenerateOpen(false);
   }
 
   async function openPostprocessModal() {
@@ -1026,6 +1051,7 @@ export function ImageEditor({
         canOpenLineage={Boolean(imageId && onSelectLineageImage)}
         canOpenImageSearch={Boolean(onSelectLineageImage)}
         canOpenPostprocess={hasImage}
+        canOpenObjectGenerate
         hasActiveObject={Boolean(activeObject)}
         hasBaseImage={hasImage}
         hasScribble={hasScribble}
@@ -1055,6 +1081,7 @@ export function ImageEditor({
         onOpenLineage={() => setIsLineageOpen(true)}
         onOpenImageSearch={() => setIsImageSearchOpen(true)}
         onOpenPostprocess={() => void openPostprocessModal()}
+        onOpenObjectGenerate={() => setIsObjectGenerateOpen(true)}
         onFlip={flipActiveObject}
         onClearImage={clearImage}
         onToggleMaskOverlap={() => setMaskOverlap((current) => !current)}
@@ -1136,6 +1163,15 @@ export function ImageEditor({
           currentImageId={imageId}
           onClose={() => setIsImageSearchOpen(false)}
           onSelectImage={onSelectLineageImage}
+        />
+      ) : null}
+
+      {isObjectGenerateOpen ? (
+        <ImageObjectGenerateModal
+          parameters={parameters}
+          initialRect={objectGenerateRect}
+          onClose={() => setIsObjectGenerateOpen(false)}
+          onConfirm={confirmGeneratedObject}
         />
       ) : null}
 

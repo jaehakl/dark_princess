@@ -47,49 +47,7 @@ IMAGE_LIST_SORT_FIELDS = {"id", "scene_count", "family_root_image_id"}
 
 
 async def generate_images(db: AsyncSession, requests: list[GenerateImageRequestBase]) -> list[ImageBase]:
-    if not requests:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="image generation requests are required")
-
-    prepared_requests: list[dict[str, Any]] = []
-    for request in requests:
-        positive_prompt = request.positive_prompt.strip()
-        if not positive_prompt:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="positive_prompt is required")
-
-        negative_prompt = (request.negative_prompt or "").strip()
-        resolved_settings = resolve_image_generation_settings(request.model_parameters)
-        model_path = resolve_image_generation_model_path(resolved_settings)
-        step_count = resolved_settings.steps or GEN_IMAGE_STEPS
-        cfg = resolved_settings.cfg or GEN_IMAGE_CFG
-        height = resolved_settings.height or GEN_IMAGE_HEIGHT
-        width = resolved_settings.width or GEN_IMAGE_WIDTH
-        strength = resolved_settings.strength or GEN_IMAGE_STRENGTH
-        sampler = resolved_settings.sampler or ""
-        scheduler = resolved_settings.scheduler or ""
-        prepared_requests.append(
-            {
-                "positive_prompt": positive_prompt,
-                "negative_prompt": negative_prompt,
-                "model_path": model_path,
-                "step_count": step_count,
-                "cfg": cfg,
-                "height": height,
-                "width": width,
-                "strength": strength,
-                "sampler": sampler,
-                "scheduler": scheduler,
-                "clip_skip": resolved_settings.clip_skip,
-            }
-        )
-
-    gpu_ids = get_available_cuda_device_ids()
-    if not gpu_ids:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="CUDA GPU is not available",
-        )
-    for index, prepared_request in enumerate(prepared_requests):
-        prepared_request["gpu_id"] = gpu_ids[index % len(gpu_ids)]
+    prepared_requests = prepare_image_generation_requests(requests)
 
     generated_results = await asyncio.gather(
         *(generate_image_only_output(prepared_request) for prepared_request in prepared_requests)
@@ -157,6 +115,53 @@ async def generate_images(db: AsyncSession, requests: list[GenerateImageRequestB
         )
         for stored_image in stored_images
     ]
+
+
+async def generate_image_blob(request: GenerateImageRequestBase) -> tuple[bytes, str, int | None]:
+    prepared_request = prepare_image_generation_requests([request])[0]
+    generated_result = await generate_image_only_output(prepared_request)
+    image_bytes, media_type = await encode_generated_image(generated_result["image"])
+    return image_bytes, media_type, generated_result["seed"]
+
+
+def prepare_image_generation_requests(requests: list[GenerateImageRequestBase]) -> list[dict[str, Any]]:
+    if not requests:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="image generation requests are required")
+
+    prepared_requests: list[dict[str, Any]] = []
+    for request in requests:
+        positive_prompt = request.positive_prompt.strip()
+        if not positive_prompt:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="positive_prompt is required")
+
+        negative_prompt = (request.negative_prompt or "").strip()
+        resolved_settings = resolve_image_generation_settings(request.model_parameters)
+        model_path = resolve_image_generation_model_path(resolved_settings)
+        prepared_requests.append(
+            {
+                "positive_prompt": positive_prompt,
+                "negative_prompt": negative_prompt,
+                "model_path": model_path,
+                "step_count": resolved_settings.steps or GEN_IMAGE_STEPS,
+                "cfg": resolved_settings.cfg or GEN_IMAGE_CFG,
+                "height": resolved_settings.height or GEN_IMAGE_HEIGHT,
+                "width": resolved_settings.width or GEN_IMAGE_WIDTH,
+                "strength": resolved_settings.strength or GEN_IMAGE_STRENGTH,
+                "sampler": resolved_settings.sampler or "",
+                "scheduler": resolved_settings.scheduler or "",
+                "clip_skip": resolved_settings.clip_skip,
+            }
+        )
+
+    gpu_ids = get_available_cuda_device_ids()
+    if not gpu_ids:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="CUDA GPU is not available",
+        )
+    for index, prepared_request in enumerate(prepared_requests):
+        prepared_request["gpu_id"] = gpu_ids[index % len(gpu_ids)]
+    return prepared_requests
 
 
 async def generate_image_only_output(prepared_request: dict[str, Any]) -> dict[str, Any]:
@@ -229,6 +234,12 @@ async def make_optional_positive_prompt_embedding(positive_prompt: str) -> list[
 
 async def upload_generated_image(image: Any, filename_prefix: str) -> str:
     image_key = build_object_key(kind="image", filename=f"{filename_prefix}{GEN_IMAGE_OUTPUT_EXTENSION}")
+    image_bytes, media_type = await encode_generated_image(image)
+    upload_fileobj(BytesIO(image_bytes), image_key, media_type)
+    return image_key
+
+
+async def encode_generated_image(image: Any) -> tuple[bytes, str]:
     image_bytes = BytesIO()
     output_format = GEN_IMAGE_OUTPUT_FORMAT.upper()
     save_kwargs = {"format": GEN_IMAGE_OUTPUT_FORMAT}
@@ -237,9 +248,7 @@ async def upload_generated_image(image: Any, filename_prefix: str) -> str:
     if output_format == "JPEG" and getattr(image, "mode", "RGB") != "RGB":
         image = image.convert("RGB")
     await asyncio.to_thread(image.save, image_bytes, **save_kwargs)
-    image_bytes.seek(0)
-    upload_fileobj(image_bytes, image_key, image_content_type(GEN_IMAGE_OUTPUT_FORMAT))
-    return image_key
+    return image_bytes.getvalue(), image_content_type(GEN_IMAGE_OUTPUT_FORMAT)
 
 
 def image_content_type(output_format: str) -> str:

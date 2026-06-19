@@ -129,6 +129,22 @@ export const dbTables = {
       request<ImageGenerationSettings>('get', '/image-util/image-settings/defaults'),
     translateCommaTexts: (texts: string[]) =>
       request<string[]>('post', '/image-util/translate-comma-texts', texts),
+    generateImageBlob: async (item: GenerateImageRequest) => {
+      const response = await fetch(`${API_URL}/image-util/generate-image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(item),
+      });
+      if (!response.ok) {
+        throw new Error(await readResponseError(response, '이미지 생성에 실패했습니다.'));
+      }
+      const seedText = response.headers.get('X-Image-Seed');
+      const seed = seedText !== null && Number.isFinite(Number(seedText)) ? Number(seedText) : null;
+      return {
+        blob: await response.blob(),
+        seed,
+      };
+    },
     postprocessImage: async (
       image: Blob,
       operation: string,

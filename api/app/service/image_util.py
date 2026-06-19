@@ -129,6 +129,7 @@ def postprocess_image(
     parameters_text: str | None = None,
 ) -> tuple[bytes, str]:
     parameters = _parse_postprocess_parameters(parameters_text)
+
     pil_format, media_type = _postprocess_output_format(parameters)
     quality = _postprocess_output_quality(parameters)
 

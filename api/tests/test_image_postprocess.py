@@ -1,9 +1,13 @@
 import json
+import sys
 import unittest
 from io import BytesIO
+from pathlib import Path
 
 from fastapi import HTTPException
 from PIL import Image, ImageDraw
+
+sys.path.append(str(Path(__file__).resolve().parents[1] / "app"))
 
 from service.image_util import postprocess_image
 

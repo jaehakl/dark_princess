@@ -5,12 +5,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_db
 from models import (
+    GenerateImageRequestBase,
     GenerateScenePromptRequestBase,
     GenerateScenePromptResponseBase,
     ImageGenerationSettingsBase,
     ImagePromptExtractionResponseBase,
     RecommendPromptItemBase,
 )
+from service.image import generate_image_blob
 from service.image_util import (
     WD14_DEFAULT_CHARACTER_THRESHOLD,
     WD14_DEFAULT_GENERAL_THRESHOLD,
@@ -82,3 +84,14 @@ async def api_postprocess_image(
     image_bytes = await read_image_upload(image)
     output_bytes, media_type = postprocess_image(image_bytes, operation, parameters)
     return Response(content=output_bytes, media_type=media_type)
+
+
+@router.post("/generate-image")
+async def api_generate_image_blob(
+    request: GenerateImageRequestBase,
+):
+    image_bytes, media_type, seed = await generate_image_blob(request)
+    headers = {}
+    if seed is not None:
+        headers["X-Image-Seed"] = str(seed)
+    return Response(content=image_bytes, media_type=media_type, headers=headers)
