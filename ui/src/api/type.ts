@@ -18,6 +18,12 @@ export type UpsertResponse = {
   fk_not_found?: Record<string, number[]> | null;
 };
 
+export type ImageDeleteResponse = {
+  requested_ids: number[];
+  deleted_ids: number[];
+  skipped_scene_linked_ids: number[];
+};
+
 export type CameraSamples = Record<string, Record<string, string>>;
 
 export type ImageGenerationSettings = {

@@ -13,6 +13,7 @@ from models import (
     GetListRequestBase,
     GetListResponseBase,
     ImageBase,
+    ImageDeleteResponseBase,
     ImageListItemBase,
 )
 from settings import settings
@@ -310,6 +311,31 @@ async def forward_deleted_image_seed_links(db: AsyncSession, ids: list[int]) -> 
             .where(Image.seed_image_id == deleted_id)
             .values(seed_image_id=forward_id)
         )
+
+
+async def get_image_delete_targets(db: AsyncSession, ids: list[int]) -> ImageDeleteResponseBase:
+    requested_ids = normalize_int_ids(ids, sort=True)
+    if not requested_ids:
+        return ImageDeleteResponseBase(
+            requested_ids=[],
+            deleted_ids=[],
+            skipped_scene_linked_ids=[],
+        )
+
+    existing_ids = set(
+        (await db.execute(select(Image.id).where(Image.id.in_(requested_ids)))).scalars().all()
+    )
+    scene_linked_ids = set(
+        (await db.execute(select(Scene.image_id).where(Scene.image_id.in_(requested_ids)))).scalars().all()
+    )
+    skipped_scene_linked_ids = sorted(existing_ids & scene_linked_ids)
+    deleted_ids = sorted(existing_ids - scene_linked_ids)
+
+    return ImageDeleteResponseBase(
+        requested_ids=requested_ids,
+        deleted_ids=deleted_ids,
+        skipped_scene_linked_ids=skipped_scene_linked_ids,
+    )
 
 
 async def get_image_list_response(

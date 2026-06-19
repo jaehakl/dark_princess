@@ -1,9 +1,10 @@
+import json
 from io import BytesIO
 from math import isfinite
 from pathlib import Path
 
-from fastapi import HTTPException, status
-from PIL import Image, UnidentifiedImageError
+from fastapi import HTTPException, UploadFile, status
+from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,6 +39,8 @@ from service.image_util_constants import (
     WD14_TAGGER_MODEL_ID,
 )
 from service.selection_model import cosine_distance
+from utils.image_processing import process_image
+from utils.local_storage import is_allowed_content_type
 from model_runtime import (
     encode_scene_text,
     extract_visual_keywords,
@@ -47,6 +50,13 @@ from model_runtime import (
     translate_visual_keywords_to_english,
 )
 from utils.vector import VECTOR_DIMENSION, validate_embedding
+
+POSTPROCESS_OUTPUT_FORMATS = {
+    "jpeg": ("JPEG", "image/jpeg"),
+    "jpg": ("JPEG", "image/jpeg"),
+    "png": ("PNG", "image/png"),
+    "webp": ("WEBP", "image/webp"),
+}
 
 
 async def extract_prompt_from_image(
@@ -93,6 +103,104 @@ async def extract_prompt_from_image(
 def validate_wd14_threshold(value: float, name: str) -> None:
     if not isfinite(value) or value < 0 or value > 1:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{name} must be between 0 and 1")
+
+
+async def read_image_upload(upload: UploadFile | None) -> bytes:
+    if upload is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="image is required")
+    if not is_allowed_content_type(upload.content_type):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="image content type is not allowed")
+
+    image = await upload.read()
+    max_size_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    if not image:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="image is empty")
+    if len(image) > max_size_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"image exceeds {settings.MAX_UPLOAD_SIZE_MB} MB",
+        )
+    return image
+
+
+def postprocess_image(
+    image_bytes: bytes,
+    operation: str,
+    parameters_text: str | None = None,
+) -> tuple[bytes, str]:
+    parameters = _parse_postprocess_parameters(parameters_text)
+    pil_format, media_type = _postprocess_output_format(parameters)
+    quality = _postprocess_output_quality(parameters)
+
+    try:
+        with Image.open(BytesIO(image_bytes)) as opened_image:
+            source_image = ImageOps.exif_transpose(opened_image)
+            alpha = source_image.getchannel("A") if "A" in source_image.getbands() else None
+            rgb_image = source_image.convert("RGB")
+    except UnidentifiedImageError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="image is not a supported image") from exc
+    except OSError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="image could not be read") from exc
+
+    try:
+        processed_image = process_image(rgb_image, operation, parameters)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    if alpha is not None and pil_format in {"PNG", "WEBP"}:
+        if alpha.size != processed_image.size:
+            alpha = alpha.resize(processed_image.size, Image.Resampling.LANCZOS)
+        processed_image = processed_image.convert("RGBA")
+        processed_image.putalpha(alpha)
+    elif processed_image.mode != "RGB":
+        processed_image = processed_image.convert("RGB")
+
+    output = BytesIO()
+    save_kwargs: dict[str, object] = {"format": pil_format}
+    if pil_format in {"JPEG", "WEBP"}:
+        save_kwargs["quality"] = quality
+    try:
+        processed_image.save(output, **save_kwargs)
+    except OSError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="image could not be encoded") from exc
+    return output.getvalue(), media_type
+
+
+def _parse_postprocess_parameters(parameters_text: str | None) -> dict[str, object]:
+    text = (parameters_text or "").strip()
+    if not text:
+        return {}
+    try:
+        parameters = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="parameters must be valid JSON") from exc
+    if not isinstance(parameters, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="parameters must be a JSON object")
+    return parameters
+
+
+def _postprocess_output_format(parameters: dict[str, object]) -> tuple[str, str]:
+    value = str(parameters.get("output_format", "png")).strip().lower()
+    output_format = POSTPROCESS_OUTPUT_FORMATS.get(value)
+    if output_format is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="output_format must be png, jpeg, or webp",
+        )
+    return output_format
+
+
+def _postprocess_output_quality(parameters: dict[str, object]) -> int:
+    value = parameters.get("quality", 95)
+    if isinstance(value, bool):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="quality must be an integer")
+    try:
+        quality = int(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="quality must be an integer") from exc
+    if quality < 1 or quality > 100:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="quality must be between 1 and 100")
+    return quality
 
 
 async def translate_comma_texts(texts: list[str]) -> list[str]:

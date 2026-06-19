@@ -9,11 +9,13 @@ from models import (
     GetListRequestBase,
     GetListResponseBase,
     ImageBase,
+    ImageDeleteResponseBase,
     UpsertResponseBase,
 )
 from service.image import (
     forward_deleted_image_seed_links,
     generate_images,
+    get_image_delete_targets,
     get_image_lineage_ids,
     get_image_list_response,
 )
@@ -69,16 +71,18 @@ async def api_get_image_lineage(
     return await get_image_lineage_ids(db, image_id)
 
 
-@router.delete("/", status_code=200)
+@router.delete("/", response_model=ImageDeleteResponseBase, status_code=200)
 async def api_delete_image_list(
     ids: List[int] = Body(...),
     db: AsyncSession = Depends(get_db),
 ):
-    await forward_deleted_image_seed_links(db, ids)
-    await delete_items(
-        db,
-        IMAGE_CRUD_SPEC,
-        ids,
-        cleanup_fields=("image_object_key", "scribble_object_key", "pose_object_key"),
-    )
-    return None
+    result = await get_image_delete_targets(db, ids)
+    if result.deleted_ids:
+        await forward_deleted_image_seed_links(db, result.deleted_ids)
+        await delete_items(
+            db,
+            IMAGE_CRUD_SPEC,
+            result.deleted_ids,
+            cleanup_fields=("image_object_key", "scribble_object_key", "pose_object_key"),
+        )
+    return result

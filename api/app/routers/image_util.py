@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Form, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_db
@@ -11,17 +11,17 @@ from models import (
     ImagePromptExtractionResponseBase,
     RecommendPromptItemBase,
 )
-from settings import settings
 from service.image_util import (
     WD14_DEFAULT_CHARACTER_THRESHOLD,
     WD14_DEFAULT_GENERAL_THRESHOLD,
     extract_prompt_from_image,
     generate_prompt,
     get_default_image_generation_settings,
+    postprocess_image,
+    read_image_upload,
     recommend_prompt,
     translate_comma_texts,
 )
-from utils.local_storage import is_allowed_content_type
 
 router = APIRouter(prefix="/image-util", tags=["image-util"])
 
@@ -65,7 +65,7 @@ async def api_extract_prompt(
     general_threshold: float = Form(default=WD14_DEFAULT_GENERAL_THRESHOLD),
     character_threshold: float = Form(default=WD14_DEFAULT_CHARACTER_THRESHOLD),
 ):
-    image_bytes = await read_extract_prompt_image(image)
+    image_bytes = await read_image_upload(image)
     return await extract_prompt_from_image(
         image_bytes,
         general_threshold=general_threshold,
@@ -73,19 +73,12 @@ async def api_extract_prompt(
     )
 
 
-async def read_extract_prompt_image(upload: UploadFile | None) -> bytes:
-    if upload is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="image is required")
-    if not is_allowed_content_type(upload.content_type):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="image content type is not allowed")
-
-    image = await upload.read()
-    max_size_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
-    if not image:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="image is empty")
-    if len(image) > max_size_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"image exceeds {settings.MAX_UPLOAD_SIZE_MB} MB",
-        )
-    return image
+@router.post("/postprocess")
+async def api_postprocess_image(
+    image: UploadFile | None = File(default=None),
+    operation: str = Form(...),
+    parameters: str = Form(default="{}"),
+):
+    image_bytes = await read_image_upload(image)
+    output_bytes, media_type = postprocess_image(image_bytes, operation, parameters)
+    return Response(content=output_bytes, media_type=media_type)

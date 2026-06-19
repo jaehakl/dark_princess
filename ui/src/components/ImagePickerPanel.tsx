@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 import type { ImageRecord } from '../api/type';
 import {
   Button,
@@ -27,7 +27,7 @@ type ImagePickerPanelProps = {
   totalRows: number;
   onPageChange: (page: number) => void;
   onSelectImage: (image: ImageRecord) => void;
-  onToggleSelection?: (imageId: number) => void;
+  onToggleSelection?: (imageId: number, isRangeSelection: boolean) => void;
 };
 
 function summarizeParameters(parameters: Record<string, unknown> | null | undefined) {
@@ -80,7 +80,11 @@ export function ImagePickerPanel({
     onSelectImage(image);
   }
 
-  function handleImageClick(image: ImageRecord | null, isCurrent: boolean) {
+  function handleImageClick(
+    image: ImageRecord | null,
+    isCurrent: boolean,
+    isRangeSelection: boolean,
+  ) {
     if (!isSelectionMode) {
       selectImage(image);
       return;
@@ -92,7 +96,7 @@ export function ImagePickerPanel({
     }
 
     setSelectionError(null);
-    onToggleSelection(imageId);
+    onToggleSelection(imageId, isRangeSelection);
   }
 
   return (
@@ -141,7 +145,9 @@ export function ImagePickerPanel({
                   isSelected && 'border-[rgba(255,226,186,0.95)] shadow-[0_0_22px_rgba(240,179,95,0.22)]',
                   isCurrent && 'border-[rgba(255,226,186,0.95)] shadow-[0_0_22px_rgba(240,179,95,0.14)]',
                 )}
-                onClick={() => handleImageClick(image, isCurrent)}
+                onClick={(event: MouseEvent<HTMLButtonElement>) => (
+                  handleImageClick(image, isCurrent, event.shiftKey)
+                )}
                 disabled={isDisabled}
                 aria-pressed={isSelectionMode ? isSelected : undefined}
               >

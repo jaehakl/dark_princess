@@ -27,6 +27,12 @@ class UpsertResponseBase(BaseModel):
     fk_not_found: Optional[Dict[str, List[int]]] = None
 
 
+class ImageDeleteResponseBase(BaseModel):
+    requested_ids: List[int]
+    deleted_ids: List[int]
+    skipped_scene_linked_ids: List[int]
+
+
 class NextSceneRequestBase(BaseModel):
     scene_id: Optional[int] = None
     status_id: int

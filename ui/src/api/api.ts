@@ -7,6 +7,7 @@ import type {
   GenerateSelectionModelRequest,
   GetListRequest,
   GetListResponse,
+  ImageDeleteResponse,
   ImageGenerationSettings,
   ImageRecord,
   NextSceneRequest,
@@ -69,7 +70,7 @@ export const dbTables = {
       request<ImageRecord[]>('post', '/image/generate', items),
     upsertRow: (items: ImageRecord[]) => request<UpsertResponse[]>('post', '/image/upsert', items),
     getLineageIds: (imageId: number) => request<number[]>('get', `/image/${imageId}/lineage`),
-    deleteRows: (ids: number[]) => request<null>('delete', '/image/', ids).then(() => undefined),
+    deleteRows: (ids: number[]) => request<ImageDeleteResponse>('delete', '/image/', ids),
   },
 
   SelectionModel: {

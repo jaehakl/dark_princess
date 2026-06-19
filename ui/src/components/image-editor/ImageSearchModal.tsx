@@ -46,6 +46,7 @@ export function ImageSearchModal({
   const [isLoading, setIsLoading] = useState(true);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [lastSelectedImageId, setLastSelectedImageId] = useState<number | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -106,14 +107,10 @@ export function ImageSearchModal({
     [currentImageId, items, selectedIds],
   );
 
-  const selectedSceneCount = useMemo(
-    () => selectedImages.reduce((total, image) => total + (image.scene_count ?? 0), 0),
-    [selectedImages],
-  );
-
   function toggleSelectionMode() {
     setError(null);
     setSelectedIds(new Set());
+    setLastSelectedImageId(null);
     setIsSelectionMode((current) => !current);
   }
 
@@ -127,10 +124,49 @@ export function ImageSearchModal({
       }
       return next;
     });
+    setLastSelectedImageId(imageId);
+  }
+
+  function selectImageRange(imageId: number) {
+    const selectableIds = items
+      .map((item) => item.image)
+      .filter((image): image is ImageRecord & { id: number } => (
+        typeof image?.id === 'number' &&
+        image.id !== currentImageId &&
+        Boolean(image.image_object_key) &&
+        (image.scene_count ?? 0) === 0
+      ))
+      .map((image) => image.id);
+    const startIndex = lastSelectedImageId === null ? -1 : selectableIds.indexOf(lastSelectedImageId);
+    const endIndex = selectableIds.indexOf(imageId);
+
+    if (startIndex === -1 || endIndex === -1) {
+      toggleSelection(imageId);
+      return;
+    }
+
+    const minIndex = Math.min(startIndex, endIndex);
+    const maxIndex = Math.max(startIndex, endIndex);
+    const rangeIds = selectableIds.slice(minIndex, maxIndex + 1);
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      rangeIds.forEach((rangeId) => next.add(rangeId));
+      return next;
+    });
+    setLastSelectedImageId(imageId);
+  }
+
+  function handleToggleSelection(imageId: number, isRangeSelection: boolean) {
+    if (isRangeSelection) {
+      selectImageRange(imageId);
+      return;
+    }
+    toggleSelection(imageId);
   }
 
   function changePage(nextPage: number) {
     setSelectedIds(new Set());
+    setLastSelectedImageId(null);
     setPage(nextPage);
   }
 
@@ -140,9 +176,7 @@ export function ImageSearchModal({
       return;
     }
 
-    const confirmed = window.confirm(
-      `Image ${ids.length}개를 삭제할까요?\n연결된 Scene ${selectedSceneCount}개의 image_id가 비워집니다.`,
-    );
+    const confirmed = window.confirm(`Image ${ids.length}개를 삭제할까요?`);
     if (!confirmed) {
       return;
     }
@@ -152,6 +186,7 @@ export function ImageSearchModal({
     try {
       await dbTables.Image.deleteRows(ids);
       setSelectedIds(new Set());
+      setLastSelectedImageId(null);
       setReloadKey((current) => current + 1);
     } catch (deleteError) {
       setError(getErrorMessage(deleteError));
@@ -217,7 +252,7 @@ export function ImageSearchModal({
             onSelectImage(image);
             onClose();
           }}
-          onToggleSelection={toggleSelection}
+          onToggleSelection={handleToggleSelection}
         />
       </Panel>
     </ModalBackdrop>

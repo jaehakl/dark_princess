@@ -4,8 +4,8 @@ import {
 } from 'react';
 import type {
   Dispatch,
-  KeyboardEvent as ReactKeyboardEvent,
   SetStateAction,
+  WheelEvent as ReactWheelEvent,
 } from 'react';
 import type { CameraSamples, PromptColumnName } from '../../api/type';
 import { Button, FieldLabel, FormControl, Spinner } from '../ui';
@@ -143,11 +143,11 @@ export function ScenePromptPanel({
     });
   }
 
-  function handlePromptValueKeyDown(
-    event: ReactKeyboardEvent<HTMLTextAreaElement>,
+  function handlePromptValueWheel(
+    event: ReactWheelEvent<HTMLTextAreaElement>,
     column: (typeof PROMPT_EDITOR_COLUMNS)[number],
   ) {
-    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
+    if (event.deltaY === 0) {
       return;
     }
 
@@ -155,7 +155,7 @@ export function ScenePromptPanel({
     const adjustment = adjustPromptKeywordWeight(
       textarea.value,
       textarea.selectionStart,
-      event.key === 'ArrowUp' ? 1 : -1,
+      event.deltaY < 0 ? 1 : -1,
     );
     if (!adjustment) {
       return;
@@ -237,7 +237,7 @@ export function ScenePromptPanel({
                       onChange={(event) => {
                         updatePromptValue(column, event.target.value);
                       }}
-                      onKeyDown={(event) => handlePromptValueKeyDown(event, column)}
+                      onWheel={(event) => handlePromptValueWheel(event, column)}
                       onInput={(event) => resizeTextarea(event.currentTarget)}
                       className="min-h-10 w-full resize-none overflow-hidden px-3 py-2 text-sm"
                       disabled={isLoadingScene || Boolean(savingMode)}

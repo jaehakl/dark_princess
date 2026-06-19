@@ -64,7 +64,7 @@ GEN_IMAGE_CAMERA_SAMPLES ={
     "fisheye lens": "어안렌즈처럼 휘어진 왜곡과 독특한 공간감을 만듦",
   },
 
-  "밫": {
+  "빛": {
     "side lighting": "옆에서 비추는 빛, 입체감과 명암이 강해짐",
     "backlighting": "뒤에서 비추는 빛, 실루엣과 윤곽 강조",
     "rim lighting": "피사체 가장자리에 빛 테두리를 만드는 조명",
