@@ -40,7 +40,7 @@ export const EMPTY_TRANSLATION_DRAFT = PROMPT_EDITOR_COLUMNS.reduce(
   {} as Record<(typeof PROMPT_EDITOR_COLUMNS)[number]['key'], string>,
 );
 
-export const QUICK_IMAGE_STRENGTHS = [0.5, 0.75, 0.85, 0.95, 1];
+export const QUICK_IMAGE_STRENGTHS = [0.25, 0.5, 0.75, 0.9, 1];
 
 export const STATUS_CHANGE_FIELDS = [
   { key: 'cash', label: '현금' },

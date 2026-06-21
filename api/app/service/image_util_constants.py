@@ -1,5 +1,4 @@
-#GEN_IMAGE_POSITIVE_BASE = "masterpiece, best quality"
-GEN_IMAGE_POSITIVE_BASE = ""
+GEN_IMAGE_POSITIVE_BASE = "masterpiece, best quality"
 GEN_IMAGE_NEGATIVE_PROMPT = "low quality, blurry, jpeg artifacts, watermark, signature, text, logo, distorted, deformed face"
 
 
@@ -51,7 +50,7 @@ GEN_IMAGE_CAMERA_SAMPLES ={
     "high-angle shot": "위에서 내려다봐 피사체를 작고 약하게 보이게 함",
     "low-angle shot": "아래에서 올려다봐 피사체를 강하고 위압적으로 보이게 함",
     "overhead": "정수리 위에서 내려다보는 시점",
-    "tilted composition": "화면을 기울여 불안감이나 혼란을 주는 각도",
+    "Dutch angle": "화면을 기울여 불안감이나 혼란을 주는 각도",
   },
 
   "시점": {
