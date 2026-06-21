@@ -287,13 +287,15 @@ export function ImageObjectGenerateModal({
           height: imageHeight,
         },
       };
-      const result = await dbTables.ImageUtil.generateImageBlob(request);
-      const sourceCanvas = await createCanvasFromBlob(result.blob);
+      const response = await dbTables.ImageUtil.generateImageBlob(request);
+      const seedText = response.headers['x-image-seed'];
+      const seed = typeof seedText === 'string' && Number.isFinite(Number(seedText)) ? Number(seedText) : null;
+      const sourceCanvas = await createCanvasFromBlob(response.data);
       sourceCanvasRef.current = sourceCanvas;
       setPreviewSize({ width: sourceCanvas.width, height: sourceCanvas.height });
       setHasGeneratedImage(true);
       resetPreviewEdits();
-      setGeneratedSeed(result.seed);
+      setGeneratedSeed(seed);
       setRenderVersion((version) => version + 1);
     } catch (generateError) {
       setError(getErrorMessage(generateError));

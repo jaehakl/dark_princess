@@ -1,6 +1,6 @@
 // YOU MUST OPEN ALL FRONTEND SOURCE FILES with UTF-8 ENCODING to READ KOREAN CHARACTERS CORRECTLY.
 
-import { API_URL, request } from './http';
+import { API_URL, request, requestResponse } from './http';
 import type {
   AdjustSelectionModelRequest,
   GenerateImageRequest,
@@ -24,22 +24,6 @@ import type {
 } from './type';
 
 export { API_URL };
-
-async function readResponseError(response: Response, fallbackMessage: string) {
-  try {
-    const body = await response.json();
-    if (typeof body?.detail === 'string' && body.detail) {
-      return body.detail;
-    }
-  } catch {
-    // Use fallback below when the server does not return JSON.
-  }
-  return fallbackMessage;
-}
-
-export const LlmUtil = {
-  ask: (item: LlmAskRequest) => request<string>('post', '/llm-util/ask', item),
-};
 
 export const dbTables = {
   Cut: {
@@ -166,41 +150,12 @@ export const dbTables = {
       request<ImageGenerationSettings>('get', '/image-util/image-settings/defaults'),
     translateCommaTexts: (texts: string[]) =>
       request<string[]>('post', '/image-util/translate-comma-texts', texts),
-    generateImageBlob: async (item: GenerateImageRequest) => {
-      const response = await fetch(`${API_URL}/image-util/generate-image`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(item),
-      });
-      if (!response.ok) {
-        throw new Error(await readResponseError(response, '이미지 생성에 실패했습니다.'));
-      }
-      const seedText = response.headers.get('X-Image-Seed');
-      const seed = seedText !== null && Number.isFinite(Number(seedText)) ? Number(seedText) : null;
-      return {
-        blob: await response.blob(),
-        seed,
-      };
-    },
-    postprocessImage: async (
-      image: Blob,
-      operation: string,
-      parameters: Record<string, unknown> = {},
-    ) => {
-      const formData = new FormData();
-      formData.append('image', image, 'image.png');
-      formData.append('operation', operation);
-      formData.append('parameters', JSON.stringify(parameters));
-
-      const response = await fetch(`${API_URL}/image-util/postprocess`, {
-        method: 'POST',
-        body: formData,
-      });
-      if (!response.ok) {
-        throw new Error(await readResponseError(response, '이미지 후처리에 실패했습니다.'));
-      }
-      return await response.blob();
-    },
+    generateImageBlob: (item: GenerateImageRequest) =>
+      requestResponse<Blob>('post', '/image-util/generate-image', item, { responseType: 'blob', fallbackMessage: '이미지 생성에 실패했습니다.' }),
+    postprocessImage: (formData: FormData) =>
+      request<Blob>('post', '/image-util/postprocess', formData, { responseType: 'blob', fallbackMessage: '이미지 후처리에 실패했습니다.' }),
   },
-  LlmUtil,
+  LlmUtil: {
+    ask: (item: LlmAskRequest) => request<string>('post', '/llm-util/ask', item),
+  },
 };

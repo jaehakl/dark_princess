@@ -258,7 +258,12 @@ export function ImagePostprocessModal({
     setIsApplying(true);
     setError(null);
     try {
-      const nextBlob = await dbTables.ImageUtil.postprocessImage(currentBlob, operation, getParameters());
+      const formData = new FormData();
+      formData.append('image', currentBlob, 'image.png');
+      formData.append('operation', operation);
+      formData.append('parameters', JSON.stringify(getParameters()));
+
+      const nextBlob = await dbTables.ImageUtil.postprocessImage(formData);
       pushHistory(historyRef.current, currentBlob);
       syncHistoryCounts();
       replaceCurrentBlob(nextBlob);
