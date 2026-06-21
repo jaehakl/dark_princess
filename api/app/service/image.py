@@ -7,7 +7,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db import Image, Scene
+from db import Image, Cut
 from models import (
     GenerateImageRequestBase,
     GetListRequestBase,
@@ -17,7 +17,7 @@ from models import (
     ImageListItemBase,
 )
 from settings import settings
-from model_runtime import encode_scene_text, generate_images_batch, get_available_cuda_device_ids
+from model_runtime import encode_cut_text, generate_images_batch, get_available_cuda_device_ids
 from service.image_util import resolve_image_generation_model_path, resolve_image_generation_settings
 from service.image_util_constants import (
     GEN_IMAGE_CFG,
@@ -43,7 +43,7 @@ from utils.local_storage import (
 from utils.vector import VECTOR_DIMENSION
 
 
-IMAGE_LIST_SORT_FIELDS = {"id", "scene_count", "family_root_image_id"}
+IMAGE_LIST_SORT_FIELDS = {"id", "cut_count", "family_root_image_id"}
 
 
 async def generate_images(db: AsyncSession, requests: list[GenerateImageRequestBase]) -> list[ImageBase]:
@@ -207,19 +207,19 @@ async def make_positive_prompt_embedding(positive_prompt: str) -> list[float] | 
     if not positive_prompt.strip():
         return None
 
-    model_name = settings.SCENE_EMBEDDING_MODEL_NAME.strip()
+    model_name = settings.CUT_EMBEDDING_MODEL_NAME.strip()
     if not model_name:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="scene embedding model name is required",
+            detail="cut embedding model name is required",
         )
 
     embedding_prompt = strip_prompt_weight_syntax(positive_prompt)
-    embedding = await encode_scene_text(model_name, f"passage: {embedding_prompt}")
+    embedding = await encode_cut_text(model_name, f"passage: {embedding_prompt}")
     if len(embedding) != VECTOR_DIMENSION:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"scene embedding model must return {VECTOR_DIMENSION} dimensions",
+            detail=f"cut embedding model must return {VECTOR_DIMENSION} dimensions",
         )
     return embedding
 
@@ -328,22 +328,22 @@ async def get_image_delete_targets(db: AsyncSession, ids: list[int]) -> ImageDel
         return ImageDeleteResponseBase(
             requested_ids=[],
             deleted_ids=[],
-            skipped_scene_linked_ids=[],
+            skipped_cut_linked_ids=[],
         )
 
     existing_ids = set(
         (await db.execute(select(Image.id).where(Image.id.in_(requested_ids)))).scalars().all()
     )
-    scene_linked_ids = set(
-        (await db.execute(select(Scene.image_id).where(Scene.image_id.in_(requested_ids)))).scalars().all()
+    cut_linked_ids = set(
+        (await db.execute(select(Cut.image_id).where(Cut.image_id.in_(requested_ids)))).scalars().all()
     )
-    skipped_scene_linked_ids = sorted(existing_ids & scene_linked_ids)
-    deleted_ids = sorted(existing_ids - scene_linked_ids)
+    skipped_cut_linked_ids = sorted(existing_ids & cut_linked_ids)
+    deleted_ids = sorted(existing_ids - cut_linked_ids)
 
     return ImageDeleteResponseBase(
         requested_ids=requested_ids,
         deleted_ids=deleted_ids,
-        skipped_scene_linked_ids=skipped_scene_linked_ids,
+        skipped_cut_linked_ids=skipped_cut_linked_ids,
     )
 
 
@@ -351,7 +351,7 @@ async def get_image_list_response(
     db: AsyncSession,
     request: GetListRequestBase,
 ) -> GetListResponseBase:
-    image_rows = await get_image_rows_with_scene_counts(db, request)
+    image_rows = await get_image_rows_with_cut_counts(db, request)
     parent_ids = await get_image_parent_ids(db)
     family_root_ids = build_family_root_ids(parent_ids)
     family_counts = Counter(family_root_ids.values())
@@ -381,7 +381,7 @@ async def get_image_list_response(
                 negative_prompt=image.negative_prompt,
                 seed_image_id=image.seed_image_id,
                 model_parameters=image.model_parameters,
-                scene_count=row["scene_count"],
+                cut_count=row["cut_count"],
                 family_root_image_id=family_root_image_id,
                 family_image_count=family_counts.get(family_root_image_id, 1),
             )
@@ -390,14 +390,14 @@ async def get_image_list_response(
     return GetListResponseBase(total=total, items=items)
 
 
-async def get_image_rows_with_scene_counts(
+async def get_image_rows_with_cut_counts(
     db: AsyncSession,
     request: GetListRequestBase,
 ) -> list[dict[str, int]]:
-    scene_count = func.count(Scene.id).label("scene_count")
+    cut_count = func.count(Cut.id).label("cut_count")
     stmt = (
-        select(Image.id, Image.seed_image_id, scene_count)
-        .outerjoin(Scene, Scene.image_id == Image.id)
+        select(Image.id, Image.seed_image_id, cut_count)
+        .outerjoin(Cut, Cut.image_id == Image.id)
         .group_by(Image.id)
     )
 
@@ -410,7 +410,7 @@ async def get_image_rows_with_scene_counts(
         {
             "id": row.id,
             "seed_image_id": row.seed_image_id,
-            "scene_count": row.scene_count,
+            "cut_count": row.cut_count,
         }
         for row in rows
     ]
@@ -487,8 +487,8 @@ def sort_image_rows(
         field_name = "id"
 
     reverse = direction != "asc"
-    if field_name == "scene_count":
-        return sorted(rows, key=lambda row: (row["scene_count"], row["id"]), reverse=reverse)
+    if field_name == "cut_count":
+        return sorted(rows, key=lambda row: (row["cut_count"], row["id"]), reverse=reverse)
     if field_name == "family_root_image_id":
         return sorted(
             rows,

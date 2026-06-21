@@ -10,12 +10,12 @@ from models import (
     GenerateSelectionModelRequestBase,
     GetListRequestBase,
     GetListResponseBase,
-    NextSceneRequestBase,
-    SceneBase,
+    NextCutRequestBase,
+    CutBase,
     SelectionModelBase,
     UpsertResponseBase,
 )
-from service.selection_model import adjust_selection_model, generate_selection_model, get_next_scene
+from service.selection_model import adjust_selection_model, generate_selection_model, get_next_cut
 from utils.crud_helpers import CrudSpec, delete_items, get_list_response, upsert_items
 from utils.local_storage import public_file_url_from_reference
 
@@ -63,18 +63,18 @@ async def api_adjust_selection_model(
     return selection_model_to_base(selection_model)
 
 
-@router.post("/next", response_model=SceneBase)
-async def api_get_next_scene(
-    request: NextSceneRequestBase,
+@router.post("/next", response_model=CutBase)
+async def api_get_next_cut(
+    request: NextCutRequestBase,
     db: AsyncSession = Depends(get_db),
 ):
-    next_scene = await get_next_scene(
+    next_cut = await get_next_cut(
         db,
-        scene_id=request.scene_id,
+        cut_id=request.cut_id,
         status_id=request.status_id,
         option_text=request.option_text,
     )
-    return scene_to_base(next_scene)
+    return cut_to_base(next_cut)
 
 
 def selection_model_to_base(selection_model: SelectionModel) -> SelectionModelBase:
@@ -85,20 +85,20 @@ def selection_model_to_base(selection_model: SelectionModel) -> SelectionModelBa
     )
 
 
-def scene_to_base(scene) -> SceneBase:
-    return SceneBase(
-        id=scene.id,
-        image_id=scene.image_id,
-        image_url=public_file_url_from_reference(scene.image_url),
-        scribble_url=public_file_url_from_reference(scene.scribble_url),
-        pose_url=public_file_url_from_reference(scene.pose_url),
-        script=scene.script,
-        status_change=scene.status_change,
-        prompt_situation=scene.prompt_situation,
-        prompt_hero=scene.prompt_hero,
-        prompt_camera=scene.prompt_camera,
-        prompt_detail=scene.prompt_detail,
-        prompt_negative=scene.prompt_negative,
+def cut_to_base(cut) -> CutBase:
+    return CutBase(
+        id=cut.id,
+        image_id=cut.image_id,
+        image_url=public_file_url_from_reference(cut.image_url),
+        scribble_url=public_file_url_from_reference(cut.scribble_url),
+        pose_url=public_file_url_from_reference(cut.pose_url),
+        script=cut.script,
+        status_change=cut.status_change,
+        prompt_situation=cut.prompt_situation,
+        prompt_hero=cut.prompt_hero,
+        prompt_camera=cut.prompt_camera,
+        prompt_detail=cut.prompt_detail,
+        prompt_negative=cut.prompt_negative,
     )
 
 

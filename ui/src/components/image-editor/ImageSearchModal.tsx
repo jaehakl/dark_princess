@@ -99,7 +99,7 @@ export function ImageSearchModal({
         typeof image?.id === 'number' &&
         image.id !== currentImageId &&
         Boolean(image.image_object_key) &&
-        (image.scene_count ?? 0) === 0 &&
+        (image.cut_count ?? 0) === 0 &&
         selectedIds.has(image.id)
       )),
     [currentImageId, items, selectedIds],
@@ -132,7 +132,7 @@ export function ImageSearchModal({
         typeof image?.id === 'number' &&
         image.id !== currentImageId &&
         Boolean(image.image_object_key) &&
-        (image.scene_count ?? 0) === 0
+        (image.cut_count ?? 0) === 0
       ))
       .map((image) => image.id);
     const startIndex = lastSelectedImageId === null ? -1 : selectableIds.indexOf(lastSelectedImageId);

@@ -1,4 +1,4 @@
-import type { ImageGenerationSettingsDraft } from '../../lib/scene-image';
+import type { ImageGenerationSettingsDraft } from '../../lib/cut-image';
 import {
   Button,
   FieldLabel,

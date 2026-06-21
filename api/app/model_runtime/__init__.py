@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from .embedding import _reset_embedding_runtime_for_tests, encode_scene_text
+from .embedding import _reset_embedding_runtime_for_tests, encode_cut_text
 from .image import _reset_image_runtime_for_tests, generate_images_batch, get_available_cuda_device_ids
 from .llm import (
     PromptLlmConfig,
-    analyze_scene_components,
+    analyze_cut_components,
     build_prompt_llm_config,
     extract_visual_keywords,
     generate_prompt_with_llm,
@@ -14,21 +14,21 @@ from .llm import (
 )
 from .selection import (
     _reset_selection_runtime_for_tests,
-    predict_target_scene_embedding,
+    predict_target_cut_embedding,
     update_selection_model,
 )
 from .wd14 import _reset_wd14_runtime_for_tests, predict_wd14_tags
 
 __all__ = [
     "PromptLlmConfig",
-    "analyze_scene_components",
+    "analyze_cut_components",
     "build_prompt_llm_config",
-    "encode_scene_text",
+    "encode_cut_text",
     "extract_visual_keywords",
     "generate_images_batch",
     "generate_prompt_with_llm",
     "get_available_cuda_device_ids",
-    "predict_target_scene_embedding",
+    "predict_target_cut_embedding",
     "predict_wd14_tags",
     "reset_llm_runtime_for_tests",
     "reset_model_runtime_for_tests",

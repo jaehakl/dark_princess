@@ -1,9 +1,9 @@
 import { Button, PanelHeader, Spinner } from '../ui';
 import type { SaveMode } from './types';
 
-type SceneEditorHeaderProps = {
+type CutEditorHeaderProps = {
   selectedLabel: string;
-  sceneId: number | null;
+  cutId: number | null;
   modalLayout: boolean;
   showDuplicate: boolean;
   canDelete: boolean;
@@ -26,9 +26,9 @@ function confirmAction(message: string, action: () => void) {
   }
 }
 
-export function SceneEditorHeader({
+export function CutEditorHeader({
   selectedLabel,
-  sceneId,
+  cutId,
   modalLayout,
   showDuplicate,
   canDelete,
@@ -43,20 +43,20 @@ export function SceneEditorHeader({
   onSaveData,
   onOpenImageSettings,
   onClose,
-}: SceneEditorHeaderProps) {
+}: CutEditorHeaderProps) {
   return (
     <PanelHeader className="flex-wrap items-start">
       <div className="min-w-0">
-        <p className="text-[0.85rem] tracking-[0.16em] text-[var(--app-muted)] uppercase">Scene edit</p>
+        <p className="text-[0.85rem] tracking-[0.16em] text-[var(--app-muted)] uppercase">Cut edit</p>
         <h2
-          id={modalLayout ? 'scene-edit-modal-title' : undefined}
+          id={modalLayout ? 'cut-edit-modal-title' : undefined}
           className="truncate text-base font-semibold text-[#fff7ef]"
         >
           {selectedLabel}
         </h2>
       </div>
       <div className="flex min-w-0 flex-1 flex-wrap justify-end gap-2">
-        {sceneId !== null ? (
+        {cutId !== null ? (
           <Button
             variant="danger"
             className="inline-flex items-center gap-2 !border-red-400 !bg-red-700 px-3 py-2 text-xs !text-white hover:enabled:!border-red-300 hover:enabled:!bg-red-600"
@@ -70,10 +70,10 @@ export function SceneEditorHeader({
         {showDuplicate ? (
           <Button
             className="inline-flex items-center gap-2 px-3 py-2 text-xs"
-            onClick={() => confirmAction('현재 입력값으로 새 장면 편집을 세팅할까요?', onDuplicate)}
+            onClick={() => confirmAction('현재 입력값으로 새 컷 편집을 세팅할까요?', onDuplicate)}
             disabled={!canDuplicate}
           >
-            장면 복제
+            컷 복제
           </Button>
         ) : null}
         <Button

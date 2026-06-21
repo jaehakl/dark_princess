@@ -1,48 +1,48 @@
 import { create } from 'zustand';
 import { dbTables } from './api';
-import type { ImageGenerationSettings, SceneRecord } from './type';
+import type { ImageGenerationSettings, CutRecord } from './type';
 import {
   IMAGE_SAMPLER_OPTIONS,
   IMAGE_SCHEDULER_OPTIONS,
   IMAGE_SETTINGS_SESSION_KEY,
   imageSettingsToDraft,
   readSessionImageSettings,
-} from '../lib/scene-image';
-import type { ImageGenerationSettingsDraft } from '../lib/scene-image';
+} from '../lib/cut-image';
+import type { ImageGenerationSettingsDraft } from '../lib/cut-image';
 
-type SceneStore = {
-  currentScene: SceneRecord | null;
-  selectedScene: SceneRecord | null;
-  deletedSceneId: number | null;
-  isSceneExplorerOpen: boolean;
-  setCurrentScene: (scene: SceneRecord | null) => void;
-  handleSceneDeleted: (sceneId: number) => void;
-  clearDeletedScene: () => void;
-  openSceneExplorer: () => void;
-  closeSceneExplorer: () => void;
-  selectScene: (scene: SceneRecord) => void;
+type CutStore = {
+  currentCut: CutRecord | null;
+  selectedCut: CutRecord | null;
+  deletedCutId: number | null;
+  isCutExplorerOpen: boolean;
+  setCurrentCut: (cut: CutRecord | null) => void;
+  handleCutDeleted: (cutId: number) => void;
+  clearDeletedCut: () => void;
+  openCutExplorer: () => void;
+  closeCutExplorer: () => void;
+  selectCut: (cut: CutRecord) => void;
 };
 
-export const useSceneStore = create<SceneStore>((set) => ({
-  currentScene: null,
-  selectedScene: null,
-  deletedSceneId: null,
-  isSceneExplorerOpen: false,
-  setCurrentScene: (scene) => set({ currentScene: scene, selectedScene: null }),
-  handleSceneDeleted: (sceneId) =>
+export const useCutStore = create<CutStore>((set) => ({
+  currentCut: null,
+  selectedCut: null,
+  deletedCutId: null,
+  isCutExplorerOpen: false,
+  setCurrentCut: (cut) => set({ currentCut: cut, selectedCut: null }),
+  handleCutDeleted: (cutId) =>
     set((state) => ({
-      currentScene: state.currentScene?.id === sceneId ? null : state.currentScene,
-      selectedScene: state.selectedScene?.id === sceneId ? null : state.selectedScene,
-      deletedSceneId: sceneId,
+      currentCut: state.currentCut?.id === cutId ? null : state.currentCut,
+      selectedCut: state.selectedCut?.id === cutId ? null : state.selectedCut,
+      deletedCutId: cutId,
     })),
-  clearDeletedScene: () => set({ deletedSceneId: null }),
-  openSceneExplorer: () => set({ isSceneExplorerOpen: true }),
-  closeSceneExplorer: () => set({ isSceneExplorerOpen: false }),
-  selectScene: (scene) =>
+  clearDeletedCut: () => set({ deletedCutId: null }),
+  openCutExplorer: () => set({ isCutExplorerOpen: true }),
+  closeCutExplorer: () => set({ isCutExplorerOpen: false }),
+  selectCut: (cut) =>
     set({
-      currentScene: scene,
-      selectedScene: scene,
-      isSceneExplorerOpen: false,
+      currentCut: cut,
+      selectedCut: cut,
+      isCutExplorerOpen: false,
     }),
 }));
 

@@ -91,7 +91,7 @@ export function ImageDetailModal({
             <dl className="rounded-[8px] border border-[rgba(255,208,222,0.2)] bg-[rgba(12,5,18,0.56)] px-4 py-2">
               <DetailRow label="ID" value={formatValue(image.id)} />
               <DetailRow label="Seed" value={formatValue(image.seed_image_id)} />
-              <DetailRow label="Scene" value={formatValue(image.scene_count)} />
+              <DetailRow label="Cut" value={formatValue(image.cut_count)} />
               <DetailRow label="Family root" value={formatValue(image.family_root_image_id)} />
               <DetailRow label="Family count" value={formatValue(image.family_image_count)} />
             </dl>

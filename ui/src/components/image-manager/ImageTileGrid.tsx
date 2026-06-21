@@ -105,14 +105,14 @@ export function ImageTileGrid({
             <span
               className={cx(
                 'pointer-events-none absolute bottom-2 right-2 rounded-full border px-1.5 py-0.5 text-[0.62rem] font-extrabold leading-none shadow-[0_8px_18px_rgba(0,0,0,0.28)]',
-                (image.scene_count ?? 0) === 0
+                (image.cut_count ?? 0) === 0
                   ? 'border-[rgba(180,180,190,0.4)] bg-[rgba(40,40,48,0.72)] text-[rgba(230,230,236,0.72)]'
-                  : (image.scene_count ?? 0) >= 2
+                  : (image.cut_count ?? 0) >= 2
                     ? 'border-[rgba(255,226,121,0.7)] bg-[rgba(128,91,18,0.82)] text-[#fff4c7]'
                     : 'border-[rgba(121,255,177,0.58)] bg-[rgba(16,85,48,0.78)] text-[#dcffe9]',
               )}
             >
-              {image.scene_count ?? 0}
+              {image.cut_count ?? 0}
             </span>
           </button>
         );

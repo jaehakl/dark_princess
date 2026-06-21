@@ -129,7 +129,7 @@ export function ImagePickerPanel({
               imageId !== null &&
               Boolean(imageUrl) &&
               !isCurrent &&
-              (image?.scene_count ?? 0) === 0
+              (image?.cut_count ?? 0) === 0
             );
             const isDisabled = isSelectionMode ? !canSelectForDelete || isDeleting : !imageUrl;
             return (

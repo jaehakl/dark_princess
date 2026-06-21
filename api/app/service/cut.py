@@ -13,14 +13,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from starlette.datastructures import FormData, UploadFile
 
-from db import Image as StoredImage, Scene, Status
+from db import Image as StoredImage, Cut, Status
 from models import (
-    GenerateSceneRequestBase,
+    GenerateCutRequestBase,
     ImageGenerationSettingsBase,
-    UpdateSceneContextRequestBase,
-    UpdateSceneImageRequestBase,
+    UpdateCutContextRequestBase,
+    UpdateCutImageRequestBase,
     UpsertResponseBase,
-    SceneBase,
+    CutBase,
 )
 from settings import settings
 from service.selection_model import cosine_distance
@@ -36,7 +36,7 @@ from service.image_util_constants import (
     GEN_IMAGE_STRENGTH,
     GEN_IMAGE_STEPS,
     GEN_IMAGE_WIDTH,
-    SCENE_PROMPT_FIELDS,
+    CUT_PROMPT_FIELDS,
 )
 from service.image_util import (
     resolve_image_generation_model_path,
@@ -50,14 +50,14 @@ from utils.local_storage import (
     object_key_from_public_url,
     upload_fileobj,
 )
-from model_runtime import encode_scene_text, generate_images_batch
+from model_runtime import encode_cut_text, generate_images_batch
 from utils.vector import VECTOR_DIMENSION, validate_embedding
 
-SCENE_EMBEDDING_PROMPT_FIELDS = ("prompt_situation", "prompt_hero")
+CUT_EMBEDDING_PROMPT_FIELDS = ("prompt_situation", "prompt_hero")
 
 
-def scene_image_load_option():
-    return selectinload(Scene.image).load_only(
+def cut_image_load_option():
+    return selectinload(Cut.image).load_only(
         StoredImage.id,
         StoredImage.image_object_key,
         StoredImage.scribble_object_key,
@@ -69,9 +69,9 @@ def scene_image_load_option():
     )
 
 
-async def generate_scene_from_form(db: AsyncSession, form: FormData) -> Scene:
-    generate_request, image, mask, scribble_image, pose_image = await parse_generate_scene_form(form)
-    return await generate_scene(
+async def generate_cut_from_form(db: AsyncSession, form: FormData) -> Cut:
+    generate_request, image, mask, scribble_image, pose_image = await parse_generate_cut_form(form)
+    return await generate_cut(
         db,
         generate_request,
         seed_image=image,
@@ -81,10 +81,10 @@ async def generate_scene_from_form(db: AsyncSession, form: FormData) -> Scene:
     )
 
 
-async def parse_generate_scene_form(
+async def parse_generate_cut_form(
     form: FormData,
-) -> tuple[GenerateSceneRequestBase, bytes | None, bytes | None, bytes | None, bytes | None]:
-    generate_request = parse_generate_scene_payload(form)
+) -> tuple[GenerateCutRequestBase, bytes | None, bytes | None, bytes | None, bytes | None]:
+    generate_request = parse_generate_cut_payload(form)
     if not generate_request.generate_image:
         return generate_request, None, None, None, None
 
@@ -95,12 +95,12 @@ async def parse_generate_scene_form(
     return generate_request, image, mask, scribble_image, pose_image
 
 
-def parse_generate_scene_payload(form: FormData) -> GenerateSceneRequestBase:
+def parse_generate_cut_payload(form: FormData) -> GenerateCutRequestBase:
     payload = form.get("payload")
     if not isinstance(payload, str) or not payload.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="payload is required")
     try:
-        return GenerateSceneRequestBase.model_validate_json(payload)
+        return GenerateCutRequestBase.model_validate_json(payload)
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.errors()) from exc
 
@@ -129,49 +129,49 @@ async def read_image_upload(form: FormData, field_name: str, required: bool = Fa
     return image
 
 
-async def generate_scene(
+async def generate_cut(
     db: AsyncSession,
-    request: GenerateSceneRequestBase,
+    request: GenerateCutRequestBase,
     seed_image: bytes | None = None,
     mask_image: bytes | None = None,
     scribble_image: bytes | None = None,
     pose_image: bytes | None = None,
-) -> Scene:
+) -> Cut:
     should_generate_image = request.generate_image
-    scene: Scene | None = None
+    cut: Cut | None = None
     image_key = None
     scribble_key = None
     pose_key = None
-    if request.scene_id is not None:
-        scene = (
+    if request.cut_id is not None:
+        cut = (
             await db.execute(
-                select(Scene)
-                .options(scene_image_load_option())
-                .where(Scene.id == request.scene_id)
+                select(Cut)
+                .options(cut_image_load_option())
+                .where(Cut.id == request.cut_id)
             )
         ).scalar_one_or_none()
-        if scene is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="scene not found")
+        if cut is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="cut not found")
 
     parent_image_id = None
     if should_generate_image and request.parent_image_id is not None:
         parent_image_id = await validate_image_id(db, request.parent_image_id)
-    should_update_scene_image = (not should_generate_image) and "image_id" in request.model_fields_set
-    scene_image_id = None
-    if should_update_scene_image and request.image_id is not None:
-        scene_image_id = await validate_image_id(db, request.image_id)
+    should_update_cut_image = (not should_generate_image) and "image_id" in request.model_fields_set
+    cut_image_id = None
+    if should_update_cut_image and request.image_id is not None:
+        cut_image_id = await validate_image_id(db, request.image_id)
 
-    script = normalize_scene_script(request.script)
-    column_values = {field: getattr(request, field) for field in SCENE_PROMPT_FIELDS}
-    visual_prompt = build_scene_visual_prompt(column_values)
+    script = normalize_cut_script(request.script)
+    column_values = {field: getattr(request, field) for field in CUT_PROMPT_FIELDS}
+    visual_prompt = build_cut_visual_prompt(column_values)
     if not visual_prompt:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scene prompt component is required")
-    embedding_visual_prompt = build_scene_embedding_visual_prompt(column_values)
-    embedding = await make_scene_embedding(embedding_visual_prompt, script)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="cut prompt component is required")
+    embedding_visual_prompt = build_cut_embedding_visual_prompt(column_values)
+    embedding = await make_cut_embedding(embedding_visual_prompt, script)
     image_result: dict[str, Any] | None = None
     if should_generate_image:
         try:
-            image_result = await generate_scene_image(
+            image_result = await generate_cut_image(
                 column_values,
                 request.prompt_instant_positive,
                 request.prompt_negative,
@@ -184,14 +184,14 @@ async def generate_scene(
             )
             image_key = image_result["image_object_key"]
             if image_result["has_active_scribble"] and scribble_image is not None:
-                scribble_key = upload_scene_control_image(
+                scribble_key = upload_cut_control_image(
                     scribble_image,
-                    "scene-controlnet-scribble.png",
+                    "cut-controlnet-scribble.png",
                 )
             if pose_image is not None:
-                pose_key = upload_scene_control_image(
+                pose_key = upload_cut_control_image(
                     pose_image,
-                    "scene-controlnet-openpose.png",
+                    "cut-controlnet-openpose.png",
                 )
         except Exception:
             if image_key is not None:
@@ -203,16 +203,16 @@ async def generate_scene(
             raise
 
     try:
-        if scene is None:
-            scene = Scene()
-            db.add(scene)
+        if cut is None:
+            cut = Cut()
+            db.add(cut)
 
-        scene.script = script
-        scene.status_change = request.status_change
-        scene.embedding = embedding
-        for field in SCENE_PROMPT_FIELDS:
-            setattr(scene, field, column_values[field])
-        scene.prompt_negative = request.prompt_negative
+        cut.script = script
+        cut.status_change = request.status_change
+        cut.embedding = embedding
+        for field in CUT_PROMPT_FIELDS:
+            setattr(cut, field, column_values[field])
+        cut.prompt_negative = request.prompt_negative
         if image_result is not None:
             stored_image = StoredImage(
                 image_object_key=image_key,
@@ -225,17 +225,17 @@ async def generate_scene(
                 model_parameters=image_result["model_parameters"],
             )
             db.add(stored_image)
-            scene.image = stored_image
-        elif should_update_scene_image:
-            scene.image_id = scene_image_id
-            if scene_image_id is None:
-                scene.image = None
+            cut.image = stored_image
+        elif should_update_cut_image:
+            cut.image_id = cut_image_id
+            if cut_image_id is None:
+                cut.image = None
         await db.commit()
-        await db.refresh(scene)
-        if scene.image_id is not None:
-            await db.refresh(scene, attribute_names=["image"])
+        await db.refresh(cut)
+        if cut.image_id is not None:
+            await db.refresh(cut, attribute_names=["image"])
         else:
-            scene.image = None
+            cut.image = None
     except Exception:
         await db.rollback()
         if image_key is not None:
@@ -246,48 +246,48 @@ async def generate_scene(
             delete_object(pose_key)
         raise
 
-    return scene
+    return cut
 
 
-async def upsert_scenes(db: AsyncSession, items: list[SceneBase]) -> list[UpsertResponseBase]:
+async def upsert_cuts(db: AsyncSession, items: list[CutBase]) -> list[UpsertResponseBase]:
     if not items:
         return []
 
     item_ids = [item.id for item in items if item.id is not None]
-    existing_scenes = {}
+    existing_cuts = {}
     if item_ids:
         result = await db.execute(
-            select(Scene)
-            .options(scene_image_load_option())
-            .where(Scene.id.in_(item_ids))
+            select(Cut)
+            .options(cut_image_load_option())
+            .where(Cut.id.in_(item_ids))
         )
-        existing_scenes = {scene.id: scene for scene in result.scalars().all()}
+        existing_cuts = {cut.id: cut for cut in result.scalars().all()}
 
-    pending_results: list[Scene] = []
+    pending_results: list[Cut] = []
     try:
         for item in items:
-            scene = existing_scenes.get(item.id) if item.id is not None else None
-            if scene is None:
-                scene = Scene()
-                db.add(scene)
+            cut = existing_cuts.get(item.id) if item.id is not None else None
+            if cut is None:
+                cut = Cut()
+                db.add(cut)
 
-            stored_image = await resolve_scene_image_for_upsert(db, item)
-            script = normalize_scene_script(item.script)
-            column_values = {field: getattr(item, field) for field in SCENE_PROMPT_FIELDS}
-            visual_prompt = build_scene_visual_prompt(column_values)
+            stored_image = await resolve_cut_image_for_upsert(db, item)
+            script = normalize_cut_script(item.script)
+            column_values = {field: getattr(item, field) for field in CUT_PROMPT_FIELDS}
+            visual_prompt = build_cut_visual_prompt(column_values)
             if not visual_prompt:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scene prompt component is required")
-            embedding_visual_prompt = build_scene_embedding_visual_prompt(column_values)
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="cut prompt component is required")
+            embedding_visual_prompt = build_cut_embedding_visual_prompt(column_values)
 
-            scene.image = stored_image
-            scene.script = script
-            scene.status_change = item.status_change
-            scene.embedding = await make_scene_embedding(embedding_visual_prompt, script)
-            for field in SCENE_PROMPT_FIELDS:
-                setattr(scene, field, column_values[field])
-            scene.prompt_negative = item.prompt_negative
+            cut.image = stored_image
+            cut.script = script
+            cut.status_change = item.status_change
+            cut.embedding = await make_cut_embedding(embedding_visual_prompt, script)
+            for field in CUT_PROMPT_FIELDS:
+                setattr(cut, field, column_values[field])
+            cut.prompt_negative = item.prompt_negative
 
-            pending_results.append(scene)
+            pending_results.append(cut)
 
         await db.flush()
         await db.commit()
@@ -295,39 +295,39 @@ async def upsert_scenes(db: AsyncSession, items: list[SceneBase]) -> list[Upsert
         await db.rollback()
         raise
 
-    return [UpsertResponseBase(id=scene.id) for scene in pending_results]
+    return [UpsertResponseBase(id=cut.id) for cut in pending_results]
 
 
-async def update_scene_image(db: AsyncSession, request: UpdateSceneImageRequestBase) -> Scene:
-    scene = (
+async def update_cut_image(db: AsyncSession, request: UpdateCutImageRequestBase) -> Cut:
+    cut = (
         await db.execute(
-            select(Scene)
-            .options(scene_image_load_option())
-            .where(Scene.id == request.scene_id)
+            select(Cut)
+            .options(cut_image_load_option())
+            .where(Cut.id == request.cut_id)
         )
     ).scalar_one_or_none()
-    if scene is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="scene not found")
+    if cut is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="cut not found")
 
     image_id = None
     if request.image_id is not None:
         image_id = await validate_image_id(db, request.image_id)
 
     try:
-        scene.image_id = image_id
+        cut.image_id = image_id
         if image_id is None:
-            scene.image = None
+            cut.image = None
         await db.commit()
-        await db.refresh(scene)
-        if scene.image_id is not None:
-            await db.refresh(scene, attribute_names=["image"])
+        await db.refresh(cut)
+        if cut.image_id is not None:
+            await db.refresh(cut, attribute_names=["image"])
         else:
-            scene.image = None
+            cut.image = None
     except Exception:
         await db.rollback()
         raise
 
-    return scene
+    return cut
 
 
 async def validate_image_id(db: AsyncSession, image_id: int) -> int:
@@ -337,16 +337,16 @@ async def validate_image_id(db: AsyncSession, image_id: int) -> int:
     return stored_image.id
 
 
-async def resolve_scene_image_for_upsert(db: AsyncSession, item: SceneBase) -> StoredImage | None:
+async def resolve_cut_image_for_upsert(db: AsyncSession, item: CutBase) -> StoredImage | None:
     if item.image_id is not None:
         stored_image = await db.get(StoredImage, item.image_id)
         if stored_image is None:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="image_id not found")
         return stored_image
 
-    image_key = normalize_scene_upload_reference("image_url", item.image_url)
-    scribble_key = normalize_scene_upload_reference("scribble_url", item.scribble_url)
-    pose_key = normalize_scene_upload_reference("pose_url", item.pose_url)
+    image_key = normalize_cut_upload_reference("image_url", item.image_url)
+    scribble_key = normalize_cut_upload_reference("scribble_url", item.scribble_url)
+    pose_key = normalize_cut_upload_reference("pose_url", item.pose_url)
     if image_key is None and scribble_key is None and pose_key is None:
         return None
 
@@ -354,76 +354,76 @@ async def resolve_scene_image_for_upsert(db: AsyncSession, item: SceneBase) -> S
         image_object_key=image_key,
         scribble_object_key=scribble_key,
         pose_object_key=pose_key,
-        model_parameters={"source": "scene_upsert_upload_reference"},
+        model_parameters={"source": "cut_upsert_upload_reference"},
     )
     db.add(stored_image)
     return stored_image
 
 
-async def make_scene_embedding(visual_prompt: str, script: str) -> list[float]:
-    embedding_input = build_scene_embedding_input(strip_prompt_weight_syntax(visual_prompt), script)
-    model_name = settings.SCENE_EMBEDDING_MODEL_NAME.strip()
+async def make_cut_embedding(visual_prompt: str, script: str) -> list[float]:
+    embedding_input = build_cut_embedding_input(strip_prompt_weight_syntax(visual_prompt), script)
+    model_name = settings.CUT_EMBEDDING_MODEL_NAME.strip()
     if not model_name:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="scene embedding model name is required",
+            detail="cut embedding model name is required",
         )
 
-    embedding = await encode_scene_text(model_name, embedding_input)
+    embedding = await encode_cut_text(model_name, embedding_input)
     if len(embedding) != VECTOR_DIMENSION:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"scene embedding model must return {VECTOR_DIMENSION} dimensions",
+            detail=f"cut embedding model must return {VECTOR_DIMENSION} dimensions",
         )
     return embedding
 
 
-async def get_similar_scenes(db: AsyncSession, text: str) -> list[Scene]:
+async def get_similar_cuts(db: AsyncSession, text: str) -> list[Cut]:
     query_text = text.strip()
     if not query_text:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text is required")
 
-    model_name = settings.SCENE_EMBEDDING_MODEL_NAME.strip()
+    model_name = settings.CUT_EMBEDDING_MODEL_NAME.strip()
     if not model_name:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="scene embedding model name is required",
+            detail="cut embedding model name is required",
         )
 
-    text_embedding = await encode_scene_text(model_name, f"query: {query_text}")
+    text_embedding = await encode_cut_text(model_name, f"query: {query_text}")
     if len(text_embedding) != VECTOR_DIMENSION:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"scene embedding model must return {VECTOR_DIMENSION} dimensions",
+            detail=f"cut embedding model must return {VECTOR_DIMENSION} dimensions",
         )
 
-    scenes = (await db.execute(select(Scene).options(scene_image_load_option()))).scalars().all()
-    scene_distances = []
-    for scene in scenes:
+    cuts = (await db.execute(select(Cut).options(cut_image_load_option()))).scalars().all()
+    cut_distances = []
+    for cut in cuts:
         try:
-            scene_embedding = validate_embedding(scene.embedding, "scene.embedding")
+            cut_embedding = validate_embedding(cut.embedding, "cut.embedding")
         except HTTPException:
             continue
 
-        distance = cosine_distance(text_embedding, scene_embedding)
+        distance = cosine_distance(text_embedding, cut_embedding)
         if distance is None:
             continue
-        scene_distances.append((scene, distance))
+        cut_distances.append((cut, distance))
 
     return [
-        scene
-        for scene, _distance in sorted(
-            scene_distances,
+        cut
+        for cut, _distance in sorted(
+            cut_distances,
             key=lambda item: (item[1], item[0].id or 0),
         )
     ]
 
 
-def normalize_scene_script(script: str) -> str:
+def normalize_cut_script(script: str) -> str:
     return script.replace("\r\n", "\n").replace("\r", "\n")
 
 
-def normalize_scene_upload_reference(field_name: str, value: str | None) -> str | None:
+def normalize_cut_upload_reference(field_name: str, value: str | None) -> str | None:
     if value in (None, ""):
         return None
 
@@ -436,18 +436,18 @@ def normalize_scene_upload_reference(field_name: str, value: str | None) -> str 
     return object_key
 
 
-def build_scene_visual_prompt(column_values: dict[str, str | None]) -> str:
+def build_cut_visual_prompt(column_values: dict[str, str | None]) -> str:
     return ", ".join(
         (column_values[field] or "").strip()
-        for field in SCENE_PROMPT_FIELDS
+        for field in CUT_PROMPT_FIELDS
         if (column_values[field] or "").strip()
     )
 
 
-def build_scene_embedding_visual_prompt(column_values: dict[str, str | None]) -> str:
+def build_cut_embedding_visual_prompt(column_values: dict[str, str | None]) -> str:
     return ", ".join(
         (column_values[field] or "").strip()
-        for field in SCENE_EMBEDDING_PROMPT_FIELDS
+        for field in CUT_EMBEDDING_PROMPT_FIELDS
         if (column_values[field] or "").strip()
     )
 
@@ -460,7 +460,7 @@ def build_generation_prompt(parts: list[str | None]) -> str:
     )
 
 
-def build_scene_embedding_input(visual_prompt: str, script: str) -> str:
+def build_cut_embedding_input(visual_prompt: str, script: str) -> str:
     return f"passage: {visual_prompt}\n{script}"
 
 
@@ -468,31 +468,31 @@ async def make_positive_prompt_embedding(positive_prompt: str) -> list[float] | 
     if not positive_prompt.strip():
         return None
 
-    model_name = settings.SCENE_EMBEDDING_MODEL_NAME.strip()
+    model_name = settings.CUT_EMBEDDING_MODEL_NAME.strip()
     if not model_name:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="scene embedding model name is required",
+            detail="cut embedding model name is required",
         )
 
     embedding_prompt = strip_prompt_weight_syntax(positive_prompt)
-    embedding = await encode_scene_text(model_name, f"passage: {embedding_prompt}")
+    embedding = await encode_cut_text(model_name, f"passage: {embedding_prompt}")
     if len(embedding) != VECTOR_DIMENSION:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"scene embedding model must return {VECTOR_DIMENSION} dimensions",
+            detail=f"cut embedding model must return {VECTOR_DIMENSION} dimensions",
         )
     return embedding
 
 
-def upload_scene_control_image(image_bytes: bytes, filename: str) -> str:
+def upload_cut_control_image(image_bytes: bytes, filename: str) -> str:
     object_key = build_object_key(kind="image", filename=filename)
     image_file = BytesIO(image_bytes)
     upload_fileobj(image_file, object_key, "image/png")
     return object_key
 
 
-async def generate_scene_image(
+async def generate_cut_image(
     column_values: dict[str, str | None],
     prompt_instant_positive: str | None,
     prompt_negative: str | None,
@@ -642,7 +642,7 @@ async def generate_scene_image(
             detail="image generation returned no image",
         )
 
-    image_key = build_object_key(kind="image", filename=f"scene{GEN_IMAGE_OUTPUT_EXTENSION}")
+    image_key = build_object_key(kind="image", filename=f"cut{GEN_IMAGE_OUTPUT_EXTENSION}")
     image_bytes = BytesIO()
     output_format = GEN_IMAGE_OUTPUT_FORMAT.upper()
     save_kwargs = {"format": GEN_IMAGE_OUTPUT_FORMAT}
@@ -727,36 +727,36 @@ def _image_content_type(output_format: str) -> str:
 
 def update_context_embedding(
     context_embedding: list[float],
-    scene_embedding: list[float],
+    cut_embedding: list[float],
 ) -> list[float]:
     return [
-        context_value * 0.9 + scene_value
-        for context_value, scene_value in zip(context_embedding, scene_embedding)
+        context_value * 0.9 + cut_value
+        for context_value, cut_value in zip(context_embedding, cut_embedding)
     ]
 
 
-async def update_scene_context(
+async def update_cut_context(
     db: AsyncSession,
-    request: UpdateSceneContextRequestBase,
+    request: UpdateCutContextRequestBase,
 ) -> Status:
     current_status = await db.get(Status, request.status_id)
     if current_status is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="status not found")
 
-    scene = await db.get(Scene, request.scene_id)
-    if scene is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="scene not found")
+    cut = await db.get(Cut, request.cut_id)
+    if cut is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="cut not found")
 
-    scene_embedding = validate_embedding(scene.embedding, "scene.embedding")
+    cut_embedding = validate_embedding(cut.embedding, "cut.embedding")
     context_embedding = (
         validate_embedding(current_status.context_embedding, "status.context_embedding")
         if current_status.context_embedding is not None
-        else [0.0] * len(scene_embedding)
+        else [0.0] * len(cut_embedding)
     )
 
     current_status.context_embedding = update_context_embedding(
         context_embedding,
-        scene_embedding,
+        cut_embedding,
     )
     await db.commit()
     await db.refresh(current_status)

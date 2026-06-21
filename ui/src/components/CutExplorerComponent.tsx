@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { dbTables } from '../api/api';
-import type { GetListRequest, SceneRecord } from '../api/type';
+import type { GetListRequest, CutRecord } from '../api/type';
 import {
   Button,
   FormControl,
@@ -12,12 +12,12 @@ import {
 
 const PAGE_SIZE = 100;
 
-type SceneExplorerComponentProps = {
-  currentSceneId: number | null;
-  onSelect: (sceneId: number) => void;
+type CutExplorerComponentProps = {
+  currentCutId: number | null;
+  onSelect: (cutId: number) => void;
 };
 
-const SCENE_LIST_REQUEST: GetListRequest = {
+const CUT_LIST_REQUEST: GetListRequest = {
   offset: 0,
   limit: PAGE_SIZE,
   selected_ids: [],
@@ -34,16 +34,16 @@ function getErrorMessage(error: unknown) {
   return '요청에 실패했습니다.';
 }
 
-function getScriptSummary(scene: SceneRecord) {
-  const summary = scene.script.replace(/\s+/g, ' ').trim();
+function getScriptSummary(cut: CutRecord) {
+  const summary = cut.script.replace(/\s+/g, ' ').trim();
   return summary || 'script 없음';
 }
 
-export function SceneExplorerComponent({
-  currentSceneId,
+export function CutExplorerComponent({
+  currentCutId,
   onSelect,
-}: SceneExplorerComponentProps) {
-  const [scenes, setScenes] = useState<SceneRecord[]>([]);
+}: CutExplorerComponentProps) {
+  const [cuts, setCuts] = useState<CutRecord[]>([]);
   const [searchText, setSearchText] = useState('');
   const [submittedSearchText, setSubmittedSearchText] = useState('');
   const [page, setPage] = useState(1);
@@ -59,21 +59,21 @@ export function SceneExplorerComponent({
 
     let isActive = true;
 
-    async function loadScenes() {
+    async function loadCuts() {
       setIsLoading(true);
       setError(null);
       try {
-        const response = await dbTables.Scene.listRows({
-          ...SCENE_LIST_REQUEST,
+        const response = await dbTables.Cut.listRows({
+          ...CUT_LIST_REQUEST,
           offset: (page - 1) * PAGE_SIZE,
         });
         if (isActive) {
-          setScenes(response.items);
+          setCuts(response.items);
           setTotalRows(response.total);
         }
       } catch (loadError) {
         if (isActive) {
-          setScenes([]);
+          setCuts([]);
           setTotalRows(0);
           setError(getErrorMessage(loadError));
         }
@@ -84,7 +84,7 @@ export function SceneExplorerComponent({
       }
     }
 
-    void loadScenes();
+    void loadCuts();
 
     return () => {
       isActive = false;
@@ -92,13 +92,13 @@ export function SceneExplorerComponent({
   }, [isSemanticSearch, page]);
 
   const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
-  const visibleScenes = useMemo(() => {
+  const visibleCuts = useMemo(() => {
     if (!isSemanticSearch) {
-      return scenes;
+      return cuts;
     }
 
-    return scenes.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  }, [isSemanticSearch, page, scenes]);
+    return cuts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  }, [isSemanticSearch, page, cuts]);
 
   useEffect(() => {
     if (page <= totalPages) {
@@ -107,10 +107,10 @@ export function SceneExplorerComponent({
     setPage(totalPages);
   }, [page, totalPages]);
 
-  async function searchSimilarScenes() {
+  async function searchSimilarCuts() {
     const trimmedSearchText = searchText.trim();
     if (!trimmedSearchText) {
-      setError('검색할 장면 텍스트를 입력해 주세요.');
+      setError('검색할 컷 텍스트를 입력해 주세요.');
       return;
     }
 
@@ -119,11 +119,11 @@ export function SceneExplorerComponent({
     setPage(1);
     setSubmittedSearchText(trimmedSearchText);
     try {
-      const results = await dbTables.Scene.similarScenes(trimmedSearchText);
-      setScenes(results);
+      const results = await dbTables.Cut.similarCuts(trimmedSearchText);
+      setCuts(results);
       setTotalRows(results.length);
     } catch (searchError) {
-      setScenes([]);
+      setCuts([]);
       setTotalRows(0);
       setError(getErrorMessage(searchError));
     } finally {
@@ -134,7 +134,7 @@ export function SceneExplorerComponent({
   function clearSemanticSearch() {
     setSearchText('');
     setSubmittedSearchText('');
-    setScenes([]);
+    setCuts([]);
     setTotalRows(0);
     setPage(1);
     setError(null);
@@ -147,7 +147,7 @@ export function SceneExplorerComponent({
         className="flex flex-col gap-3"
         onSubmit={(event) => {
           event.preventDefault();
-          void searchSimilarScenes();
+          void searchSimilarCuts();
         }}
       >
         <div className="mx-auto flex w-full max-w-2xl min-w-0 flex-col gap-1">
@@ -157,7 +157,7 @@ export function SceneExplorerComponent({
             value={searchText}
             onChange={(event) => setSearchText(event.target.value)}
             className="min-h-[8.75rem] w-full min-w-0 resize-y rounded-none px-3 py-2 text-sm leading-5"
-            placeholder="시멘틱 검색할 장면 텍스트"
+            placeholder="시멘틱 검색할 컷 텍스트"
           />
           {isSemanticSearch ? (
             <span className="text-xs font-semibold text-[var(--app-muted)]">
@@ -184,7 +184,7 @@ export function SceneExplorerComponent({
             </Button>
           ) : null}
           <span className="text-xs font-semibold text-[var(--app-muted)]">
-            {visibleScenes.length} / {totalRows}
+            {visibleCuts.length} / {totalRows}
           </span>
         </div>
       </form>
@@ -192,45 +192,45 @@ export function SceneExplorerComponent({
       {isLoading ? (
         <div className="flex min-h-56 items-center justify-center gap-3 text-[0.95rem] font-bold text-[var(--app-muted)]">
           <Spinner aria-hidden="true" />
-          <span>{isSemanticSearch ? '유사 Scene을 찾는 중' : 'Scene을 불러오는 중'}</span>
+          <span>{isSemanticSearch ? '유사 Cut을 찾는 중' : 'Cut을 불러오는 중'}</span>
         </div>
       ) : error ? (
         <div className="flex min-h-56 items-center justify-center gap-3 text-[0.95rem] font-bold text-[#ff9ab8]">{error}</div>
-      ) : visibleScenes.length === 0 ? (
+      ) : visibleCuts.length === 0 ? (
         <div className="flex min-h-56 items-center justify-center gap-3 text-[0.95rem] font-bold text-[var(--app-muted)]">
-          {isSemanticSearch ? '시멘틱 검색 결과 없음' : 'Scene 없음'}
+          {isSemanticSearch ? '시멘틱 검색 결과 없음' : 'Cut 없음'}
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
-          {visibleScenes.map((scene, index) => {
-            const sceneId = scene.id ?? null;
-            const isSelectable = sceneId !== null;
-            const isCurrentScene = sceneId !== null && sceneId === currentSceneId;
-            const scriptSummary = getScriptSummary(scene);
-            const sceneLabel = `Scene #${sceneId ?? '-'}`;
+          {visibleCuts.map((cut, index) => {
+            const cutId = cut.id ?? null;
+            const isSelectable = cutId !== null;
+            const isCurrentCut = cutId !== null && cutId === currentCutId;
+            const scriptSummary = getScriptSummary(cut);
+            const cutLabel = `Cut #${cutId ?? '-'}`;
             return (
               <button
-                key={sceneId ?? `scene-${index}`}
+                key={cutId ?? `cut-${index}`}
                 type="button"
                 className={cx(
                   'grid aspect-square min-w-0 place-items-stretch rounded-[8px] border border-[rgba(255,208,222,0.24)] bg-[linear-gradient(135deg,rgba(255,229,238,0.1),transparent_58%),rgba(12,5,18,0.58)] p-1 text-left transition-[transform,border-color,background] hover:-translate-y-px hover:border-[rgba(255,224,180,0.84)] hover:bg-[linear-gradient(135deg,rgba(255,225,191,0.16),transparent_58%),rgba(50,15,47,0.82)]',
-                  isCurrentScene && 'border-[rgba(255,232,183,0.82)] shadow-[0_0_26px_rgba(240,179,95,0.16)]',
+                  isCurrentCut && 'border-[rgba(255,232,183,0.82)] shadow-[0_0_26px_rgba(240,179,95,0.16)]',
                   !isSelectable && 'cursor-not-allowed opacity-60 hover:translate-y-0',
                 )}
                 onClick={() => {
-                  if (sceneId !== null) {
-                    onSelect(sceneId);
+                  if (cutId !== null) {
+                    onSelect(cutId);
                   }
                 }}
                 disabled={!isSelectable}
-                title={`${sceneLabel}\n${scriptSummary}`}
-                aria-label={`${sceneLabel}: ${scriptSummary}`}
+                title={`${cutLabel}\n${scriptSummary}`}
+                aria-label={`${cutLabel}: ${scriptSummary}`}
               >
                 <ImageFrame className="relative h-full w-full rounded-[6px] border border-[rgba(255,218,228,0.22)] bg-[linear-gradient(135deg,rgba(255,224,235,0.12),transparent_46%),rgba(12,5,18,0.82)]">
-                  {scene.image_url ? (
+                  {cut.image_url ? (
                     <img
-                      src={scene.image_url}
-                      alt={sceneLabel}
+                      src={cut.image_url}
+                      alt={cutLabel}
                       className="absolute inset-0 h-full w-full object-contain"
                     />
                   ) : (

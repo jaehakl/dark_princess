@@ -4,12 +4,12 @@ import { useParams } from 'react-router-dom';
 import { dbTables } from '../../api/api';
 import type {
   GetListRequest,
-  SceneRecord,
+  CutRecord,
   StatusRecord,
 } from '../../api/type';
-import { useSceneStore } from '../../api/store';
-import { SceneEditModal } from '../../components/SceneEditModal';
-import { SceneExplorerModal } from '../../components/SceneExplorerModal';
+import { useCutStore } from '../../api/store';
+import { CutEditModal } from '../../components/CutEditModal';
+import { CutExplorerModal } from '../../components/CutExplorerModal';
 import {
   Button,
   FieldLabel,
@@ -44,18 +44,18 @@ const STATUS_FIELDS = [
 type StatusNumberKey = (typeof STATUS_FIELDS)[number]['key'];
 type StatusDeltas = Partial<Record<StatusNumberKey, number>>;
 type PendingTransition = {
-  sourceScene: SceneRecord;
-  sourceSceneId: number;
+  sourceCut: CutRecord;
+  sourceCutId: number;
   optionText: string;
-  targetSceneId: number;
+  targetCutId: number;
   statusBeforeTarget: StatusRecord;
 };
 type ScriptLineState = {
-  sceneId: number | null;
+  cutId: number | null;
   script: string;
   index: number;
 };
-type SceneEditorMode = 'edit' | 'replace' | 'next';
+type CutEditorMode = 'edit' | 'replace' | 'next';
 
 const FEEDBACK_LEARN_RATE = 0.1;
 const AUTO_PLAY_INTERVAL_MS = 2000;
@@ -139,52 +139,52 @@ function isValidId(value: string | undefined) {
   return Number.isInteger(parsed) && parsed > 0;
 }
 
-function createNextSceneDraft(scene: SceneRecord): SceneRecord {
+function createNextCutDraft(cut: CutRecord): CutRecord {
   return {
-    ...scene,
+    ...cut,
     id: null,
-    status_change: { ...scene.status_change },
+    status_change: { ...cut.status_change },
   };
 }
 
 export function PlayPage() {
   const { statusId } = useParams();
   const parsedStatusId = isValidId(statusId) ? Number(statusId) : null;
-  const selectedScene = useSceneStore((state) => state.selectedScene);
-  const deletedSceneId = useSceneStore((state) => state.deletedSceneId);
-  const setCurrentScene = useSceneStore((state) => state.setCurrentScene);
-  const handleSceneDeleted = useSceneStore((state) => state.handleSceneDeleted);
-  const clearDeletedScene = useSceneStore((state) => state.clearDeletedScene);
+  const selectedCut = useCutStore((state) => state.selectedCut);
+  const deletedCutId = useCutStore((state) => state.deletedCutId);
+  const setCurrentCut = useCutStore((state) => state.setCurrentCut);
+  const handleCutDeleted = useCutStore((state) => state.handleCutDeleted);
+  const clearDeletedCut = useCutStore((state) => state.clearDeletedCut);
   const [status, setStatus] = useState<StatusRecord | null>(null);
-  const [scene, setScene] = useState<SceneRecord | null>(null);
+  const [cut, setCut] = useState<CutRecord | null>(null);
   const [deltas, setDeltas] = useState<StatusDeltas>({});
   const [pendingTransition, setPendingTransition] = useState<PendingTransition | null>(null);
-  const [contextSyncedSceneId, setContextSyncedSceneId] = useState<number | null>(null);
+  const [contextSyncedCutId, setContextSyncedCutId] = useState<number | null>(null);
   const [optionText, setOptionText] = useState('');
-  const [currentSceneEditorSceneId, setCurrentSceneEditorSceneId] = useState<number | null>(null);
-  const [currentSceneEditorInitialScene, setCurrentSceneEditorInitialScene] = useState<SceneRecord | null>(null);
-  const [currentSceneEditorMode, setCurrentSceneEditorMode] = useState<SceneEditorMode>('edit');
-  const [isSceneExplorerOpen, setIsSceneExplorerOpen] = useState(false);
+  const [currentCutEditorCutId, setCurrentCutEditorCutId] = useState<number | null>(null);
+  const [currentCutEditorInitialCut, setCurrentCutEditorInitialCut] = useState<CutRecord | null>(null);
+  const [currentCutEditorMode, setCurrentCutEditorMode] = useState<CutEditorMode>('edit');
+  const [isCutExplorerOpen, setIsCutExplorerOpen] = useState(false);
   const [isAutoPlaying, setIsAutoPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isAdvancing, setIsAdvancing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const optionTextRef = useRef('');
   const [scriptLineState, setScriptLineState] = useState<ScriptLineState>({
-    sceneId: null,
+    cutId: null,
     script: '',
     index: 0,
   });
 
-  const currentSceneId = scene?.id ?? null;
-  const currentSceneLabel = currentSceneId ? `Scene #${currentSceneId}` : 'Scene 없음';
-  const currentScript = scene?.script ?? '';
+  const currentCutId = cut?.id ?? null;
+  const currentCutLabel = currentCutId ? `Cut #${currentCutId}` : 'Cut 없음';
+  const currentScript = cut?.script ?? '';
   const scriptLines = useMemo(
     () => toScriptLines(currentScript),
     [currentScript],
   );
   const scriptLineIndex =
-    scriptLineState.sceneId === currentSceneId && scriptLineState.script === currentScript
+    scriptLineState.cutId === currentCutId && scriptLineState.script === currentScript
       ? scriptLineState.index
       : 0;
   const lastScriptLineIndex = Math.max(scriptLines.length - 1, 0);
@@ -193,20 +193,20 @@ export function PlayPage() {
   const canReverseScript = visibleScriptLineIndex > 0;
   const canAdvanceScript = visibleScriptLineIndex < scriptLines.length - 1;
   const canNavigateScript = canReverseScript || canAdvanceScript;
-  const canEditNextScene = Boolean(scene?.id && status?.id && !isAdvancing);
+  const canEditNextCut = Boolean(cut?.id && status?.id && !isAdvancing);
   const canStartAutoPlay = Boolean(
-    scene?.id &&
+    cut?.id &&
     status?.id &&
     !isLoading &&
     !error &&
-    !currentSceneEditorInitialScene &&
-    !isSceneExplorerOpen,
+    !currentCutEditorInitialCut &&
+    !isCutExplorerOpen,
   );
-  const canRerollScene =
-    Boolean(pendingTransition && scene?.id === pendingTransition.targetSceneId && status?.id);
-  const canGoBackScene = canRerollScene;
+  const canRerollCut =
+    Boolean(pendingTransition && cut?.id === pendingTransition.targetCutId && status?.id);
+  const canGoBackCut = canRerollCut;
   const previousOptionText =
-    pendingTransition && scene?.id === pendingTransition.targetSceneId
+    pendingTransition && cut?.id === pendingTransition.targetCutId
       ? pendingTransition.optionText
       : null;
   const coreStatusChartPoints = status
@@ -217,44 +217,44 @@ export function PlayPage() {
   const coreStatusPolygon = pointList(coreStatusChartPoints);
 
   useEffect(() => {
-    setCurrentScene(scene);
-  }, [scene, setCurrentScene]);
+    setCurrentCut(cut);
+  }, [cut, setCurrentCut]);
 
   useEffect(() => {
     optionTextRef.current = optionText;
   }, [optionText]);
 
   useEffect(() => {
-    if (!selectedScene?.id || selectedScene.id === scene?.id) {
+    if (!selectedCut?.id || selectedCut.id === cut?.id) {
       return;
     }
-    setScene(selectedScene);
+    setCut(selectedCut);
     setDeltas({});
     setPendingTransition(null);
-    setContextSyncedSceneId(null);
+    setContextSyncedCutId(null);
     setOptionText('');
     setIsAutoPlaying(false);
     setError(null);
-  }, [selectedScene, scene?.id]);
+  }, [selectedCut, cut?.id]);
 
   useEffect(() => {
-    if (!deletedSceneId) {
+    if (!deletedCutId) {
       return;
     }
 
-    if (scene?.id !== deletedSceneId) {
-      clearDeletedScene();
+    if (cut?.id !== deletedCutId) {
+      clearDeletedCut();
       return;
     }
 
     let isActive = true;
 
-    async function loadFallbackScene() {
+    async function loadFallbackCut() {
       setIsLoading(true);
       setError(null);
       setOptionText('');
       try {
-        const sceneResponse = await dbTables.Scene.listRows(
+        const cutResponse = await dbTables.Cut.listRows(
           createListRequest({
             limit: 1,
             sort: ['id', 'asc'],
@@ -264,35 +264,35 @@ export function PlayPage() {
           return;
         }
 
-        const fallbackScene = sceneResponse.items[0] ?? null;
-        setScene(fallbackScene);
+        const fallbackCut = cutResponse.items[0] ?? null;
+        setCut(fallbackCut);
         setDeltas({});
         setPendingTransition(null);
-        setContextSyncedSceneId(null);
+        setContextSyncedCutId(null);
         setOptionText('');
         setIsAutoPlaying(false);
-        if (!fallbackScene) {
-          setError('시작할 Scene이 없습니다.');
+        if (!fallbackCut) {
+          setError('시작할 Cut이 없습니다.');
         }
       } catch (loadError) {
         if (isActive) {
-          setScene(null);
+          setCut(null);
           setError(getErrorMessage(loadError));
         }
       } finally {
         if (isActive) {
           setIsLoading(false);
-          clearDeletedScene();
+          clearDeletedCut();
         }
       }
     }
 
-    void loadFallbackScene();
+    void loadFallbackCut();
 
     return () => {
       isActive = false;
     };
-  }, [deletedSceneId, scene?.id, clearDeletedScene]);
+  }, [deletedCutId, cut?.id, clearDeletedCut]);
 
   useEffect(() => {
     let isActive = true;
@@ -325,21 +325,21 @@ export function PlayPage() {
           throw new Error('Status ID를 확인할 수 없습니다.');
         }
 
-        const initialScene = await dbTables.SelectionModel.nextScene({
-          scene_id: null,
+        const initialCut = await dbTables.SelectionModel.nextCut({
+          cut_id: null,
           status_id: loadedStatus.id,
           option_text: '',
         });
         if (!isActive) {
           return;
         }
-        if (!initialScene.id) {
-          throw new Error('시작할 Scene ID를 확인할 수 없습니다.');
+        if (!initialCut.id) {
+          throw new Error('시작할 Cut ID를 확인할 수 없습니다.');
         }
 
         const { nextStatus, deltas: nextDeltas } = applyStatusChange(
           loadedStatus,
-          initialScene.status_change,
+          initialCut.status_change,
         );
         await dbTables.Status.upsertRow([nextStatus]);
         if (!isActive) {
@@ -348,9 +348,9 @@ export function PlayPage() {
 
         setStatus(nextStatus);
         setDeltas(nextDeltas);
-        setScene(initialScene);
+        setCut(initialCut);
         setPendingTransition(null);
-        setContextSyncedSceneId(null);
+        setContextSyncedCutId(null);
         setOptionText('');
         setIsAutoPlaying(false);
       } catch (loadError) {
@@ -371,140 +371,140 @@ export function PlayPage() {
     };
   }, [parsedStatusId]);
 
-  function openCurrentSceneEditor() {
-    if (!scene || !currentSceneId || isAdvancing) {
+  function openCurrentCutEditor() {
+    if (!cut || !currentCutId || isAdvancing) {
       return;
     }
     setIsAutoPlaying(false);
-    setCurrentSceneEditorMode('edit');
-    setCurrentSceneEditorSceneId(currentSceneId);
-    setCurrentSceneEditorInitialScene(scene);
+    setCurrentCutEditorMode('edit');
+    setCurrentCutEditorCutId(currentCutId);
+    setCurrentCutEditorInitialCut(cut);
   }
 
-  function openNextSceneEditor() {
-    if (!scene?.id || !status?.id || isAdvancing) {
+  function openNextCutEditor() {
+    if (!cut?.id || !status?.id || isAdvancing) {
       return;
     }
     setIsAutoPlaying(false);
     setError(null);
-    setCurrentSceneEditorMode('next');
-    setCurrentSceneEditorSceneId(null);
-    setCurrentSceneEditorInitialScene(createNextSceneDraft(scene));
+    setCurrentCutEditorMode('next');
+    setCurrentCutEditorCutId(null);
+    setCurrentCutEditorInitialCut(createNextCutDraft(cut));
   }
 
-  function closeCurrentSceneEditor() {
-    setCurrentSceneEditorSceneId(null);
-    setCurrentSceneEditorInitialScene(null);
-    setCurrentSceneEditorMode('edit');
+  function closeCurrentCutEditor() {
+    setCurrentCutEditorCutId(null);
+    setCurrentCutEditorInitialCut(null);
+    setCurrentCutEditorMode('edit');
   }
 
-  async function handleCurrentSceneSaved(sceneId: number) {
+  async function handleCurrentCutSaved(cutId: number) {
     setError(null);
     try {
-      const sceneResponse = await dbTables.Scene.listRows(
+      const cutResponse = await dbTables.Cut.listRows(
         createListRequest({
           limit: 1,
-          selected_ids: [sceneId],
+          selected_ids: [cutId],
         }),
       );
-      const reloadedScene = sceneResponse.items[0] ?? null;
-      if (!reloadedScene) {
-        throw new Error('저장한 Scene을 다시 불러올 수 없습니다.');
+      const reloadedCut = cutResponse.items[0] ?? null;
+      if (!reloadedCut) {
+        throw new Error('저장한 Cut을 다시 불러올 수 없습니다.');
       }
 
-      const isDuplicateSave = currentSceneEditorSceneId === null;
-      const shouldCreateNextScene = isDuplicateSave && currentSceneEditorMode === 'next';
-      const shouldReplacePendingScene =
+      const isDuplicateSave = currentCutEditorCutId === null;
+      const shouldCreateNextCut = isDuplicateSave && currentCutEditorMode === 'next';
+      const shouldReplacePendingCut =
         isDuplicateSave &&
-        currentSceneEditorMode === 'replace' &&
-        Boolean(pendingTransition && status?.id && scene?.id === pendingTransition.targetSceneId);
+        currentCutEditorMode === 'replace' &&
+        Boolean(pendingTransition && status?.id && cut?.id === pendingTransition.targetCutId);
 
-      if (shouldCreateNextScene) {
-        const didAdvance = await advanceToCreatedScene(reloadedScene);
+      if (shouldCreateNextCut) {
+        const didAdvance = await advanceToCreatedCut(reloadedCut);
         if (!didAdvance) {
           return;
         }
-      } else if (shouldReplacePendingScene) {
-        const didReplace = await replacePendingScene(reloadedScene);
+      } else if (shouldReplacePendingCut) {
+        const didReplace = await replacePendingCut(reloadedCut);
         if (!didReplace) {
           return;
         }
       } else {
-        setScene(reloadedScene);
-        setCurrentScene(reloadedScene);
+        setCut(reloadedCut);
+        setCurrentCut(reloadedCut);
         setPendingTransition(null);
-        setContextSyncedSceneId(null);
+        setContextSyncedCutId(null);
         setIsAutoPlaying(false);
       }
-      setCurrentSceneEditorSceneId(sceneId);
-      setCurrentSceneEditorInitialScene(reloadedScene);
-      setCurrentSceneEditorMode('edit');
+      setCurrentCutEditorCutId(cutId);
+      setCurrentCutEditorInitialCut(reloadedCut);
+      setCurrentCutEditorMode('edit');
     } catch (saveError) {
       setError(getErrorMessage(saveError));
     }
   }
 
-  function handleCurrentSceneDuplicate(sceneDraft: SceneRecord) {
-    setCurrentSceneEditorMode('replace');
-    setCurrentSceneEditorSceneId(null);
-    setCurrentSceneEditorInitialScene({
-      ...sceneDraft,
+  function handleCurrentCutDuplicate(cutDraft: CutRecord) {
+    setCurrentCutEditorMode('replace');
+    setCurrentCutEditorCutId(null);
+    setCurrentCutEditorInitialCut({
+      ...cutDraft,
       id: null,
-      status_change: { ...sceneDraft.status_change },
+      status_change: { ...cutDraft.status_change },
     });
   }
 
-  function handleCurrentSceneDeleted(deletedSceneId: number) {
-    closeCurrentSceneEditor();
-    handleSceneDeleted(deletedSceneId);
+  function handleCurrentCutDeleted(deletedCutId: number) {
+    closeCurrentCutEditor();
+    handleCutDeleted(deletedCutId);
   }
 
-  function openManualSceneExplorer() {
+  function openManualCutExplorer() {
     if (!pendingTransition || isAdvancing) {
       return;
     }
     setIsAutoPlaying(false);
-    setIsSceneExplorerOpen(true);
+    setIsCutExplorerOpen(true);
   }
 
-  function closeManualSceneExplorer() {
-    setIsSceneExplorerOpen(false);
+  function closeManualCutExplorer() {
+    setIsCutExplorerOpen(false);
   }
 
-  async function advanceToCreatedScene(nextScene: SceneRecord): Promise<boolean> {
-    if (!scene?.id || !status?.id) {
-      setError('현재 Scene 또는 Status를 확인할 수 없습니다.');
+  async function advanceToCreatedCut(nextCut: CutRecord): Promise<boolean> {
+    if (!cut?.id || !status?.id) {
+      setError('현재 Cut 또는 Status를 확인할 수 없습니다.');
       return false;
     }
-    if (!nextScene.id) {
-      setError('Scene ID를 확인할 수 없습니다.');
+    if (!nextCut.id) {
+      setError('Cut ID를 확인할 수 없습니다.');
       return false;
     }
 
-    const sourceSceneId = scene.id;
-    const sourceScene = scene;
+    const sourceCutId = cut.id;
+    const sourceCut = cut;
     const statusBeforeTarget = { ...status };
     setIsAdvancing(true);
     setError(null);
     try {
-      await reinforcePendingTransitionIfCurrent(sourceSceneId, status.id);
-      await syncSceneContextOnce(status.id, sourceSceneId);
+      await reinforcePendingTransitionIfCurrent(sourceCutId, status.id);
+      await syncCutContextOnce(status.id, sourceCutId);
 
       const { nextStatus, deltas: nextDeltas } = applyStatusChange(
         statusBeforeTarget,
-        nextScene.status_change,
+        nextCut.status_change,
       );
 
       await dbTables.Status.upsertRow([nextStatus]);
       setStatus(nextStatus);
       setDeltas(nextDeltas);
-      setScene(nextScene);
-      setCurrentScene(nextScene);
+      setCut(nextCut);
+      setCurrentCut(nextCut);
       setPendingTransition({
-        sourceScene,
-        sourceSceneId,
+        sourceCut,
+        sourceCutId,
         optionText: '',
-        targetSceneId: nextScene.id,
+        targetCutId: nextCut.id,
         statusBeforeTarget,
       });
       setOptionText('');
@@ -517,69 +517,69 @@ export function PlayPage() {
     }
   }
 
-  async function syncSceneContextOnce(statusId: number, sceneId: number) {
-    if (contextSyncedSceneId === sceneId) {
+  async function syncCutContextOnce(statusId: number, cutId: number) {
+    if (contextSyncedCutId === cutId) {
       return;
     }
 
-    await dbTables.Scene.updateContext({
+    await dbTables.Cut.updateContext({
       status_id: statusId,
-      scene_id: sceneId,
+      cut_id: cutId,
     });
-    setContextSyncedSceneId(sceneId);
+    setContextSyncedCutId(cutId);
   }
 
-  async function reinforcePendingTransitionIfCurrent(sceneId: number, statusId: number) {
-    if (!pendingTransition || pendingTransition.targetSceneId !== sceneId) {
+  async function reinforcePendingTransitionIfCurrent(cutId: number, statusId: number) {
+    if (!pendingTransition || pendingTransition.targetCutId !== cutId) {
       return;
     }
 
     await dbTables.SelectionModel.adjustModel({
-      scene_id: pendingTransition.sourceSceneId,
+      cut_id: pendingTransition.sourceCutId,
       status_id: statusId,
       option_text: pendingTransition.optionText,
-      target_scene_id: pendingTransition.targetSceneId,
+      target_cut_id: pendingTransition.targetCutId,
       learn_rate: FEEDBACK_LEARN_RATE,
     });
   }
 
-  async function advanceToNextScene(sourceScene: SceneRecord, submittedOptionText: string): Promise<boolean> {
-    if (!status?.id || !sourceScene.id) {
+  async function advanceToNextCut(sourceCut: CutRecord, submittedOptionText: string): Promise<boolean> {
+    if (!status?.id || !sourceCut.id) {
       return false;
     }
 
-    const sourceSceneId = sourceScene.id;
+    const sourceCutId = sourceCut.id;
     setIsAdvancing(true);
     setError(null);
     try {
-      await reinforcePendingTransitionIfCurrent(sourceSceneId, status.id);
-      await syncSceneContextOnce(status.id, sourceSceneId);
+      await reinforcePendingTransitionIfCurrent(sourceCutId, status.id);
+      await syncCutContextOnce(status.id, sourceCutId);
       setPendingTransition(null);
 
-      const nextScene = await dbTables.SelectionModel.nextScene({
-        scene_id: sourceSceneId,
+      const nextCut = await dbTables.SelectionModel.nextCut({
+        cut_id: sourceCutId,
         status_id: status.id,
         option_text: submittedOptionText,
       });
-      if (!nextScene.id) {
-        throw new Error('다음 Scene ID를 확인할 수 없습니다.');
+      if (!nextCut.id) {
+        throw new Error('다음 Cut ID를 확인할 수 없습니다.');
       }
 
       const { nextStatus, deltas: nextDeltas } = applyStatusChange(
         status,
-        nextScene.status_change,
+        nextCut.status_change,
       );
 
       await dbTables.Status.upsertRow([nextStatus]);
       setStatus(nextStatus);
       setDeltas(nextDeltas);
-      setScene(nextScene);
-      setCurrentScene(nextScene);
+      setCut(nextCut);
+      setCurrentCut(nextCut);
       setPendingTransition({
-        sourceScene,
-        sourceSceneId,
+        sourceCut,
+        sourceCutId,
         optionText: submittedOptionText,
-        targetSceneId: nextScene.id,
+        targetCutId: nextCut.id,
         statusBeforeTarget: { ...status },
       });
       setOptionText('');
@@ -593,15 +593,15 @@ export function PlayPage() {
   }
 
   async function submitOptionText() {
-    if (!scene?.id) {
+    if (!cut?.id) {
       return;
     }
 
-    await advanceToNextScene(scene, optionText.trim());
+    await advanceToNextCut(cut, optionText.trim());
   }
 
-  async function goBackToPreviousScene() {
-    if (!pendingTransition || !status?.id || scene?.id !== pendingTransition.targetSceneId) {
+  async function goBackToPreviousCut() {
+    if (!pendingTransition || !status?.id || cut?.id !== pendingTransition.targetCutId) {
       return;
     }
 
@@ -613,8 +613,8 @@ export function PlayPage() {
       await dbTables.Status.upsertRow([restoredStatus]);
       setStatus(restoredStatus);
       setDeltas({});
-      setScene(pendingTransition.sourceScene);
-      setCurrentScene(pendingTransition.sourceScene);
+      setCut(pendingTransition.sourceCut);
+      setCurrentCut(pendingTransition.sourceCut);
       setOptionText(pendingTransition.optionText);
       setPendingTransition(null);
     } catch (backError) {
@@ -624,8 +624,8 @@ export function PlayPage() {
     }
   }
 
-  async function rerollScene() {
-    if (!pendingTransition || !status?.id || scene?.id !== pendingTransition.targetSceneId) {
+  async function rerollCut() {
+    if (!pendingTransition || !status?.id || cut?.id !== pendingTransition.targetCutId) {
       return;
     }
 
@@ -639,35 +639,35 @@ export function PlayPage() {
       setDeltas({});
 
       await dbTables.SelectionModel.adjustModel({
-        scene_id: pendingTransition.sourceSceneId,
+        cut_id: pendingTransition.sourceCutId,
         status_id: status.id,
         option_text: pendingTransition.optionText,
-        target_scene_id: pendingTransition.targetSceneId,
+        target_cut_id: pendingTransition.targetCutId,
         learn_rate: -FEEDBACK_LEARN_RATE,
       });
 
-      const nextScene = await dbTables.SelectionModel.nextScene({
-        scene_id: pendingTransition.sourceSceneId,
+      const nextCut = await dbTables.SelectionModel.nextCut({
+        cut_id: pendingTransition.sourceCutId,
         status_id: status.id,
         option_text: pendingTransition.optionText,
       });
-      if (!nextScene.id) {
-        throw new Error('다음 Scene ID를 확인할 수 없습니다.');
+      if (!nextCut.id) {
+        throw new Error('다음 Cut ID를 확인할 수 없습니다.');
       }
 
       const { nextStatus, deltas: nextDeltas } = applyStatusChange(
         restoredStatus,
-        nextScene.status_change,
+        nextCut.status_change,
       );
 
       await dbTables.Status.upsertRow([nextStatus]);
       setStatus(nextStatus);
       setDeltas(nextDeltas);
-      setScene(nextScene);
-      setCurrentScene(nextScene);
+      setCut(nextCut);
+      setCurrentCut(nextCut);
       setPendingTransition({
         ...pendingTransition,
-        targetSceneId: nextScene.id,
+        targetCutId: nextCut.id,
         statusBeforeTarget: restoredStatus,
       });
       setOptionText('');
@@ -678,12 +678,12 @@ export function PlayPage() {
     }
   }
 
-  async function replacePendingScene(replacementScene: SceneRecord): Promise<boolean> {
-    if (!pendingTransition || !status?.id || scene?.id !== pendingTransition.targetSceneId) {
+  async function replacePendingCut(replacementCut: CutRecord): Promise<boolean> {
+    if (!pendingTransition || !status?.id || cut?.id !== pendingTransition.targetCutId) {
       return false;
     }
-    if (!replacementScene.id) {
-      setError('Scene ID를 확인할 수 없습니다.');
+    if (!replacementCut.id) {
+      setError('Cut ID를 확인할 수 없습니다.');
       return false;
     }
 
@@ -696,26 +696,26 @@ export function PlayPage() {
       setDeltas({});
 
       await dbTables.SelectionModel.adjustModel({
-        scene_id: pendingTransition.sourceSceneId,
+        cut_id: pendingTransition.sourceCutId,
         status_id: status.id,
         option_text: pendingTransition.optionText,
-        target_scene_id: pendingTransition.targetSceneId,
+        target_cut_id: pendingTransition.targetCutId,
         learn_rate: -FEEDBACK_LEARN_RATE,
       });
 
       const { nextStatus, deltas: nextDeltas } = applyStatusChange(
         restoredStatus,
-        replacementScene.status_change,
+        replacementCut.status_change,
       );
 
       await dbTables.Status.upsertRow([nextStatus]);
       setStatus(nextStatus);
       setDeltas(nextDeltas);
-      setScene(replacementScene);
-      setCurrentScene(replacementScene);
+      setCut(replacementCut);
+      setCurrentCut(replacementCut);
       setPendingTransition({
         ...pendingTransition,
-        targetSceneId: replacementScene.id,
+        targetCutId: replacementCut.id,
         statusBeforeTarget: restoredStatus,
       });
       setOptionText('');
@@ -728,30 +728,30 @@ export function PlayPage() {
     }
   }
 
-  async function selectManualScene(sceneId: number) {
+  async function selectManualCut(cutId: number) {
     setIsAutoPlaying(false);
-    if (sceneId === scene?.id) {
-      setIsSceneExplorerOpen(false);
+    if (cutId === cut?.id) {
+      setIsCutExplorerOpen(false);
       return;
     }
 
     setError(null);
     try {
-      const sceneResponse = await dbTables.Scene.listRows(
+      const cutResponse = await dbTables.Cut.listRows(
         createListRequest({
           limit: 1,
-          selected_ids: [sceneId],
+          selected_ids: [cutId],
         }),
       );
-      const selectedScene = sceneResponse.items[0] ?? null;
-      if (!selectedScene) {
-        setError('선택한 Scene을 찾을 수 없습니다.');
+      const selectedCut = cutResponse.items[0] ?? null;
+      if (!selectedCut) {
+        setError('선택한 Cut을 찾을 수 없습니다.');
         return;
       }
 
-      const didReplace = await replacePendingScene(selectedScene);
+      const didReplace = await replacePendingCut(selectedCut);
       if (didReplace) {
-        setIsSceneExplorerOpen(false);
+        setIsCutExplorerOpen(false);
       }
     } catch (selectError) {
       setError(getErrorMessage(selectError));
@@ -768,7 +768,7 @@ export function PlayPage() {
     }
 
     setScriptLineState({
-      sceneId: currentSceneId,
+      cutId: currentCutId,
       script: currentScript,
       index: nextIndex,
     });
@@ -809,9 +809,9 @@ export function PlayPage() {
     if (
       isLoading ||
       isAdvancing ||
-      currentSceneEditorInitialScene ||
-      isSceneExplorerOpen ||
-      !scene?.id
+      currentCutEditorInitialCut ||
+      isCutExplorerOpen ||
+      !cut?.id
     ) {
       return undefined;
     }
@@ -823,7 +823,7 @@ export function PlayPage() {
       }
 
       void (async () => {
-        const didAdvance = await advanceToNextScene(scene, optionTextRef.current.trim());
+        const didAdvance = await advanceToNextCut(cut, optionTextRef.current.trim());
         if (!didAdvance) {
           setIsAutoPlaying(false);
         }
@@ -838,13 +838,13 @@ export function PlayPage() {
     isLoading,
     isAdvancing,
     error,
-    currentSceneEditorInitialScene,
-    isSceneExplorerOpen,
-    scene,
+    currentCutEditorInitialCut,
+    isCutExplorerOpen,
+    cut,
     canAdvanceScript,
     visibleScriptLineIndex,
     moveScriptLine,
-    advanceToNextScene,
+    advanceToNextCut,
   ]);
 
   return (
@@ -853,9 +853,9 @@ export function PlayPage() {
         <Panel className="min-h-0 min-w-0">
           <PanelHeader>
             <div className="min-w-0">
-              <p className="text-[0.85rem] tracking-[0.16em] text-[var(--app-muted)] uppercase">Scene</p>
+              <p className="text-[0.85rem] tracking-[0.16em] text-[var(--app-muted)] uppercase">Cut</p>
               <h1 className="truncate text-lg font-semibold text-[#fff7ef]">
-                {currentSceneLabel}
+                {currentCutLabel}
               </h1>
             </div>
           </PanelHeader>
@@ -877,15 +877,15 @@ export function PlayPage() {
                 }
               }}
             >
-              {scene?.image_url ? (
+              {cut?.image_url ? (
                 <img
-                  src={scene.image_url}
-                  alt="현재 Scene 이미지"
+                  src={cut.image_url}
+                  alt="현재 Cut 이미지"
                   className="absolute inset-0 h-full w-full object-contain"
                 />
               ) : (
                 <div className="grid h-full min-h-72 w-full place-items-center gap-3 bg-[linear-gradient(145deg,rgba(255,231,238,0.1),transparent_42%),rgba(15,5,20,0.78)] p-6 text-center text-[0.95rem] text-[var(--app-muted)]">
-                  {isLoading ? '장면을 불러오는 중' : '아직 이미지가 없습니다'}
+                  {isLoading ? '컷을 불러오는 중' : '아직 이미지가 없습니다'}
                 </div>
               )}
             </ImageFrame>
@@ -1058,17 +1058,17 @@ export function PlayPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <Button
                     className="min-h-11 w-full px-3 py-2 text-sm leading-tight"
-                    onClick={openCurrentSceneEditor}
-                    disabled={!currentSceneId || isAdvancing}
+                    onClick={openCurrentCutEditor}
+                    disabled={!currentCutId || isAdvancing}
                   >
-                    현재 장면 편집
+                    현재 컷 편집
                   </Button>
                   <Button
                     className="min-h-11 w-full px-3 py-2 text-sm leading-tight"
-                    onClick={openNextSceneEditor}
-                    disabled={!canEditNextScene}
+                    onClick={openNextCutEditor}
+                    disabled={!canEditNextCut}
                   >
-                    다음장면 편집
+                    다음컷 편집
                   </Button>
                   <Button
                     className="min-h-11 w-full px-3 py-2 text-sm leading-tight"
@@ -1077,28 +1077,28 @@ export function PlayPage() {
                   >
                     {isAutoPlaying ? '자동 정지' : '자동플레이'}
                   </Button>
-                  {canRerollScene ? (
+                  {canRerollCut ? (
                     <>
                       <Button
                         className="min-h-11 w-full px-3 py-2 text-sm leading-tight"
-                        onClick={() => void goBackToPreviousScene()}
-                        disabled={!canGoBackScene || isAdvancing}
+                        onClick={() => void goBackToPreviousCut()}
+                        disabled={!canGoBackCut || isAdvancing}
                       >
-                        이전 장면
+                        이전 컷
                       </Button>
                       <Button
                         className="min-h-11 w-full px-3 py-2 text-sm leading-tight"
-                        onClick={() => void rerollScene()}
+                        onClick={() => void rerollCut()}
                         disabled={isAdvancing}
                       >
                         다시 뽑기
                       </Button>
                       <Button
                         className="min-h-11 w-full px-3 py-2 text-sm leading-tight"
-                        onClick={openManualSceneExplorer}
+                        onClick={openManualCutExplorer}
                         disabled={isAdvancing}
                       >
-                        다른 장면
+                        다른 컷
                       </Button>
                     </>
                   ) : null}
@@ -1139,7 +1139,7 @@ export function PlayPage() {
               }}
             >
               {isLoading ? (
-                <span>운명의 장면을 펼치는 중...</span>
+                <span>운명의 컷을 펼치는 중...</span>
               ) : error ? (
                 <span className="text-[#ff9ab8]">{error}</span>
               ) : currentScriptLine ? (
@@ -1166,15 +1166,15 @@ export function PlayPage() {
                     value={optionText}
                     onChange={(event) => setOptionText(event.target.value)}
                     className="h-12 w-full px-3"
-                    disabled={isAdvancing || !scene?.id}
+                    disabled={isAdvancing || !cut?.id}
                   />
                 </div>
                 <Button
                   type="submit"
                   className="h-12 px-5 py-3"
-                  disabled={isAdvancing || !scene?.id}
+                  disabled={isAdvancing || !cut?.id}
                 >
-                  {isAdvancing ? '다음장면 찾는 중' : '다음장면'}
+                  {isAdvancing ? '다음컷 찾는 중' : '다음컷'}
                 </Button>
               </div>
             </form>
@@ -1182,22 +1182,22 @@ export function PlayPage() {
         </Panel>
       </div>
 
-      {currentSceneEditorInitialScene ? (
-        <SceneEditModal
-          sceneId={currentSceneEditorSceneId}
-          initialScene={currentSceneEditorInitialScene}
-          onClose={closeCurrentSceneEditor}
-          onSaved={(sceneId) => void handleCurrentSceneSaved(sceneId)}
-          onDeleted={handleCurrentSceneDeleted}
-          onDuplicate={handleCurrentSceneDuplicate}
+      {currentCutEditorInitialCut ? (
+        <CutEditModal
+          cutId={currentCutEditorCutId}
+          initialCut={currentCutEditorInitialCut}
+          onClose={closeCurrentCutEditor}
+          onSaved={(cutId) => void handleCurrentCutSaved(cutId)}
+          onDeleted={handleCurrentCutDeleted}
+          onDuplicate={handleCurrentCutDuplicate}
         />
       ) : null}
 
-      {isSceneExplorerOpen ? (
-        <SceneExplorerModal
-          currentSceneId={scene?.id ?? null}
-          onClose={closeManualSceneExplorer}
-          onSelect={(sceneId) => void selectManualScene(sceneId)}
+      {isCutExplorerOpen ? (
+        <CutExplorerModal
+          currentCutId={cut?.id ?? null}
+          onClose={closeManualCutExplorer}
+          onSelect={(cutId) => void selectManualCut(cutId)}
         />
       ) : null}
     </div>

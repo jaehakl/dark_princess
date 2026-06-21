@@ -10,7 +10,7 @@ type ImageManagerToolbarProps = {
   isFamilyMode: boolean;
   isSelectionMode: boolean;
   selectedCount: number;
-  selectedSceneCount: number;
+  selectedCutCount: number;
   totalRows: number;
   isLoading: boolean;
   isDeleting: boolean;
@@ -36,7 +36,7 @@ export function ImageManagerToolbar({
   isFamilyMode,
   isSelectionMode,
   selectedCount,
-  selectedSceneCount,
+  selectedCutCount,
   totalRows,
   isLoading,
   isDeleting,
@@ -163,7 +163,7 @@ export function ImageManagerToolbar({
 
         <span className="pb-3 text-xs font-semibold text-[var(--app-muted)]">
           {selectedCount > 0
-            ? `선택 ${selectedCount} · Scene ${selectedSceneCount}`
+            ? `선택 ${selectedCount} · Cut ${selectedCutCount}`
             : `전체 ${totalRows}`}
         </span>
 

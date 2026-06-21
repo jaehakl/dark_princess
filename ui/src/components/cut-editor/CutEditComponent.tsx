@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { dbTables } from '../../api/api';
 import { useImageSettingsStore } from '../../api/store';
 import type {
-  GenerateSceneRequest,
+  GenerateCutRequest,
   ImageRecord,
   PromptColumnName,
-  SceneRecord,
+  CutRecord,
 } from '../../api/type';
 import type { ImageEditorSubmitPayload } from '../image-editor';
 import {
@@ -19,19 +19,19 @@ import {
   EMPTY_INSTANT_PROMPT_DRAFT,
   EMPTY_PROMPT_DRAFT,
   EMPTY_TRANSLATION_DRAFT,
-  FETCH_SCENE_BY_ID_REQUEST,
+  FETCH_CUT_BY_ID_REQUEST,
   PROMPT_COLUMNS,
   PROMPT_EDITOR_COLUMNS,
   STATUS_CHANGE_FIELDS,
 } from './constants';
-import { SceneEditorHeader } from './SceneEditorHeader';
-import { SceneImagePanel } from './SceneImagePanel';
-import { ScenePromptPanel } from './ScenePromptPanel';
+import { CutEditorHeader } from './CutEditorHeader';
+import { CutImagePanel } from './CutImagePanel';
+import { CutPromptPanel } from './CutPromptPanel';
 import type {
   InstantPromptName,
   PromptEditorColumnName,
   SaveMode,
-  SceneEditComponentProps,
+  CutEditComponentProps,
   StatusChangeValues,
 } from './types';
 
@@ -42,12 +42,12 @@ function getErrorMessage(error: unknown) {
   return '요청에 실패했습니다.';
 }
 
-function sceneToPromptDraft(scene: SceneRecord): Record<PromptColumnName, string> {
+function cutToPromptDraft(cut: CutRecord): Record<PromptColumnName, string> {
   return {
-    prompt_situation: scene.prompt_situation ?? '',
-    prompt_hero: scene.prompt_hero ?? '',
-    prompt_camera: scene.prompt_camera ?? '',
-    prompt_detail: scene.prompt_detail ?? '',
+    prompt_situation: cut.prompt_situation ?? '',
+    prompt_hero: cut.prompt_hero ?? '',
+    prompt_camera: cut.prompt_camera ?? '',
+    prompt_detail: cut.prompt_detail ?? '',
   };
 }
 
@@ -61,7 +61,7 @@ function statusChangeToValues(statusChange: Record<string, unknown> | undefined)
   }, {} as StatusChangeValues);
 }
 
-function promptColumnsToScenePayload(
+function promptColumnsToCutPayload(
   promptColumns: Record<PromptColumnName, string>,
   promptNegative: string,
 ) {
@@ -74,30 +74,30 @@ function promptColumnsToScenePayload(
   };
 }
 
-export function SceneEditComponent({
-  sceneId,
-  initialScene,
+export function CutEditComponent({
+  cutId,
+  initialCut,
   onSaved,
   onDeleted,
   onClose,
   onDuplicate,
   modalLayout = false,
-}: SceneEditComponentProps) {
-  const [activeScene, setActiveScene] = useState<SceneRecord | null>(initialScene);
-  const [isLoadingScene, setIsLoadingScene] = useState(false);
+}: CutEditComponentProps) {
+  const [activeCut, setActiveCut] = useState<CutRecord | null>(initialCut);
+  const [isLoadingCut, setIsLoadingCut] = useState(false);
   const [promptDraft, setPromptDraft] = useState<Record<PromptColumnName, string>>(
-    () => sceneToPromptDraft(initialScene),
+    () => cutToPromptDraft(initialCut),
   );
   const [instantPromptDraft, setInstantPromptDraft] = useState<Record<InstantPromptName, string>>({
     ...EMPTY_INSTANT_PROMPT_DRAFT,
   });
-  const [promptNegativeDraft, setPromptNegativeDraft] = useState(initialScene.prompt_negative ?? '');
+  const [promptNegativeDraft, setPromptNegativeDraft] = useState(initialCut.prompt_negative ?? '');
   const [translationDraft, setTranslationDraft] = useState<Record<PromptEditorColumnName, string>>({
     ...EMPTY_TRANSLATION_DRAFT,
   });
-  const [script, setScript] = useState(initialScene.script ?? '');
+  const [script, setScript] = useState(initialCut.script ?? '');
   const [statusChangeValues, setStatusChangeValues] = useState<StatusChangeValues>(
-    () => statusChangeToValues(initialScene.status_change),
+    () => statusChangeToValues(initialCut.status_change),
   );
   const imageSettingsDefaults = useImageSettingsStore((state) => state.defaults);
   const imageSettings = useImageSettingsStore((state) => state.settings);
@@ -107,12 +107,12 @@ export function SceneEditComponent({
   const [imageHistory, setImageHistory] = useState({ ids: [] as number[], index: -1 });
   const [selectedImageOverride, setSelectedImageOverride] = useState<ImageRecord | null>(null);
   const [isLoadingHistoryImage, setIsLoadingHistoryImage] = useState(false);
-  const [isUpdatingSceneImage, setIsUpdatingSceneImage] = useState(false);
+  const [isUpdatingCutImage, setIsUpdatingCutImage] = useState(false);
   const [isTranslatingPromptColumns, setIsTranslatingPromptColumns] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [savingMode, setSavingMode] = useState<SaveMode | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const preserveInstantPromptSceneIdRef = useRef<number | null>(null);
+  const preserveInstantPromptCutIdRef = useRef<number | null>(null);
 
   const composedPrompt = useMemo(
     () =>
@@ -123,96 +123,96 @@ export function SceneEditComponent({
     [promptDraft],
   );
   const isBusy = (
-    isLoadingScene ||
+    isLoadingCut ||
     isLoadingHistoryImage ||
-    isUpdatingSceneImage ||
+    isUpdatingCutImage ||
     isTranslatingPromptColumns ||
     isDeleting ||
     Boolean(savingMode)
   );
-  const canEdit = Boolean(activeScene);
+  const canEdit = Boolean(activeCut);
   const canSaveData = canEdit && composedPrompt.length > 0 && !isBusy;
-  const canDelete = sceneId !== null && !isBusy;
+  const canDelete = cutId !== null && !isBusy;
   const canTranslatePromptColumns =
     canEdit
     && !isBusy
     && PROMPT_EDITOR_COLUMNS.some(
       (column) => column.key !== 'prompt_camera' && translationDraft[column.key].trim().length > 0,
     );
-  const canDuplicate = Boolean(modalLayout && onDuplicate && sceneId !== null && canEdit && !isBusy);
+  const canDuplicate = Boolean(modalLayout && onDuplicate && cutId !== null && canEdit && !isBusy);
   const cameraSamples = imageSettingsDefaults?.camera_samples ?? imageSettings?.camera_samples ?? {};
-  const displayedImageId = selectedImageOverride?.id ?? activeScene?.image_id ?? null;
+  const displayedImageId = selectedImageOverride?.id ?? activeCut?.image_id ?? null;
   const displayedBaseImageUrl = selectedImageOverride
     ? selectedImageOverride.image_object_key ?? null
-    : activeScene?.image_url ?? null;
+    : activeCut?.image_url ?? null;
   const displayedScribbleImageUrl = selectedImageOverride
     ? selectedImageOverride.scribble_object_key ?? null
-    : activeScene?.scribble_url ?? null;
+    : activeCut?.scribble_url ?? null;
   const displayedPoseImageUrl = selectedImageOverride
     ? selectedImageOverride.pose_object_key ?? null
-    : activeScene?.pose_url ?? null;
+    : activeCut?.pose_url ?? null;
   const canGoPreviousImage = imageHistory.index > 0;
   const canGoNextImage = imageHistory.index >= 0 && imageHistory.index < imageHistory.ids.length - 1;
-  const selectedLabel = sceneId === null
-    ? '새 Scene 생성'
-    : isLoadingScene
-      ? `Scene #${sceneId} 불러오는 중`
-      : `Scene #${sceneId}`;
+  const selectedLabel = cutId === null
+    ? '새 Cut 생성'
+    : isLoadingCut
+      ? `Cut #${cutId} 불러오는 중`
+      : `Cut #${cutId}`;
 
-  const applySceneDraft = useCallback((scene: SceneRecord, resetInstantPrompts = true) => {
-    setActiveScene(scene);
-    setPromptDraft(sceneToPromptDraft(scene));
-    setPromptNegativeDraft(scene.prompt_negative ?? '');
+  const applyCutDraft = useCallback((cut: CutRecord, resetInstantPrompts = true) => {
+    setActiveCut(cut);
+    setPromptDraft(cutToPromptDraft(cut));
+    setPromptNegativeDraft(cut.prompt_negative ?? '');
     if (resetInstantPrompts) {
       setInstantPromptDraft({ ...EMPTY_INSTANT_PROMPT_DRAFT });
     }
     setTranslationDraft({ ...EMPTY_TRANSLATION_DRAFT });
-    setScript(scene.script ?? '');
-    setStatusChangeValues(statusChangeToValues(scene.status_change));
+    setScript(cut.script ?? '');
+    setStatusChangeValues(statusChangeToValues(cut.status_change));
     setError(null);
   }, []);
 
   useEffect(() => {
-    if (sceneId === null) {
-      setIsLoadingScene(false);
-      setIsUpdatingSceneImage(false);
+    if (cutId === null) {
+      setIsLoadingCut(false);
+      setIsUpdatingCutImage(false);
       setIsDeleting(false);
       setSavingMode(null);
-      preserveInstantPromptSceneIdRef.current = null;
-      applySceneDraft({ ...initialScene, id: null });
+      preserveInstantPromptCutIdRef.current = null;
+      applyCutDraft({ ...initialCut, id: null });
       return;
     }
 
-    const targetSceneId = sceneId;
+    const targetCutId = cutId;
     let isCancelled = false;
 
-    async function loadScene() {
-      setIsLoadingScene(true);
-      setIsUpdatingSceneImage(false);
+    async function loadCut() {
+      setIsLoadingCut(true);
+      setIsUpdatingCutImage(false);
       setIsDeleting(false);
       setSavingMode(null);
-      setActiveScene(null);
+      setActiveCut(null);
       setError(null);
       try {
-        const sceneResponse = await dbTables.Scene.listRows({
-          ...FETCH_SCENE_BY_ID_REQUEST,
-          selected_ids: [targetSceneId],
+        const cutResponse = await dbTables.Cut.listRows({
+          ...FETCH_CUT_BY_ID_REQUEST,
+          selected_ids: [targetCutId],
         });
-        const loadedScene = sceneResponse.items[0];
-        if (!loadedScene) {
-          throw new Error(`Scene #${targetSceneId}을 찾을 수 없습니다.`);
+        const loadedCut = cutResponse.items[0];
+        if (!loadedCut) {
+          throw new Error(`Cut #${targetCutId}을 찾을 수 없습니다.`);
         }
         if (!isCancelled) {
-          const shouldPreserveInstantPrompts = preserveInstantPromptSceneIdRef.current === targetSceneId;
-          if (shouldPreserveInstantPrompts || preserveInstantPromptSceneIdRef.current !== null) {
-            preserveInstantPromptSceneIdRef.current = null;
+          const shouldPreserveInstantPrompts = preserveInstantPromptCutIdRef.current === targetCutId;
+          if (shouldPreserveInstantPrompts || preserveInstantPromptCutIdRef.current !== null) {
+            preserveInstantPromptCutIdRef.current = null;
           }
-          applySceneDraft(loadedScene, !shouldPreserveInstantPrompts);
+          applyCutDraft(loadedCut, !shouldPreserveInstantPrompts);
         }
       } catch (loadError) {
         if (!isCancelled) {
-          preserveInstantPromptSceneIdRef.current = null;
-          setActiveScene(null);
+          preserveInstantPromptCutIdRef.current = null;
+          setActiveCut(null);
           setPromptDraft({ ...EMPTY_PROMPT_DRAFT });
           setInstantPromptDraft({ ...EMPTY_INSTANT_PROMPT_DRAFT });
           setPromptNegativeDraft('');
@@ -223,27 +223,27 @@ export function SceneEditComponent({
         }
       } finally {
         if (!isCancelled) {
-          setIsLoadingScene(false);
+          setIsLoadingCut(false);
         }
       }
     }
 
-    void loadScene();
+    void loadCut();
     return () => {
       isCancelled = true;
     };
-  }, [applySceneDraft, initialScene, sceneId]);
+  }, [applyCutDraft, initialCut, cutId]);
 
   useEffect(() => {
     setImageHistory({ ids: [], index: -1 });
     setSelectedImageOverride(null);
     setIsLoadingHistoryImage(false);
-    setIsUpdatingSceneImage(false);
-  }, [sceneId]);
+    setIsUpdatingCutImage(false);
+  }, [cutId]);
 
   useEffect(() => {
-    const nextImageId = activeScene?.image_id;
-    if (!nextImageId || (sceneId !== null && activeScene?.id !== sceneId)) {
+    const nextImageId = activeCut?.image_id;
+    if (!nextImageId || (cutId !== null && activeCut?.id !== cutId)) {
       setSelectedImageOverride(null);
       return;
     }
@@ -265,7 +265,7 @@ export function SceneEditComponent({
       return { ids: nextIds, index: nextIds.length - 1 };
     });
     setSelectedImageOverride(null);
-  }, [activeScene?.id, activeScene?.image_id, sceneId]);
+  }, [activeCut?.id, activeCut?.image_id, cutId]);
 
   useEffect(() => {
     if (imageSettings) {
@@ -463,52 +463,52 @@ export function SceneEditComponent({
       return;
     }
 
-    if (sceneId === null) {
+    if (cutId === null) {
       setSelectedImageOverride(image);
       addImageToHistory(imageId);
       setError(null);
       return;
     }
 
-    setIsUpdatingSceneImage(true);
+    setIsUpdatingCutImage(true);
     setError(null);
     try {
-      const updatedScene = await dbTables.Scene.updateImage({
-        scene_id: sceneId,
+      const updatedCut = await dbTables.Cut.updateImage({
+        cut_id: cutId,
         image_id: imageId,
       });
-      setActiveScene((current) => (
+      setActiveCut((current) => (
         current
           ? {
               ...current,
-              image_id: updatedScene.image_id ?? null,
-              image_url: updatedScene.image_url ?? null,
-              scribble_url: updatedScene.scribble_url ?? null,
-              pose_url: updatedScene.pose_url ?? null,
+              image_id: updatedCut.image_id ?? null,
+              image_url: updatedCut.image_url ?? null,
+              scribble_url: updatedCut.scribble_url ?? null,
+              pose_url: updatedCut.pose_url ?? null,
             }
-          : updatedScene
+          : updatedCut
       ));
       setSelectedImageOverride(null);
     } catch (selectError) {
       setError(getErrorMessage(selectError));
     } finally {
-      setIsUpdatingSceneImage(false);
+      setIsUpdatingCutImage(false);
     }
   }
 
-  async function submitSceneForm(formData: FormData) {
-    const generatedScene = await dbTables.Scene.generateScene(formData);
-    const generatedSceneId = generatedScene.id;
-    if (!generatedSceneId) {
-      throw new Error('Scene 저장 결과를 확인할 수 없습니다.');
+  async function submitCutForm(formData: FormData) {
+    const generatedCut = await dbTables.Cut.generateCut(formData);
+    const generatedCutId = generatedCut.id;
+    if (!generatedCutId) {
+      throw new Error('Cut 저장 결과를 확인할 수 없습니다.');
     }
 
-    preserveInstantPromptSceneIdRef.current = generatedSceneId;
-    applySceneDraft(generatedScene, false);
-    onSaved(generatedSceneId);
+    preserveInstantPromptCutIdRef.current = generatedCutId;
+    applyCutDraft(generatedCut, false);
+    onSaved(generatedCutId);
   }
 
-  async function saveDataOnlyScene() {
+  async function saveDataOnlyCut() {
     const trimmedPrompt = composedPrompt.trim();
 
     if (!trimmedPrompt) {
@@ -524,18 +524,18 @@ export function SceneEditComponent({
     setSavingMode('data');
     setError(null);
     try {
-      const payload: GenerateSceneRequest = {
-        scene_id: sceneId ?? null,
+      const payload: GenerateCutRequest = {
+        cut_id: cutId ?? null,
         image_id: displayedImageId,
         script,
         status_change: statusChange,
         generate_image: false,
-        ...promptColumnsToScenePayload(promptDraft, promptNegativeDraft),
+        ...promptColumnsToCutPayload(promptDraft, promptNegativeDraft),
       };
       const formData = new FormData();
       formData.append('payload', JSON.stringify(payload));
 
-      await submitSceneForm(formData);
+      await submitCutForm(formData);
     } catch (saveError) {
       setError(getErrorMessage(saveError));
     } finally {
@@ -559,14 +559,14 @@ export function SceneEditComponent({
     setSavingMode('image');
     setError(null);
     try {
-      const payload: GenerateSceneRequest = {
-        scene_id: sceneId ?? null,
+      const payload: GenerateCutRequest = {
+        cut_id: cutId ?? null,
         parent_image_id: displayedImageId,
         script,
         status_change: statusChange,
         generate_image: true,
         image_settings: imagePayload.parameters,
-        ...promptColumnsToScenePayload(imagePayload.promptColumns, promptNegativeDraft),
+        ...promptColumnsToCutPayload(imagePayload.promptColumns, promptNegativeDraft),
         prompt_instant_positive: instantPromptDraft.prompt_instant_positive.trim() || null,
         prompt_instant_negative: instantPromptDraft.prompt_instant_negative.trim() || null,
       };
@@ -574,19 +574,19 @@ export function SceneEditComponent({
       formData.append('payload', JSON.stringify(payload));
 
       if (imagePayload.image) {
-        formData.append('image', imagePayload.image, 'scene-inpaint-image.png');
+        formData.append('image', imagePayload.image, 'cut-inpaint-image.png');
       }
       if (imagePayload.mask) {
-        formData.append('mask', imagePayload.mask, 'scene-inpaint-mask.png');
+        formData.append('mask', imagePayload.mask, 'cut-inpaint-mask.png');
       }
       if (imagePayload.scribbleImage) {
-        formData.append('scribble_image', imagePayload.scribbleImage, 'scene-controlnet-scribble.png');
+        formData.append('scribble_image', imagePayload.scribbleImage, 'cut-controlnet-scribble.png');
       }
       if (imagePayload.poseImage) {
-        formData.append('pose_image', imagePayload.poseImage, 'scene-controlnet-openpose.png');
+        formData.append('pose_image', imagePayload.poseImage, 'cut-controlnet-openpose.png');
       }
 
-      await submitSceneForm(formData);
+      await submitCutForm(formData);
     } catch (saveError) {
       setError(getErrorMessage(saveError));
     } finally {
@@ -594,14 +594,14 @@ export function SceneEditComponent({
     }
   }
 
-  async function deleteScene() {
-    if (sceneId === null) {
+  async function deleteCut() {
+    if (cutId === null) {
       return;
     }
 
-    const deletedSceneId = sceneId;
+    const deletedCutId = cutId;
     const shouldDelete = window.confirm(
-      `Scene #${deletedSceneId}을 삭제할까요? 연결된 옵션도 함께 삭제됩니다.`,
+      `Cut #${deletedCutId}을 삭제할까요? 연결된 옵션도 함께 삭제됩니다.`,
     );
     if (!shouldDelete) {
       return;
@@ -610,9 +610,9 @@ export function SceneEditComponent({
     setIsDeleting(true);
     setError(null);
     try {
-      await dbTables.Scene.deleteRows([deletedSceneId]);
-      preserveInstantPromptSceneIdRef.current = null;
-      onDeleted?.(deletedSceneId);
+      await dbTables.Cut.deleteRows([deletedCutId]);
+      preserveInstantPromptCutIdRef.current = null;
+      onDeleted?.(deletedCutId);
     } catch (deleteError) {
       setError(getErrorMessage(deleteError));
     } finally {
@@ -620,8 +620,8 @@ export function SceneEditComponent({
     }
   }
 
-  function duplicateScene() {
-    if (!onDuplicate || !activeScene) {
+  function duplicateCut() {
+    if (!onDuplicate || !activeCut) {
       return;
     }
 
@@ -632,10 +632,10 @@ export function SceneEditComponent({
 
     onDuplicate({
       id: null,
-      image_id: activeScene.image_id ?? null,
-      image_url: activeScene.image_url ?? null,
-      scribble_url: activeScene.scribble_url ?? null,
-      pose_url: activeScene.pose_url ?? null,
+      image_id: activeCut.image_id ?? null,
+      image_url: activeCut.image_url ?? null,
+      scribble_url: activeCut.scribble_url ?? null,
+      pose_url: activeCut.pose_url ?? null,
       script,
       status_change: { ...statusChange },
       prompt_situation: promptDraft.prompt_situation,
@@ -647,7 +647,7 @@ export function SceneEditComponent({
   }
 
   function closeEditor() {
-    preserveInstantPromptSceneIdRef.current = null;
+    preserveInstantPromptCutIdRef.current = null;
     onClose?.();
   }
 
@@ -661,13 +661,13 @@ export function SceneEditComponent({
         )}
         role={modalLayout ? 'dialog' : undefined}
         aria-modal={modalLayout ? true : undefined}
-        aria-labelledby={modalLayout ? 'scene-edit-modal-title' : undefined}
+        aria-labelledby={modalLayout ? 'cut-edit-modal-title' : undefined}
       >
-        <SceneEditorHeader
+        <CutEditorHeader
           selectedLabel={selectedLabel}
-          sceneId={sceneId}
+          cutId={cutId}
           modalLayout={modalLayout}
-          showDuplicate={Boolean(modalLayout && onDuplicate && sceneId !== null)}
+          showDuplicate={Boolean(modalLayout && onDuplicate && cutId !== null)}
           canDelete={canDelete}
           canDuplicate={canDuplicate}
           canSaveData={canSaveData}
@@ -675,10 +675,10 @@ export function SceneEditComponent({
           isBusy={isBusy}
           isDeleting={isDeleting}
           savingMode={savingMode}
-          onDelete={() => void deleteScene()}
-          onDuplicate={duplicateScene}
+          onDelete={() => void deleteCut()}
+          onDuplicate={duplicateCut}
           onSaveData={() => {
-            void saveDataOnlyScene();
+            void saveDataOnlyCut();
           }}
           onOpenImageSettings={openImageSettings}
           onClose={onClose ? closeEditor : undefined}
@@ -686,22 +686,22 @@ export function SceneEditComponent({
 
         <SectionBody>
           <div className="space-y-4">
-            {isLoadingScene ? (
+            {isLoadingCut ? (
               <div className="flex items-center gap-2 text-sm font-semibold text-[var(--app-muted)]">
                 <Spinner aria-hidden="true" />
-                <span>Scene을 불러오는 중</span>
+                <span>Cut을 불러오는 중</span>
               </div>
             ) : null}
 
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(28rem,0.44fr)] xl:items-start">
-              <ScenePromptPanel
+              <CutPromptPanel
                 script={script}
                 promptDraft={promptDraft}
                 instantPromptDraft={instantPromptDraft}
                 promptNegativeDraft={promptNegativeDraft}
                 translationDraft={translationDraft}
                 cameraSamples={cameraSamples}
-                isLoadingScene={isLoadingScene}
+                isLoadingCut={isLoadingCut}
                 savingMode={savingMode}
                 isTranslatingPromptColumns={isTranslatingPromptColumns}
                 canTranslatePromptColumns={canTranslatePromptColumns}
@@ -713,7 +713,7 @@ export function SceneEditComponent({
                 onTranslatePromptColumns={() => void translatePromptColumns()}
               />
 
-              <SceneImagePanel
+              <CutImagePanel
                 imageId={displayedImageId}
                 baseImageUrl={displayedBaseImageUrl}
                 scribbleImageUrl={displayedScribbleImageUrl}
@@ -723,7 +723,7 @@ export function SceneEditComponent({
                 strengthControlValue={strengthControlValue}
                 statusChangeValues={statusChangeValues}
                 canSaveData={canSaveData}
-                isLoadingScene={isLoadingScene}
+                isLoadingCut={isLoadingCut}
                 isLoadingHistoryImage={isLoadingHistoryImage}
                 savingMode={savingMode}
                 canGoPreviousImage={canGoPreviousImage}

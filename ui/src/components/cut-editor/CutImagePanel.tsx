@@ -16,7 +16,7 @@ import type {
   StatusChangeValues,
 } from './types';
 
-type SceneImagePanelProps = {
+type CutImagePanelProps = {
   imageId: number | null;
   baseImageUrl: string | null;
   scribbleImageUrl: string | null;
@@ -26,7 +26,7 @@ type SceneImagePanelProps = {
   strengthControlValue: string;
   statusChangeValues: StatusChangeValues;
   canSaveData: boolean;
-  isLoadingScene: boolean;
+  isLoadingCut: boolean;
   isLoadingHistoryImage: boolean;
   savingMode: SaveMode | null;
   canGoPreviousImage: boolean;
@@ -40,7 +40,7 @@ type SceneImagePanelProps = {
   onSelectLineageImage: (image: ImageRecord) => void;
 };
 
-export function SceneImagePanel({
+export function CutImagePanel({
   imageId,
   baseImageUrl,
   scribbleImageUrl,
@@ -50,7 +50,7 @@ export function SceneImagePanel({
   strengthControlValue,
   statusChangeValues,
   canSaveData,
-  isLoadingScene,
+  isLoadingCut,
   isLoadingHistoryImage,
   savingMode,
   canGoPreviousImage,
@@ -62,7 +62,7 @@ export function SceneImagePanel({
   onPreviousImage,
   onNextImage,
   onSelectLineageImage,
-}: SceneImagePanelProps) {
+}: CutImagePanelProps) {
   return (
     <aside className="min-w-0 space-y-3">
       <div className="space-y-3">
@@ -78,7 +78,7 @@ export function SceneImagePanel({
                 value={strengthControlValue}
                 onChange={(event) => onImageStrengthChange(event.target.value)}
                 className="h-8 w-24 px-2 text-right text-xs"
-                disabled={isLoadingScene || Boolean(savingMode) || !imageSettings}
+                disabled={isLoadingCut || Boolean(savingMode) || !imageSettings}
               />
             </label>
             {QUICK_IMAGE_STRENGTHS.map((strength) => (
@@ -87,7 +87,7 @@ export function SceneImagePanel({
                 className="h-7 px-2.5 py-0 text-xs"
                 variant={imageSettings?.strength === strength ? 'primary' : 'default'}
                 onClick={() => onImageStrengthChange(String(strength))}
-                disabled={isLoadingScene || Boolean(savingMode) || !imageSettings}
+                disabled={isLoadingCut || Boolean(savingMode) || !imageSettings}
               >
                 {strength === 1 ? '1.0' : String(strength)}
               </Button>
@@ -102,7 +102,7 @@ export function SceneImagePanel({
               baseImageUrl={baseImageUrl}
               scribbleImageUrl={scribbleImageUrl}
               poseImageUrl={poseImageUrl}
-              disabled={!canSaveData || isLoadingScene || isLoadingHistoryImage}
+              disabled={!canSaveData || isLoadingCut || isLoadingHistoryImage}
               isSubmitting={savingMode === 'image'}
               canGoPreviousImage={canGoPreviousImage}
               canGoNextImage={canGoNextImage}
@@ -140,7 +140,7 @@ export function SceneImagePanel({
                   }))
                 }
                 className="h-9 w-full px-2 text-right text-sm"
-                disabled={isLoadingScene || Boolean(savingMode)}
+                disabled={isLoadingCut || Boolean(savingMode)}
               />
             </label>
           ))}

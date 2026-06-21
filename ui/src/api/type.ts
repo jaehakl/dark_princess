@@ -21,7 +21,7 @@ export type UpsertResponse = {
 export type ImageDeleteResponse = {
   requested_ids: number[];
   deleted_ids: number[];
-  skipped_scene_linked_ids: number[];
+  skipped_cut_linked_ids: number[];
 };
 
 export type CameraSamples = Record<string, Record<string, string>>;
@@ -61,8 +61,8 @@ export type GenImageResponse = {
   seed: number;
 };
 
-export type GenerateSceneRequest = {
-  scene_id?: number | null;
+export type GenerateCutRequest = {
+  cut_id?: number | null;
   image_id?: number | null;
   parent_image_id?: number | null;
   script: string;
@@ -78,14 +78,14 @@ export type GenerateSceneRequest = {
   prompt_negative?: string | null;
 };
 
-export type UpdateSceneImageRequest = {
-  scene_id: number;
+export type UpdateCutImageRequest = {
+  cut_id: number;
   image_id: number | null;
 };
 
 export type PromptColumnName = 'prompt_situation' | 'prompt_hero' | 'prompt_camera' | 'prompt_detail';
 
-export type SceneRecord = {
+export type CutRecord = {
   id?: number | null;
   image_id?: number | null;
   image_url?: string | null;
@@ -109,25 +109,25 @@ export type ImageRecord = {
   negative_prompt?: string | null;
   seed_image_id?: number | null;
   model_parameters?: Record<string, unknown> | null;
-  scene_count?: number | null;
+  cut_count?: number | null;
   family_root_image_id?: number | null;
   family_image_count?: number | null;
 };
 
-export type NextSceneRequest = {
-  scene_id: number | null;
+export type NextCutRequest = {
+  cut_id: number | null;
   status_id: number;
   option_text: string;
 };
 
-export type AdjustSelectionModelRequest = NextSceneRequest & {
-  target_scene_id: number;
+export type AdjustSelectionModelRequest = NextCutRequest & {
+  target_cut_id: number;
   learn_rate: number;
 };
 
-export type UpdateSceneContextRequest = {
+export type UpdateCutContextRequest = {
   status_id: number;
-  scene_id: number;
+  cut_id: number;
 };
 
 export type GenerateSelectionModelRequest = {
@@ -158,7 +158,7 @@ export type StatusRecord = {
 };
 
 export type DbTableName =
-  | 'Scene'
+  | 'Cut'
   | 'Image'
   | 'SelectionModel'
   | 'Status';

@@ -7,7 +7,7 @@ import type {
   SelectionModelRecord,
   StatusRecord,
 } from '../../api/type';
-import { useSceneStore } from '../../api/store';
+import { useCutStore } from '../../api/store';
 import {
   Button,
   FieldLabel,
@@ -83,7 +83,7 @@ function getErrorMessage(error: unknown) {
 
 export function LandingPage() {
   const navigate = useNavigate();
-  const setCurrentScene = useSceneStore((state) => state.setCurrentScene);
+  const setCurrentCut = useCutStore((state) => state.setCurrentCut);
   const [statuses, setStatuses] = useState<StatusRecord[]>([]);
   const [models, setModels] = useState<SelectionModelRecord[]>([]);
   const [draftStatus, setDraftStatus] = useState<StatusRecord>(() =>
@@ -138,8 +138,8 @@ export function LandingPage() {
   }, []);
 
   useEffect(() => {
-    setCurrentScene(null);
-  }, [setCurrentScene]);
+    setCurrentCut(null);
+  }, [setCurrentCut]);
 
   function updateDraftField(field: NumericStatusKey | 'turn', value: string) {
     const parsedValue = Number(value);

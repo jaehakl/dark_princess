@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db import get_db
 from models import (
     GenerateImageRequestBase,
-    GenerateScenePromptRequestBase,
-    GenerateScenePromptResponseBase,
+    GenerateCutPromptRequestBase,
+    GenerateCutPromptResponseBase,
     ImageGenerationSettingsBase,
     ImagePromptExtractionResponseBase,
     RecommendPromptItemBase,
@@ -48,11 +48,11 @@ async def api_recommend_prompt(
     return await recommend_prompt(db, text)
 
 
-@router.post("/generate-prompt", response_model=GenerateScenePromptResponseBase)
+@router.post("/generate-prompt", response_model=GenerateCutPromptResponseBase)
 async def api_generate_prompt(
-    request: GenerateScenePromptRequestBase,
+    request: GenerateCutPromptRequestBase,
 ):
-    return GenerateScenePromptResponseBase(
+    return GenerateCutPromptResponseBase(
         prompt=await generate_prompt(
             request.text,
             max_tokens=request.max_tokens,

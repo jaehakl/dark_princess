@@ -10,7 +10,7 @@ import { AppLayout } from './layout';
 import { ImageManagerPage } from '../pages/image-manager/ImageManagerPage';
 import { LandingPage } from '../pages/landing/LandingPage';
 import { PlayPage } from '../pages/play/PlayPage';
-import { SceneWizardPage } from '../pages/scene_wizard/SceneWizardPage';
+import { CutWizardPage } from '../pages/cut_wizard/CutWizardPage';
 
 function RouteErrorBoundary() {
   const error = useRouteError();
@@ -45,11 +45,11 @@ export const routeObjects: RouteObject[] = [
         },
       },
       {
-        path: 'scene-wizard',
-        element: createElement(SceneWizardPage),
+        path: 'cut-wizard',
+        element: createElement(CutWizardPage),
         handle: {
-          breadcrumb: 'Scene Wizard',
-          pageTitle: 'Scene Wizard',
+          breadcrumb: 'Cut Wizard',
+          pageTitle: 'Cut Wizard',
         },
       },
       {

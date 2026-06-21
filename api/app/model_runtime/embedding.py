@@ -9,9 +9,9 @@ _embedding_model_name: str | None = None
 _embedding_model: Any | None = None
 
 
-async def encode_scene_text(model_name: str, text: str) -> list[float]:
+async def encode_cut_text(model_name: str, text: str) -> list[float]:
     async with _embedding_lock:
-        return await asyncio.to_thread(_encode_scene_text_locked, model_name, text)
+        return await asyncio.to_thread(_encode_cut_text_locked, model_name, text)
 
 
 def _reset_embedding_runtime_for_tests() -> None:
@@ -21,7 +21,7 @@ def _reset_embedding_runtime_for_tests() -> None:
     _embedding_model = None
 
 
-def _encode_scene_text_locked(model_name: str, text: str) -> list[float]:
+def _encode_cut_text_locked(model_name: str, text: str) -> list[float]:
     model = _get_embedding_model_locked(model_name)
     raw_embedding = model.encode(text)
     if hasattr(raw_embedding, "tolist"):

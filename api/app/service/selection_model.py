@@ -11,12 +11,12 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from db import Image as StoredImage, Scene, SelectionModel, Status
+from db import Image as StoredImage, Cut, SelectionModel, Status
 from models import AdjustSelectionModelRequestBase, GenerateSelectionModelRequestBase
 from settings import settings
 from utils.local_storage import build_object_key, delete_object, get_object_path, object_key_from_public_url, upload_fileobj
-from model_runtime import encode_scene_text
-from model_runtime import predict_target_scene_embedding as predict_target_scene_embedding_cached
+from model_runtime import encode_cut_text
+from model_runtime import predict_target_cut_embedding as predict_target_cut_embedding_cached
 from model_runtime import update_selection_model
 from utils.vector import VECTOR_DIMENSION, validate_embedding
 
@@ -117,20 +117,20 @@ async def adjust_selection_model(
             detail="selection model is required",
         )
 
-    target_scene = await db.get(Scene, request.target_scene_id)
-    if target_scene is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="target scene not found")
+    target_cut = await db.get(Cut, request.target_cut_id)
+    if target_cut is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="target cut not found")
 
-    scene_embedding = await load_optional_scene_embedding(db, request.scene_id)
+    cut_embedding = await load_optional_cut_embedding(db, request.cut_id)
     option_embedding = await make_optional_option_text_embedding(request.option_text)
     context_embedding = (
         validate_embedding(current_status.context_embedding, "status.context_embedding")
         if current_status.context_embedding is not None
         else zero_embedding()
     )
-    target_embedding = validate_embedding(target_scene.embedding, "target_scene.embedding")
+    target_embedding = validate_embedding(target_cut.embedding, "target_cut.embedding")
     normalized_status = normalize_status_columns(current_status)
-    input_values = scene_embedding + option_embedding + context_embedding + normalized_status
+    input_values = cut_embedding + option_embedding + context_embedding + normalized_status
     if len(input_values) != MODEL_INPUT_DIMENSION:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -161,12 +161,12 @@ async def adjust_selection_model(
     return selection_model
 
 
-async def get_next_scene(
+async def get_next_cut(
     db: AsyncSession,
-    scene_id: int | None,
+    cut_id: int | None,
     status_id: int,
     option_text: str,
-) -> Scene:
+) -> Cut:
     current_status = await db.get(Status, status_id)
     if current_status is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="status not found")
@@ -183,7 +183,7 @@ async def get_next_scene(
             detail="selection model is required",
         )
 
-    scene_embedding = await load_optional_scene_embedding(db, scene_id)
+    cut_embedding = await load_optional_cut_embedding(db, cut_id)
     option_embedding = await make_optional_option_text_embedding(option_text)
     context_embedding = (
         validate_embedding(current_status.context_embedding, "status.context_embedding")
@@ -191,16 +191,16 @@ async def get_next_scene(
         else zero_embedding()
     )
     normalized_status = normalize_status_columns(current_status)
-    target_embedding = await make_target_scene_embedding(
-        scene_embedding,
+    target_embedding = await make_target_cut_embedding(
+        cut_embedding,
         option_embedding,
         context_embedding,
         normalized_status,
         selection_model.file_url,
     )
 
-    candidate_stmt = select(Scene).options(
-        selectinload(Scene.image).load_only(
+    candidate_stmt = select(Cut).options(
+        selectinload(Cut.image).load_only(
             StoredImage.id,
             StoredImage.image_object_key,
             StoredImage.scribble_object_key,
@@ -211,8 +211,8 @@ async def get_next_scene(
             StoredImage.model_parameters,
         )
     )
-    if scene_id is not None:
-        candidate_stmt = candidate_stmt.where(Scene.id != scene_id)
+    if cut_id is not None:
+        candidate_stmt = candidate_stmt.where(Cut.id != cut_id)
     candidates = (await db.execute(candidate_stmt)).scalars().all()
     weighted_candidates = []
     for candidate in candidates:
@@ -227,24 +227,24 @@ async def get_next_scene(
         weighted_candidates.append((candidate, distance))
 
     if not weighted_candidates:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="next scene not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="next cut not found")
 
     temperature = get_model_temperature(selection_model.file_url)
-    return sample_scene_by_temperature(weighted_candidates, temperature)
+    return sample_cut_by_temperature(weighted_candidates, temperature)
 
 
 def zero_embedding() -> list[float]:
     return [0.0] * VECTOR_DIMENSION
 
 
-async def load_optional_scene_embedding(db: AsyncSession, scene_id: int | None) -> list[float]:
-    if scene_id is None:
+async def load_optional_cut_embedding(db: AsyncSession, cut_id: int | None) -> list[float]:
+    if cut_id is None:
         return zero_embedding()
 
-    scene = await db.get(Scene, scene_id)
-    if scene is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="scene not found")
-    return validate_embedding(scene.embedding, "scene.embedding")
+    cut = await db.get(Cut, cut_id)
+    if cut is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="cut not found")
+    return validate_embedding(cut.embedding, "cut.embedding")
 
 
 async def make_optional_option_text_embedding(option_text: str) -> list[float]:
@@ -255,14 +255,14 @@ async def make_optional_option_text_embedding(option_text: str) -> list[float]:
 
 
 async def make_option_text_embedding(option_text: str) -> list[float]:
-    model_name = settings.SCENE_EMBEDDING_MODEL_NAME.strip()
+    model_name = settings.CUT_EMBEDDING_MODEL_NAME.strip()
     if not model_name:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="scene embedding model name is required",
+            detail="cut embedding model name is required",
         )
 
-    embedding = await encode_scene_text(model_name, f"passage: {option_text}")
+    embedding = await encode_cut_text(model_name, f"passage: {option_text}")
     if len(embedding) != VECTOR_DIMENSION:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -271,16 +271,16 @@ async def make_option_text_embedding(option_text: str) -> list[float]:
     return embedding
 
 
-async def make_target_scene_embedding(
-    scene_embedding: list[float],
+async def make_target_cut_embedding(
+    cut_embedding: list[float],
     option_embedding: list[float],
     context_embedding: list[float],
     normalized_status: list[float],
     model_file_url: str,
 ) -> list[float]:
-    return await predict_target_scene_embedding(
+    return await predict_target_cut_embedding(
         model_file_url,
-        scene_embedding,
+        cut_embedding,
         option_embedding,
         context_embedding,
         normalized_status,
@@ -385,12 +385,12 @@ def get_model_temperature(model_file_url: str) -> float:
     return normalize_model_parameters(artifact["parameters"])["temperature"]
 
 
-def sample_scene_by_temperature(candidates: list[tuple[Scene, float]], temperature: float) -> Scene:
+def sample_cut_by_temperature(candidates: list[tuple[Cut, float]], temperature: float) -> Cut:
     scores = [-distance / temperature for _candidate, distance in candidates]
     max_score = max(scores)
     weights = [math.exp(score - max_score) for score in scores]
-    scenes = [candidate for candidate, _distance in candidates]
-    return random.choices(scenes, weights=weights, k=1)[0]
+    cuts = [candidate for candidate, _distance in candidates]
+    return random.choices(cuts, weights=weights, k=1)[0]
 
 
 def create_model_artifact(parameters: dict[str, Any]) -> dict[str, Any]:
@@ -425,20 +425,20 @@ def save_model_artifact(artifact: dict[str, Any]) -> str:
     return object_key
 
 
-async def predict_target_scene_embedding(
+async def predict_target_cut_embedding(
     model_file_url: str,
-    scene_embedding: list[float],
+    cut_embedding: list[float],
     option_embedding: list[float],
     context_embedding: list[float],
     normalized_status: list[float],
 ) -> list[float]:
-    input_values = scene_embedding + option_embedding + context_embedding + normalized_status
+    input_values = cut_embedding + option_embedding + context_embedding + normalized_status
     if len(input_values) != MODEL_INPUT_DIMENSION:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"selection model input must be {MODEL_INPUT_DIMENSION} dimensions",
         )
-    output = await predict_target_scene_embedding_cached(
+    output = await predict_target_cut_embedding_cached(
         model_file_url,
         input_values,
         load_model_artifact=load_model_artifact,

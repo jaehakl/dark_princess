@@ -2,7 +2,7 @@ Image 관리 화면
 
 - 전체 Image 목록을 본다.
     * pagenation
-    * sort (참조된 Scene 수, id 순 등)
+    * sort (참조된 Cut 수, id 순 등)
     * family 별 모아보기
 - Image 를 일괄 선택 후 삭제할 수 있다.
 - 프롬프트로 이미지를 검색할 수 있다.
@@ -20,10 +20,10 @@ Image 관리 화면
 
 positive: 다음 6가지를 순서대로 합체
 - GEN_IMAGE_CAMERA_SAMPLES 에서 무작위로 프롬프트 1 개 pick
-- prompt_situation : Scene 중 무작위로 1개 선택 후 해당 scene situation 전체 (비어 있어도 무관)
-- prompt_hero : Scene 중 무작위로 1개 선택 후 해당 scene hero 전체 (비어 있어도 무관)
-- prompt_camera : Scene 중 무작위로 1개 선택 후 해당 scene camera 전체 (비어 있어도 무관)
-- prompt_detail : Scene 중 무작위로 1개 선택 후 해당 scene detail 전체 (비어 있어도 무관)
+- prompt_situation : Cut 중 무작위로 1개 선택 후 해당 cut situation 전체 (비어 있어도 무관)
+- prompt_hero : Cut 중 무작위로 1개 선택 후 해당 cut hero 전체 (비어 있어도 무관)
+- prompt_camera : Cut 중 무작위로 1개 선택 후 해당 cut camera 전체 (비어 있어도 무관)
+- prompt_detail : Cut 중 무작위로 1개 선택 후 해당 cut detail 전체 (비어 있어도 무관)
 - default positive prompt : session storage 설정값
 
 (negative)

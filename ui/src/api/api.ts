@@ -10,12 +10,12 @@ import type {
   ImageDeleteResponse,
   ImageGenerationSettings,
   ImageRecord,
-  NextSceneRequest,
-  SceneRecord,
+  NextCutRequest,
+  CutRecord,
   SelectionModelRecord,
   StatusRecord,
-  UpdateSceneContextRequest,
-  UpdateSceneImageRequest,
+  UpdateCutContextRequest,
+  UpdateCutImageRequest,
   UpsertResponse,
 } from './type';
 
@@ -34,8 +34,8 @@ async function readResponseError(response: Response, fallbackMessage: string) {
 }
 
 export const dbTables = {
-  Scene: {
-    label: '장면',
+  Cut: {
+    label: '컷',
     columns: {
       id: { label: 'ID', type: 'id' },
       image_id: { label: 'Image ID', type: 'int' },
@@ -51,17 +51,17 @@ export const dbTables = {
       prompt_negative: { label: 'Negative 프롬프트', type: 'text' },
     },
     listRows: (listRequest: GetListRequest) =>
-      request<GetListResponse<SceneRecord>>('post', '/scene/list', listRequest),
-    upsertRow: (items: unknown) => request<UpsertResponse[]>('post', '/scene/upsert', items),
-    generateScene: (item: FormData) =>
-      request<SceneRecord>('post', '/scene/generate', item),
-    similarScenes: (text: string) =>
-      request<SceneRecord[]>('post', '/scene/similar', { text }),
-    updateContext: (item: UpdateSceneContextRequest) =>
-      request<StatusRecord>('post', '/scene/update-context', item),
-    updateImage: (item: UpdateSceneImageRequest) =>
-      request<SceneRecord>('post', '/scene/update-image', item),
-    deleteRows: (ids: number[]) => request<null>('delete', '/scene/', ids).then(() => undefined),
+      request<GetListResponse<CutRecord>>('post', '/cut/list', listRequest),
+    upsertRow: (items: unknown) => request<UpsertResponse[]>('post', '/cut/upsert', items),
+    generateCut: (item: FormData) =>
+      request<CutRecord>('post', '/cut/generate', item),
+    similarCuts: (text: string) =>
+      request<CutRecord[]>('post', '/cut/similar', { text }),
+    updateContext: (item: UpdateCutContextRequest) =>
+      request<StatusRecord>('post', '/cut/update-context', item),
+    updateImage: (item: UpdateCutImageRequest) =>
+      request<CutRecord>('post', '/cut/update-image', item),
+    deleteRows: (ids: number[]) => request<null>('delete', '/cut/', ids).then(() => undefined),
   },
 
   Image: {
@@ -99,7 +99,7 @@ export const dbTables = {
       request<SelectionModelRecord>('post', '/selection_model/generate', item),
     adjustModel: (item: AdjustSelectionModelRequest) =>
       request<SelectionModelRecord>('post', '/selection_model/adjust', item),
-    nextScene: (item: NextSceneRequest) => request<SceneRecord>('post', '/selection_model/next', item),
+    nextCut: (item: NextCutRequest) => request<CutRecord>('post', '/selection_model/next', item),
     deleteRows: (ids: number[]) => request<null>('delete', '/selection_model/', ids).then(() => undefined),
   },
 

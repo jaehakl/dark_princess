@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 import gc
@@ -31,8 +31,8 @@ KOREAN_TO_ENGLISH_TRANSLATION_SYSTEM_MESSAGE = (
     "The translation must be English only. "
     "Do not include markdown, explanations, source text, field labels, or metadata."
 )
-SCENE_COMPONENT_ANALYSIS_SYSTEM_MESSAGE = (
-    "You analyze scene text into structured visual-narrative components. "
+CUT_COMPONENT_ANALYSIS_SYSTEM_MESSAGE = (
+    "You analyze cut text into structured visual-narrative components. "
     "Return only one valid JSON object with exactly the string fields requested by the user. "
     "Each value must be a concise text summary, not an array. "
     "Use an empty string only when the component cannot be inferred. "
@@ -156,36 +156,36 @@ async def translate_korean_to_english(
     )
 
 
-async def analyze_scene_components(
+async def analyze_cut_components(
     text: str,
     fields: tuple[str, ...] | list[str],
     max_tokens: int | None = None,
     temperature: float | None = None,
     max_attempts: int = 3,
 ) -> dict[str, str]:
-    scene_text = text.strip()
-    if not scene_text:
+    cut_text = text.strip()
+    if not cut_text:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text is required")
-    if len(scene_text) > LLM_MAX_SOURCE_TEXT_LENGTH:
+    if len(cut_text) > LLM_MAX_SOURCE_TEXT_LENGTH:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"text must be {LLM_MAX_SOURCE_TEXT_LENGTH} characters or fewer",
         )
 
-    component_fields = _normalize_scene_component_fields(fields)
+    component_fields = _normalize_cut_component_fields(fields)
     field_list_text = ", ".join(component_fields)
     attempts = max(1, max_attempts)
-    last_failure = "scene component LLM returned invalid components"
+    last_failure = "cut component LLM returned invalid components"
     for _ in range(attempts):
         raw_output = await generate_prompt_with_llm(
             [
-                {"role": "system", "content": SCENE_COMPONENT_ANALYSIS_SYSTEM_MESSAGE},
+                {"role": "system", "content": CUT_COMPONENT_ANALYSIS_SYSTEM_MESSAGE},
                 {
                     "role": "user",
                     "content": (
-                        f"Analyze the following scene text into these fields: {field_list_text}.\n"
+                        f"Analyze the following cut text into these fields: {field_list_text}.\n"
                         "Return JSON only, using exactly those keys and string values.\n\n"
-                        f"Scene text:\n{scene_text}\n\n"
+                        f"Cut text:\n{cut_text}\n\n"
                         "Return JSON now."
                     ),
                 },
@@ -196,8 +196,8 @@ async def analyze_scene_components(
         try:
             payload = _parse_llm_json_object(
                 raw_output,
-                empty_detail="scene component LLM returned empty output",
-                invalid_detail="scene component LLM returned invalid JSON",
+                empty_detail="cut component LLM returned empty output",
+                invalid_detail="cut component LLM returned invalid JSON",
             )
         except HTTPException as exc:
             if exc.status_code != status.HTTP_502_BAD_GATEWAY:
@@ -206,14 +206,14 @@ async def analyze_scene_components(
             continue
 
         if set(payload) != set(component_fields):
-            last_failure = "scene component LLM returned invalid component keys"
+            last_failure = "cut component LLM returned invalid component keys"
             continue
 
         result: dict[str, str] = {}
         for field in component_fields:
             value = payload[field]
             if not isinstance(value, str):
-                last_failure = f"scene component LLM returned non-string {field}"
+                last_failure = f"cut component LLM returned non-string {field}"
                 result = {}
                 break
 
@@ -230,17 +230,17 @@ async def analyze_scene_components(
         if not result:
             continue
         if not any(result.values()):
-            last_failure = "scene component LLM returned empty components"
+            last_failure = "cut component LLM returned empty components"
             continue
         return result
 
     raise HTTPException(
         status_code=status.HTTP_502_BAD_GATEWAY,
-        detail=f"scene component analysis failed after {attempts} attempts: {last_failure}",
+        detail=f"cut component analysis failed after {attempts} attempts: {last_failure}",
     )
 
 
-def _normalize_scene_component_fields(fields: tuple[str, ...] | list[str]) -> tuple[str, ...]:
+def _normalize_cut_component_fields(fields: tuple[str, ...] | list[str]) -> tuple[str, ...]:
     normalized_fields: list[str] = []
     seen_fields: set[str] = set()
     for field in fields:
@@ -266,10 +266,10 @@ async def extract_visual_keywords(
     temperature: float | None = None,
     max_attempts: int = 3,
 ) -> dict[str, list[str]]:
-    scene_text = text.strip()
-    if not scene_text:
+    cut_text = text.strip()
+    if not cut_text:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text is required")
-    if len(scene_text) > LLM_MAX_SOURCE_TEXT_LENGTH:
+    if len(cut_text) > LLM_MAX_SOURCE_TEXT_LENGTH:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"text must be {LLM_MAX_SOURCE_TEXT_LENGTH} characters or fewer",
@@ -284,10 +284,10 @@ async def extract_visual_keywords(
                 {
                     "role": "user",
                     "content": (
-                        "다음 한국어 장면 묘사에서 이미지 생성에 useful한 핵심 단어들을 뽑아줘.\n"
+                        "다음 한국어 컷 묘사에서 이미지 생성에 useful한 핵심 단어들을 뽑아줘.\n"
                         "출력은 JSON 객체 하나만 사용하고, 값은 배열로 작성해.\n"
                         "키 이름은 자유롭지만 예시는 아래 형태를 참고해.\n\n"
-                        f"장면 묘사:\n{scene_text}\n\n"
+                        f"컷 묘사:\n{cut_text}\n\n"
                         "JSON 예시:\n"
                         '{ "인물": [], "장소": [], "행동": [], "상황": [], "소품": [], "분위기": [] }'
                     ),

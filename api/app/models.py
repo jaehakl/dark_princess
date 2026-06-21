@@ -30,22 +30,22 @@ class UpsertResponseBase(BaseModel):
 class ImageDeleteResponseBase(BaseModel):
     requested_ids: List[int]
     deleted_ids: List[int]
-    skipped_scene_linked_ids: List[int]
+    skipped_cut_linked_ids: List[int]
 
 
-class NextSceneRequestBase(BaseModel):
-    scene_id: Optional[int] = None
+class NextCutRequestBase(BaseModel):
+    cut_id: Optional[int] = None
     status_id: int
     option_text: str
 
 
-class UpdateSceneContextRequestBase(BaseModel):
+class UpdateCutContextRequestBase(BaseModel):
     status_id: int
-    scene_id: int
+    cut_id: int
 
 
-class UpdateSceneImageRequestBase(BaseModel):
-    scene_id: int
+class UpdateCutImageRequestBase(BaseModel):
+    cut_id: int
     image_id: Optional[int] = None
 
 
@@ -87,8 +87,8 @@ class GenerateImageRequestBase(BaseModel):
     model_parameters: Optional[ImageGenerationSettingsBase] = None
 
 
-class GenerateSceneRequestBase(BaseModel):
-    scene_id: Optional[int] = None
+class GenerateCutRequestBase(BaseModel):
+    cut_id: Optional[int] = None
     image_id: Optional[int] = None
     parent_image_id: Optional[int] = None
     script: str = ""
@@ -104,13 +104,13 @@ class GenerateSceneRequestBase(BaseModel):
     prompt_negative: Optional[str] = None
 
 
-class GenerateScenePromptRequestBase(BaseModel):
+class GenerateCutPromptRequestBase(BaseModel):
     text: str
     max_tokens: Optional[int] = None
     temperature: Optional[float] = None
 
 
-class GenerateScenePromptResponseBase(BaseModel):
+class GenerateCutPromptResponseBase(BaseModel):
     prompt: str
 
 
@@ -125,12 +125,12 @@ class RecommendPromptItemBase(BaseModel):
     score: float
 
 
-class AdjustSelectionModelRequestBase(NextSceneRequestBase):
-    target_scene_id: int
+class AdjustSelectionModelRequestBase(NextCutRequestBase):
+    target_cut_id: int
     learn_rate: float
 
 
-class SceneBase(BaseModel):
+class CutBase(BaseModel):
     id: Optional[int] = None
     image_id: Optional[int] = None
     image_url: Optional[str] = None
@@ -157,7 +157,7 @@ class ImageBase(BaseModel):
 
 
 class ImageListItemBase(ImageBase):
-    scene_count: int = 0
+    cut_count: int = 0
     family_root_image_id: Optional[int] = None
     family_image_count: int = 0
 

@@ -6,9 +6,9 @@ import type {
   GetListRequest,
   ImageGenerationSettings,
   ImageRecord,
-  SceneRecord,
+  CutRecord,
 } from '../../api/type';
-import { readSessionImageSettings } from '../../lib/scene-image';
+import { readSessionImageSettings } from '../../lib/cut-image';
 import {
   Button,
   Panel,
@@ -28,14 +28,14 @@ import {
   type ImageSortValue,
 } from './constants';
 
-const AUTO_PROMPT_SCENE_FIELDS = [
+const AUTO_PROMPT_CUT_FIELDS = [
   'prompt_situation',
   'prompt_hero',
   'prompt_camera',
   'prompt_detail',
 ] as const;
 
-const AUTO_PROMPT_SCENE_LIST_REQUEST: GetListRequest = {
+const AUTO_PROMPT_CUT_LIST_REQUEST: GetListRequest = {
   offset: 0,
   limit: null,
   selected_ids: [],
@@ -87,13 +87,13 @@ function buildListRequest(
   };
 }
 
-function selectedSceneCount(images: ImageRecord[], selectedIds: Set<number>) {
+function selectedCutCount(images: ImageRecord[], selectedIds: Set<number>) {
   return images.reduce((total, image) => {
     const imageId = getImageId(image);
     if (imageId === null || !selectedIds.has(imageId)) {
       return total;
     }
-    return total + (image.scene_count ?? 0);
+    return total + (image.cut_count ?? 0);
   }, 0);
 }
 
@@ -115,18 +115,18 @@ function formatWeightedPromptKeyword(keyword: string, weight: number) {
   return `(${keyword}:${weight.toFixed(1)})`;
 }
 
-function buildAutoGeneratePrompt(settings: ImageGenerationSettings, scenes: SceneRecord[]) {
+function buildAutoGeneratePrompt(settings: ImageGenerationSettings, cuts: CutRecord[]) {
   const rawCameraSample = getRandomItem(getCameraSamplePool(settings.camera_samples)) ?? '';
   const cameraSample = rawCameraSample
     ? formatWeightedPromptKeyword(rawCameraSample, 2.0)
     : '';
-  const scenePromptParts = AUTO_PROMPT_SCENE_FIELDS.map((fieldName) => {
-    const scene = getRandomItem(scenes);
-    return (scene?.[fieldName] ?? '').trim();
+  const cutPromptParts = AUTO_PROMPT_CUT_FIELDS.map((fieldName) => {
+    const cut = getRandomItem(cuts);
+    return (cut?.[fieldName] ?? '').trim();
   });
   const positivePrompt = [
     cameraSample,
-    ...scenePromptParts,
+    ...cutPromptParts,
     settings.prompt_default_positive,
   ]
     .map((part) => part.trim())
@@ -176,8 +176,8 @@ export function ImageManager() {
     () => Math.max(1, Math.ceil(totalRows / IMAGE_MANAGER_PAGE_SIZE)),
     [totalRows],
   );
-  const currentSelectedSceneCount = useMemo(
-    () => selectedSceneCount(images, selectedIds),
+  const currentSelectedCutCount = useMemo(
+    () => selectedCutCount(images, selectedIds),
     [images, selectedIds],
   );
 
@@ -355,18 +355,18 @@ export function ImageManager() {
       return;
     }
 
-    const sceneLinkedImages = targetImages.filter((image) => (image.scene_count ?? 0) > 0);
-    const deletableImages = targetImages.filter((image) => (image.scene_count ?? 0) === 0);
+    const cutLinkedImages = targetImages.filter((image) => (image.cut_count ?? 0) > 0);
+    const deletableImages = targetImages.filter((image) => (image.cut_count ?? 0) === 0);
     const ids = deletableImages
       .map(getImageId)
       .filter((id): id is number => id !== null);
     if (!ids.length) {
-      window.alert(`Scene이 연결된 Image ${sceneLinkedImages.length}개는 삭제하지 않습니다.`);
+      window.alert(`Cut이 연결된 Image ${cutLinkedImages.length}개는 삭제하지 않습니다.`);
       return;
     }
 
-    const excludedMessage = sceneLinkedImages.length > 0
-      ? `\nScene이 연결된 Image ${sceneLinkedImages.length}개는 제외됩니다.`
+    const excludedMessage = cutLinkedImages.length > 0
+      ? `\nCut이 연결된 Image ${cutLinkedImages.length}개는 제외됩니다.`
       : '';
     const confirmed = window.confirm(
       `Image ${ids.length}개를 삭제할까요?${excludedMessage}`,
@@ -385,9 +385,9 @@ export function ImageManager() {
       }
       clearSelection();
       reloadImages();
-      if (response.skipped_scene_linked_ids.length > 0) {
+      if (response.skipped_cut_linked_ids.length > 0) {
         window.alert(
-          `Scene이 연결된 Image ${response.skipped_scene_linked_ids.length}개는 삭제하지 않았습니다.`,
+          `Cut이 연결된 Image ${response.skipped_cut_linked_ids.length}개는 삭제하지 않았습니다.`,
         );
       }
     } catch (deleteError) {
@@ -506,18 +506,18 @@ export function ImageManager() {
     setError(null);
 
     try {
-      const [settingsDefaults, sceneResponse] = await Promise.all([
+      const [settingsDefaults, cutResponse] = await Promise.all([
         dbTables.ImageUtil.getImageSettingsDefaults(),
-        dbTables.Scene.listRows(AUTO_PROMPT_SCENE_LIST_REQUEST),
+        dbTables.Cut.listRows(AUTO_PROMPT_CUT_LIST_REQUEST),
       ]);
       const imageSettings = readSessionImageSettings(settingsDefaults);
-      const scenes = sceneResponse.items;
+      const cuts = cutResponse.items;
       const autoGenerationBatchSize = Math.max(1, imageSettings.available_gpu_ids.length);
 
       while (!autoGenerationStopRef.current && autoGenerationRunIdRef.current === runId) {
         const requests: GenerateImageRequest[] = [];
         for (let index = 0; index < autoGenerationBatchSize; index += 1) {
-          const { positivePrompt, negativePrompt } = buildAutoGeneratePrompt(imageSettings, scenes);
+          const { positivePrompt, negativePrompt } = buildAutoGeneratePrompt(imageSettings, cuts);
           if (!positivePrompt) {
             throw new Error('자동 생성 positive prompt를 만들 수 없습니다.');
           }
@@ -589,7 +589,7 @@ export function ImageManager() {
             isFamilyMode={isFamilyMode}
             isSelectionMode={isSelectionMode}
             selectedCount={selectedIds.size}
-            selectedSceneCount={currentSelectedSceneCount}
+            selectedCutCount={currentSelectedCutCount}
             totalRows={totalRows}
             isLoading={isLoading}
             isDeleting={isDeleting}

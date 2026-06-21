@@ -9,7 +9,7 @@ _selection_model_file_url: str | None = None
 _selection_model: Any | None = None
 
 
-async def predict_target_scene_embedding(
+async def predict_target_cut_embedding(
     model_file_url: str,
     input_values: list[float],
     *,
@@ -19,7 +19,7 @@ async def predict_target_scene_embedding(
 ) -> list[float]:
     async with _selection_lock:
         return await asyncio.to_thread(
-            _predict_target_scene_embedding_locked,
+            _predict_target_cut_embedding_locked,
             model_file_url,
             input_values,
             load_model_artifact,
@@ -40,7 +40,7 @@ def _reset_selection_runtime_for_tests() -> None:
     _selection_model = None
 
 
-def _predict_target_scene_embedding_locked(
+def _predict_target_cut_embedding_locked(
     model_file_url: str,
     input_values: list[float],
     load_model_artifact: Callable[[str], dict[str, Any]],

@@ -77,11 +77,11 @@ class Image(Base):
     )
     model_parameters: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
-    scenes: Mapped[List["Scene"]] = relationship("Scene", back_populates="image")
+    cuts: Mapped[List["Cut"]] = relationship("Cut", back_populates="image")
 
 
-class Scene(Base):
-    __tablename__ = "scenes"
+class Cut(Base):
+    __tablename__ = "cuts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     image_id: Mapped[Optional[int]] = mapped_column(
@@ -100,7 +100,7 @@ class Scene(Base):
 
     image: Mapped[Optional["Image"]] = relationship(
         "Image",
-        back_populates="scenes",
+        back_populates="cuts",
         lazy="selectin",
     )
 

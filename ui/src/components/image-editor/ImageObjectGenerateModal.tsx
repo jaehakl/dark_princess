@@ -42,7 +42,7 @@ type ImageObjectGenerateModalProps = {
   ) => Promise<void> | void;
 };
 
-const DEFAULT_POSITIVE_PROMPT = 'no background, single shot, full shot, centered';
+const DEFAULT_POSITIVE_PROMPT = 'no background, single subject, full body, centered';
 const DEFAULT_IMAGE_WIDTH = 832;
 const DEFAULT_IMAGE_HEIGHT = 1216;
 const IMAGE_SIZE_OPTIONS = [512, 768, 832, 1024, 1216] as const;

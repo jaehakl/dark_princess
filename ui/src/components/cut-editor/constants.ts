@@ -55,7 +55,7 @@ export const STATUS_CHANGE_FIELDS = [
 
 export const DEFAULT_STATUS_CHANGE: Record<string, number> = { turn: 1 };
 
-export const FETCH_SCENE_BY_ID_REQUEST: GetListRequest = {
+export const FETCH_CUT_BY_ID_REQUEST: GetListRequest = {
   offset: 0,
   limit: 1,
   selected_ids: [],

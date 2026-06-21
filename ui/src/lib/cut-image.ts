@@ -3,7 +3,7 @@ import type { ImageGenerationSettings } from '../api/type';
 
 const NOISE_CHANNEL_SAMPLE_COUNT = 4;
 
-export const IMAGE_SETTINGS_SESSION_KEY = 'dark_princess.scene.image_settings';
+export const IMAGE_SETTINGS_SESSION_KEY = 'dark_princess.cut.image_settings';
 export const IMAGE_SAMPLER_OPTIONS = ['', 'euler', 'euler_a', 'dpmpp_2m', 'unipc'] as const;
 export const IMAGE_SCHEDULER_OPTIONS = ['', 'karras'] as const;
 

@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
 import { Link, Outlet, useMatches } from 'react-router-dom';
 import { dbTables } from '../api/api';
-import { useImageSettingsStore, useSceneStore } from '../api/store';
+import { useImageSettingsStore, useCutStore } from '../api/store';
 import type { GetListRequest } from '../api/type';
 import { ImageSettingsDialog } from '../components/image-settings/ImageSettingsDialog';
-import { SceneExplorerModal } from '../components/SceneExplorerModal';
+import { CutExplorerModal } from '../components/CutExplorerModal';
 import { Button, cx } from '../components/ui';
 
 type RouteHandle = {
@@ -12,7 +12,7 @@ type RouteHandle = {
   pageTitle?: string;
 };
 
-const FETCH_SCENE_BY_ID_REQUEST: GetListRequest = {
+const FETCH_CUT_BY_ID_REQUEST: GetListRequest = {
   offset: 0,
   limit: 1,
   selected_ids: [],
@@ -24,11 +24,11 @@ const FETCH_SCENE_BY_ID_REQUEST: GetListRequest = {
 
 export function AppLayout() {
   const matches = useMatches();
-  const currentScene = useSceneStore((state) => state.currentScene);
-  const isSceneExplorerOpen = useSceneStore((state) => state.isSceneExplorerOpen);
-  const openSceneExplorer = useSceneStore((state) => state.openSceneExplorer);
-  const closeSceneExplorer = useSceneStore((state) => state.closeSceneExplorer);
-  const selectScene = useSceneStore((state) => state.selectScene);
+  const currentCut = useCutStore((state) => state.currentCut);
+  const isCutExplorerOpen = useCutStore((state) => state.isCutExplorerOpen);
+  const openCutExplorer = useCutStore((state) => state.openCutExplorer);
+  const closeCutExplorer = useCutStore((state) => state.closeCutExplorer);
+  const selectCut = useCutStore((state) => state.selectCut);
   const imageSettings = useImageSettingsStore((state) => state.settings);
   const imageSettingsDraft = useImageSettingsStore((state) => state.draft);
   const imageSettingsError = useImageSettingsStore((state) => state.error);
@@ -63,18 +63,18 @@ export function AppLayout() {
     breadcrumbs = [currentPageTitle];
   }
 
-  async function handleSceneExplorerSelect(sceneId: number) {
+  async function handleCutExplorerSelect(cutId: number) {
     try {
-      const sceneResponse = await dbTables.Scene.listRows({
-        ...FETCH_SCENE_BY_ID_REQUEST,
-        selected_ids: [sceneId],
+      const cutResponse = await dbTables.Cut.listRows({
+        ...FETCH_CUT_BY_ID_REQUEST,
+        selected_ids: [cutId],
       });
-      const scene = sceneResponse.items[0];
-      if (scene) {
-        selectScene(scene);
+      const cut = cutResponse.items[0];
+      if (cut) {
+        selectCut(cut);
       }
     } catch (error) {
-      console.error('Failed to select scene from explorer.', error);
+      console.error('Failed to select cut from explorer.', error);
     }
   }
 
@@ -113,10 +113,10 @@ export function AppLayout() {
             </ol>
           </nav>
           <Link
-            to="/scene-wizard"
+            to="/cut-wizard"
             className="shrink-0 rounded-[8px] border border-[rgba(255,216,176,0.54)] bg-[linear-gradient(135deg,rgba(255,231,180,0.24),rgba(232,90,135,0.16)),rgba(38,12,40,0.82)] px-3 py-2 text-xs font-extrabold text-[#fff5eb] shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_12px_28px_rgba(10,0,18,0.3)] transition-[transform,filter,border-color] [text-shadow:0_1px_8px_rgba(0,0,0,0.5)] hover:-translate-y-px hover:border-[rgba(255,238,205,0.92)] hover:brightness-[1.06] sm:px-4"
           >
-            Scene Wizard
+            Cut Wizard
           </Link>
           <Link
             to="/image-manager"
@@ -133,9 +133,9 @@ export function AppLayout() {
           </Button>
           <Button
             className="shrink-0 px-3 py-2 text-xs sm:px-4"
-            onClick={openSceneExplorer}
+            onClick={openCutExplorer}
           >
-            Scene 탐색
+            Cut 탐색
           </Button>
           <p className="hidden shrink-0 text-sm font-semibold text-[var(--app-muted)] md:block">
             {currentPageTitle}
@@ -147,11 +147,11 @@ export function AppLayout() {
         <Outlet />
       </main>
 
-      {isSceneExplorerOpen ? (
-        <SceneExplorerModal
-          currentSceneId={currentScene?.id ?? null}
-          onClose={closeSceneExplorer}
-          onSelect={(sceneId) => void handleSceneExplorerSelect(sceneId)}
+      {isCutExplorerOpen ? (
+        <CutExplorerModal
+          currentCutId={currentCut?.id ?? null}
+          onClose={closeCutExplorer}
+          onSelect={(cutId) => void handleCutExplorerSelect(cutId)}
         />
       ) : null}
 

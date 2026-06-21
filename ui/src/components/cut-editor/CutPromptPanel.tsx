@@ -64,14 +64,14 @@ function adjustPromptKeywordWeight(value: string, cursorPosition: number, direct
   };
 }
 
-type ScenePromptPanelProps = {
+type CutPromptPanelProps = {
   script: string;
   promptDraft: Record<PromptColumnName, string>;
   instantPromptDraft: Record<InstantPromptName, string>;
   promptNegativeDraft: string;
   translationDraft: Record<PromptEditorColumnName, string>;
   cameraSamples: CameraSamples;
-  isLoadingScene: boolean;
+  isLoadingCut: boolean;
   savingMode: SaveMode | null;
   isTranslatingPromptColumns: boolean;
   canTranslatePromptColumns: boolean;
@@ -83,14 +83,14 @@ type ScenePromptPanelProps = {
   onTranslatePromptColumns: () => void;
 };
 
-export function ScenePromptPanel({
+export function CutPromptPanel({
   script,
   promptDraft,
   instantPromptDraft,
   promptNegativeDraft,
   translationDraft,
   cameraSamples,
-  isLoadingScene,
+  isLoadingCut,
   savingMode,
   isTranslatingPromptColumns,
   canTranslatePromptColumns,
@@ -100,7 +100,7 @@ export function ScenePromptPanel({
   setPromptNegativeDraft,
   setTranslationDraft,
   onTranslatePromptColumns,
-}: ScenePromptPanelProps) {
+}: CutPromptPanelProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
 
   useLayoutEffect(() => {
@@ -172,13 +172,13 @@ export function ScenePromptPanel({
   return (
     <div ref={panelRef} className="min-w-0 space-y-4">
       <div className="block space-y-2">
-        <FieldLabel>장면 스크립트</FieldLabel>
+        <FieldLabel>컷 스크립트</FieldLabel>
         <FormControl
           as="textarea"
           value={script}
           onChange={(event) => setScript(event.target.value)}
           className="min-h-44 w-full resize-y px-3 py-2 text-sm leading-6"
-          disabled={isLoadingScene || Boolean(savingMode)}
+          disabled={isLoadingCut || Boolean(savingMode)}
         />
       </div>
 
@@ -240,7 +240,7 @@ export function ScenePromptPanel({
                       onKeyDown={(event) => handlePromptValueKeyDown(event, column)}
                       onInput={(event) => resizeTextarea(event.currentTarget)}
                       className="min-h-10 w-full resize-none overflow-hidden px-3 py-2 text-sm"
-                      disabled={isLoadingScene || Boolean(savingMode)}
+                      disabled={isLoadingCut || Boolean(savingMode)}
                     />
                   </label>
                   {isCameraColumn ? (
@@ -251,7 +251,7 @@ export function ScenePromptPanel({
                         value=""
                         onChange={(event) => appendCameraSample(event.target.value)}
                         className="h-10 w-full px-3 text-sm"
-                        disabled={isLoadingScene || Boolean(savingMode) || cameraSampleGroups.length === 0}
+                        disabled={isLoadingCut || Boolean(savingMode) || cameraSampleGroups.length === 0}
                       >
                         <option value="">카메라 샘플 선택</option>
                         {cameraSampleGroups.map((group) => (
@@ -286,7 +286,7 @@ export function ScenePromptPanel({
                         onInput={(event) => resizeTextarea(event.currentTarget)}
                         className="min-h-10 w-full resize-none overflow-hidden px-3 py-2 text-sm"
                         placeholder="한국어, 콤마 구분"
-                        disabled={isLoadingScene || Boolean(savingMode) || isTranslatingPromptColumns}
+                        disabled={isLoadingCut || Boolean(savingMode) || isTranslatingPromptColumns}
                       />
                     </label>
                   )}

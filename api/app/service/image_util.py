@@ -8,7 +8,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db import Scene
+from db import Cut
 from models import ImageGenerationSettingsBase, ImagePromptExtractionResponseBase, RecommendPromptItemBase
 from settings import API_ROOT, settings
 from service.image_util_constants import (
@@ -33,7 +33,7 @@ from service.image_util_constants import (
     GEN_IMAGE_STRENGTH,
     GEN_IMAGE_WIDTH,
     RECOMMEND_PROMPT_DISTANCE_EPSILON,
-    SCENE_PROMPT_FIELDS,
+    CUT_PROMPT_FIELDS,
     WD14_DEFAULT_CHARACTER_THRESHOLD,
     WD14_DEFAULT_GENERAL_THRESHOLD,
     WD14_TAGGER_MODEL_ID,
@@ -42,7 +42,7 @@ from service.selection_model import cosine_distance
 from utils.image_processing import process_image
 from utils.local_storage import is_allowed_content_type
 from model_runtime import (
-    encode_scene_text,
+    encode_cut_text,
     extract_visual_keywords,
     get_available_cuda_device_ids,
     predict_wd14_tags,
@@ -231,36 +231,36 @@ async def recommend_prompt(db: AsyncSession, text: str) -> list[RecommendPromptI
     if not prompt_text:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text is required")
 
-    model_name = settings.SCENE_EMBEDDING_MODEL_NAME.strip()
+    model_name = settings.CUT_EMBEDDING_MODEL_NAME.strip()
     if not model_name:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="scene embedding model name is required",
+            detail="cut embedding model name is required",
         )
 
-    text_embedding = await encode_scene_text(model_name, f"query: {prompt_text}")
+    text_embedding = await encode_cut_text(model_name, f"query: {prompt_text}")
     if len(text_embedding) != VECTOR_DIMENSION:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"scene embedding model must return {VECTOR_DIMENSION} dimensions",
+            detail=f"cut embedding model must return {VECTOR_DIMENSION} dimensions",
         )
 
-    scenes = (await db.execute(select(Scene))).scalars().all()
+    cuts = (await db.execute(select(Cut))).scalars().all()
     score_sums: dict[str, float] = {}
     frequencies: dict[str, int] = {}
-    for scene in scenes:
+    for cut in cuts:
         try:
-            scene_embedding = validate_embedding(scene.embedding, "scene.embedding")
+            cut_embedding = validate_embedding(cut.embedding, "cut.embedding")
         except HTTPException:
             continue
 
-        distance = cosine_distance(text_embedding, scene_embedding)
+        distance = cosine_distance(text_embedding, cut_embedding)
         if distance is None:
             continue
 
-        scene_weight = 1 / (distance + RECOMMEND_PROMPT_DISTANCE_EPSILON)
-        for field in SCENE_PROMPT_FIELDS:
-            column_text = getattr(scene, field)
+        cut_weight = 1 / (distance + RECOMMEND_PROMPT_DISTANCE_EPSILON)
+        for field in CUT_PROMPT_FIELDS:
+            column_text = getattr(cut, field)
             if not isinstance(column_text, str):
                 continue
 
@@ -268,7 +268,7 @@ async def recommend_prompt(db: AsyncSession, text: str) -> list[RecommendPromptI
                 word = raw_word.strip()
                 if not word:
                     continue
-                score_sums[word] = score_sums.get(word, 0.0) + scene_weight
+                score_sums[word] = score_sums.get(word, 0.0) + cut_weight
                 frequencies[word] = frequencies.get(word, 0) + 1
 
     return [
