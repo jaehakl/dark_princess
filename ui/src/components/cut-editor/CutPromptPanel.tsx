@@ -74,12 +74,15 @@ type CutPromptPanelProps = {
   isLoadingCut: boolean;
   savingMode: SaveMode | null;
   isTranslatingPromptColumns: boolean;
+  isGeneratingPromptItems: boolean;
   canTranslatePromptColumns: boolean;
+  canGeneratePromptItems: boolean;
   setScript: (script: string) => void;
   setPromptDraft: Dispatch<SetStateAction<Record<PromptColumnName, string>>>;
   setInstantPromptDraft: Dispatch<SetStateAction<Record<InstantPromptName, string>>>;
   setPromptNegativeDraft: Dispatch<SetStateAction<string>>;
   setTranslationDraft: Dispatch<SetStateAction<Record<PromptEditorColumnName, string>>>;
+  onGeneratePromptItems: () => void;
   onTranslatePromptColumns: () => void;
 };
 
@@ -93,15 +96,19 @@ export function CutPromptPanel({
   isLoadingCut,
   savingMode,
   isTranslatingPromptColumns,
+  isGeneratingPromptItems,
   canTranslatePromptColumns,
+  canGeneratePromptItems,
   setScript,
   setPromptDraft,
   setInstantPromptDraft,
   setPromptNegativeDraft,
   setTranslationDraft,
+  onGeneratePromptItems,
   onTranslatePromptColumns,
 }: CutPromptPanelProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const isInputDisabled = isLoadingCut || Boolean(savingMode) || isGeneratingPromptItems;
 
   useLayoutEffect(() => {
     const textareas = panelRef.current?.querySelectorAll<HTMLTextAreaElement>(
@@ -178,7 +185,7 @@ export function CutPromptPanel({
           value={script}
           onChange={(event) => setScript(event.target.value)}
           className="min-h-44 w-full resize-y px-3 py-2 text-sm leading-6"
-          disabled={isLoadingCut || Boolean(savingMode)}
+          disabled={isInputDisabled}
         />
       </div>
 
@@ -186,6 +193,14 @@ export function CutPromptPanel({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-sm font-semibold text-[#fff7ef]">프롬프트 항목</span>
           <div className="flex flex-wrap items-center gap-2">
+            <Button
+              className="inline-flex items-center gap-2 px-3 py-2 text-xs"
+              onClick={onGeneratePromptItems}
+              disabled={!canGeneratePromptItems}
+            >
+              {isGeneratingPromptItems ? <Spinner aria-hidden="true" /> : null}
+              {isGeneratingPromptItems ? '생성 중' : '스크립트로 채우기'}
+            </Button>
             <Button
               className="inline-flex items-center gap-2 px-3 py-2 text-xs"
               onClick={onTranslatePromptColumns}
@@ -240,7 +255,7 @@ export function CutPromptPanel({
                       onKeyDown={(event) => handlePromptValueKeyDown(event, column)}
                       onInput={(event) => resizeTextarea(event.currentTarget)}
                       className="min-h-10 w-full resize-none overflow-hidden px-3 py-2 text-sm"
-                      disabled={isLoadingCut || Boolean(savingMode)}
+                      disabled={isInputDisabled}
                     />
                   </label>
                   {isCameraColumn ? (
@@ -251,7 +266,7 @@ export function CutPromptPanel({
                         value=""
                         onChange={(event) => appendCameraSample(event.target.value)}
                         className="h-10 w-full px-3 text-sm"
-                        disabled={isLoadingCut || Boolean(savingMode) || cameraSampleGroups.length === 0}
+                        disabled={isInputDisabled || cameraSampleGroups.length === 0}
                       >
                         <option value="">카메라 샘플 선택</option>
                         {cameraSampleGroups.map((group) => (
@@ -286,7 +301,7 @@ export function CutPromptPanel({
                         onInput={(event) => resizeTextarea(event.currentTarget)}
                         className="min-h-10 w-full resize-none overflow-hidden px-3 py-2 text-sm"
                         placeholder="한국어, 콤마 구분"
-                        disabled={isLoadingCut || Boolean(savingMode) || isTranslatingPromptColumns}
+                        disabled={isInputDisabled || isTranslatingPromptColumns}
                       />
                     </label>
                   )}

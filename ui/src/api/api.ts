@@ -156,6 +156,6 @@ export const dbTables = {
       request<Blob>('post', '/image-util/postprocess', formData, { responseType: 'blob', fallbackMessage: '이미지 후처리에 실패했습니다.' }),
   },
   LlmUtil: {
-    ask: (item: LlmAskRequest) => request<string>('post', '/llm-util/ask', item),
+    ask: (item: LlmAskRequest) => request<string>('post', '/llm-util/ask', item, { responseType: 'text' }),
   },
 };

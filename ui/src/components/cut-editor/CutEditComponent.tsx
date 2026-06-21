@@ -35,6 +35,16 @@ import type {
   StatusChangeValues,
 } from './types';
 
+const GENERATED_PROMPT_ITEM_KEYS = [
+  'prompt_situation',
+  'prompt_hero',
+  'prompt_camera',
+  'prompt_detail',
+  'prompt_negative',
+] as const;
+
+type GeneratedPromptItemKey = (typeof GENERATED_PROMPT_ITEM_KEYS)[number];
+
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
     return error.message;
@@ -109,6 +119,7 @@ export function CutEditComponent({
   const [isLoadingHistoryImage, setIsLoadingHistoryImage] = useState(false);
   const [isUpdatingCutImage, setIsUpdatingCutImage] = useState(false);
   const [isTranslatingPromptColumns, setIsTranslatingPromptColumns] = useState(false);
+  const [isGeneratingPromptItems, setIsGeneratingPromptItems] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [savingMode, setSavingMode] = useState<SaveMode | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -127,6 +138,7 @@ export function CutEditComponent({
     isLoadingHistoryImage ||
     isUpdatingCutImage ||
     isTranslatingPromptColumns ||
+    isGeneratingPromptItems ||
     isDeleting ||
     Boolean(savingMode)
   );
@@ -139,6 +151,7 @@ export function CutEditComponent({
     && PROMPT_EDITOR_COLUMNS.some(
       (column) => column.key !== 'prompt_camera' && translationDraft[column.key].trim().length > 0,
     );
+  const canGeneratePromptItems = canEdit && script.trim().length > 0 && !isBusy;
   const canDuplicate = Boolean(modalLayout && onDuplicate && cutId !== null && canEdit && !isBusy);
   const cameraSamples = imageSettingsDefaults?.camera_samples ?? imageSettings?.camera_samples ?? {};
   const displayedImageId = selectedImageOverride?.id ?? activeCut?.image_id ?? null;
@@ -272,6 +285,102 @@ export function CutEditComponent({
       setStrengthControlValue(String(imageSettings.strength));
     }
   }, [imageSettings]);
+
+  async function generatePromptItemsFromScript() {
+    const trimmedScript = script.trim();
+    if (!trimmedScript) {
+      setError('스크립트를 입력해 주세요.');
+      return;
+    }
+
+    setIsGeneratingPromptItems(true);
+    setError(null);
+    try {
+      const answer: unknown = await dbTables.LlmUtil.ask({
+        system_message: (
+          'You convert cut scripts into English image prompt tags. ' +
+          'Return only one valid JSON object with exactly these string fields: ' +
+          'prompt_situation, prompt_hero, prompt_camera, prompt_detail, prompt_negative. ' +
+          'Every value must be concise English comma-separated image prompt tags. ' +
+          'The combined word count of prompt_situation, prompt_hero, prompt_camera, and prompt_detail must be 20 words or fewer. ' +
+          'Use prompt_situation for environment, action, mood, and story context. ' +
+          'Use prompt_hero for visible character appearance and pose. ' +
+          'Use prompt_camera for shot size, angle, lens, composition, and lighting. ' +
+          'Use prompt_detail for props, clothing, texture, background details, and style details. ' +
+          'Use prompt_negative for unwanted visual artifacts and exclusions. ' +
+          'Do not include markdown, code fences, explanations, arrays, nested objects, or extra fields.'
+        ),
+        question: `Cut script:\n${trimmedScript}\n\nReturn JSON now.`,
+        max_tokens: 256,
+        temperature: 0.2,
+      });
+
+      let parsedAnswer: unknown;
+      if (typeof answer === 'string') {
+        const trimmedAnswer = answer.trim();
+        try {
+          parsedAnswer = JSON.parse(trimmedAnswer);
+        } catch {
+          const jsonStart = trimmedAnswer.indexOf('{');
+          const jsonEnd = trimmedAnswer.lastIndexOf('}');
+          if (jsonStart < 0 || jsonEnd <= jsonStart) {
+            throw new Error('프롬프트 생성 결과 JSON을 읽을 수 없습니다.');
+          }
+          try {
+            parsedAnswer = JSON.parse(trimmedAnswer.slice(jsonStart, jsonEnd + 1));
+          } catch {
+            throw new Error('프롬프트 생성 결과 JSON을 읽을 수 없습니다.');
+          }
+        }
+      } else {
+        parsedAnswer = answer;
+      }
+
+      if (!parsedAnswer || typeof parsedAnswer !== 'object' || Array.isArray(parsedAnswer)) {
+        throw new Error('프롬프트 생성 결과 형식이 올바르지 않습니다.');
+      }
+
+      const parsedPrompt = parsedAnswer as Record<GeneratedPromptItemKey, unknown>;
+      const nextGeneratedPrompt: Record<GeneratedPromptItemKey, string> = {
+        prompt_situation: '',
+        prompt_hero: '',
+        prompt_camera: '',
+        prompt_detail: '',
+        prompt_negative: '',
+      };
+      for (const key of GENERATED_PROMPT_ITEM_KEYS) {
+        const value = parsedPrompt[key];
+        if (typeof value !== 'string') {
+          throw new Error('프롬프트 생성 결과에 필요한 항목이 없습니다.');
+        }
+        nextGeneratedPrompt[key] = value.replace(/\r\n?/g, '\n').trim();
+      }
+
+      let remainingPositiveWords = 20;
+      for (const column of PROMPT_COLUMNS) {
+        const words = nextGeneratedPrompt[column.key].split(/\s+/).filter(Boolean);
+        const keptWords = words.slice(0, remainingPositiveWords);
+        nextGeneratedPrompt[column.key] = keptWords.join(' ');
+        remainingPositiveWords = Math.max(0, remainingPositiveWords - keptWords.length);
+      }
+
+      if (!GENERATED_PROMPT_ITEM_KEYS.some((key) => nextGeneratedPrompt[key].length > 0)) {
+        throw new Error('생성된 프롬프트 항목이 비어 있습니다.');
+      }
+
+      setPromptDraft({
+        prompt_situation: nextGeneratedPrompt.prompt_situation,
+        prompt_hero: nextGeneratedPrompt.prompt_hero,
+        prompt_camera: nextGeneratedPrompt.prompt_camera,
+        prompt_detail: nextGeneratedPrompt.prompt_detail,
+      });
+      setPromptNegativeDraft(nextGeneratedPrompt.prompt_negative);
+    } catch (generateError) {
+      setError(getErrorMessage(generateError));
+    } finally {
+      setIsGeneratingPromptItems(false);
+    }
+  }
 
   async function translatePromptColumns() {
     const targets = PROMPT_EDITOR_COLUMNS
@@ -710,12 +819,15 @@ export function CutEditComponent({
                 isLoadingCut={isLoadingCut}
                 savingMode={savingMode}
                 isTranslatingPromptColumns={isTranslatingPromptColumns}
+                isGeneratingPromptItems={isGeneratingPromptItems}
                 canTranslatePromptColumns={canTranslatePromptColumns}
+                canGeneratePromptItems={canGeneratePromptItems}
                 setScript={setScript}
                 setPromptDraft={setPromptDraft}
                 setInstantPromptDraft={setInstantPromptDraft}
                 setPromptNegativeDraft={setPromptNegativeDraft}
                 setTranslationDraft={setTranslationDraft}
+                onGeneratePromptItems={() => void generatePromptItemsFromScript()}
                 onTranslatePromptColumns={() => void translatePromptColumns()}
               />
 
