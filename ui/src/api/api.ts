@@ -10,12 +10,16 @@ import type {
   ImageDeleteResponse,
   ImageGenerationSettings,
   ImageRecord,
+  LlmAskRequest,
   NextCutRequest,
   CutRecord,
+  SceneRecord,
   SelectionModelRecord,
   StatusRecord,
   UpdateCutContextRequest,
   UpdateCutImageRequest,
+  UpdateCutLinksRequest,
+  UpdateSceneFirstCutRequest,
   UpsertResponse,
 } from './type';
 
@@ -33,12 +37,18 @@ async function readResponseError(response: Response, fallbackMessage: string) {
   return fallbackMessage;
 }
 
+export const LlmUtil = {
+  ask: (item: LlmAskRequest) => request<string>('post', '/llm-util/ask', item),
+};
+
 export const dbTables = {
   Cut: {
     label: '컷',
     columns: {
       id: { label: 'ID', type: 'id' },
       image_id: { label: 'Image ID', type: 'int' },
+      scene_id: { label: 'Scene', type: 'fk', targetTable: 'Scene' },
+      prev_cut_id: { label: '이전 컷', type: 'fk', targetTable: 'Cut' },
       image_url: { label: '이미지 URL', type: 'text' },
       scribble_url: { label: 'Scribble URL', type: 'text' },
       pose_url: { label: 'Pose URL', type: 'text' },
@@ -61,7 +71,34 @@ export const dbTables = {
       request<StatusRecord>('post', '/cut/update-context', item),
     updateImage: (item: UpdateCutImageRequest) =>
       request<CutRecord>('post', '/cut/update-image', item),
+    updateLinks: (item: UpdateCutLinksRequest) =>
+      request<CutRecord>('post', '/cut/update-links', item),
     deleteRows: (ids: number[]) => request<null>('delete', '/cut/', ids).then(() => undefined),
+  },
+
+  Scene: {
+    label: '씬',
+    columns: {
+      id: { label: 'ID', type: 'id' },
+      title: { label: '제목', type: 'text', required: true },
+      context: { label: '컨텍스트', type: 'text', required: true },
+      turn: { label: '턴', type: 'int', required: true },
+      cash: { label: '현금', type: 'int', required: true },
+      strength: { label: '힘', type: 'int', required: true },
+      agility: { label: '민첩', type: 'int', required: true },
+      intelligence: { label: '지력', type: 'int', required: true },
+      sense: { label: '센스', type: 'int', required: true },
+      attractiveness: { label: '매력', type: 'int', required: true },
+      toughness: { label: '근성', type: 'int', required: true },
+      stress: { label: '스트레스', type: 'int', required: true },
+      first_cut_id: { label: '첫 컷', type: 'fk', targetTable: 'Cut' },
+    },
+    listRows: (listRequest: GetListRequest) =>
+      request<GetListResponse<SceneRecord>>('post', '/scene/list', listRequest),
+    upsertRow: (items: SceneRecord[]) => request<UpsertResponse[]>('post', '/scene/upsert', items),
+    updateFirstCut: (item: UpdateSceneFirstCutRequest) =>
+      request<SceneRecord>('post', '/scene/update-first-cut', item),
+    deleteRows: (ids: number[]) => request<null>('delete', '/scene/', ids).then(() => undefined),
   },
 
   Image: {
@@ -165,4 +202,5 @@ export const dbTables = {
       return await response.blob();
     },
   },
+  LlmUtil,
 };

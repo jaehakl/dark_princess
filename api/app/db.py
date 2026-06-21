@@ -80,6 +80,50 @@ class Image(Base):
     cuts: Mapped[List["Cut"]] = relationship("Cut", back_populates="image")
 
 
+class Scene(Base):
+    __tablename__ = "scenes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    context: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    context_embedding: Mapped[Optional[List[float]]] = mapped_column(JSON, nullable=True)
+    turn: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cash: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    strength: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    agility: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    intelligence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sense: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    attractiveness: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    toughness: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    stress: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    first_cut_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("cuts.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    cuts: Mapped[List["Cut"]] = relationship(
+        "Cut",
+        back_populates="scene",
+        foreign_keys="Cut.scene_id",
+    )
+    first_cut: Mapped[Optional["Cut"]] = relationship(
+        "Cut",
+        foreign_keys=[first_cut_id],
+        post_update=True,
+    )
+
+    @property
+    def first_cut_image_url(self) -> Optional[str]:
+        if self.first_cut is None:
+            return None
+        return self.first_cut.image_url
+
+    @property
+    def cut_count(self) -> int:
+        return len(self.cuts)
+
+
 class Cut(Base):
     __tablename__ = "cuts"
 
@@ -87,6 +131,16 @@ class Cut(Base):
     image_id: Mapped[Optional[int]] = mapped_column(
         Integer,
         ForeignKey("images.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    scene_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("scenes.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    prev_cut_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("cuts.id", ondelete="SET NULL"),
         nullable=True,
     )
     embedding: Mapped[Optional[List[float]]] = mapped_column(JSON, nullable=True)
@@ -102,6 +156,22 @@ class Cut(Base):
         "Image",
         back_populates="cuts",
         lazy="selectin",
+    )
+    scene: Mapped[Optional["Scene"]] = relationship(
+        "Scene",
+        back_populates="cuts",
+        foreign_keys=[scene_id],
+    )
+    prev_cut: Mapped[Optional["Cut"]] = relationship(
+        "Cut",
+        remote_side=[id],
+        back_populates="next_cuts",
+        foreign_keys=[prev_cut_id],
+    )
+    next_cuts: Mapped[List["Cut"]] = relationship(
+        "Cut",
+        back_populates="prev_cut",
+        foreign_keys=[prev_cut_id],
     )
 
     @property

@@ -13,12 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from starlette.datastructures import FormData, UploadFile
 
-from db import Image as StoredImage, Cut, Status
+from db import Image as StoredImage, Cut, Scene, Status
 from models import (
     GenerateCutRequestBase,
     ImageGenerationSettingsBase,
     UpdateCutContextRequestBase,
     UpdateCutImageRequestBase,
+    UpdateCutLinksRequestBase,
     UpsertResponseBase,
     CutBase,
 )
@@ -160,6 +161,14 @@ async def generate_cut(
     cut_image_id = None
     if should_update_cut_image and request.image_id is not None:
         cut_image_id = await validate_image_id(db, request.image_id)
+    should_update_cut_scene = "scene_id" in request.model_fields_set
+    scene_id = None
+    if should_update_cut_scene and request.scene_id is not None:
+        scene_id = await validate_scene_id(db, request.scene_id)
+    should_update_prev_cut = "prev_cut_id" in request.model_fields_set
+    prev_cut_id = None
+    if should_update_prev_cut and request.prev_cut_id is not None:
+        prev_cut_id = await validate_cut_reference_id(db, request.prev_cut_id, "prev_cut_id")
 
     script = normalize_cut_script(request.script)
     column_values = {field: getattr(request, field) for field in CUT_PROMPT_FIELDS}
@@ -230,6 +239,10 @@ async def generate_cut(
             cut.image_id = cut_image_id
             if cut_image_id is None:
                 cut.image = None
+        if should_update_cut_scene:
+            cut.scene_id = scene_id
+        if should_update_prev_cut:
+            cut.prev_cut_id = prev_cut_id
         await db.commit()
         await db.refresh(cut)
         if cut.image_id is not None:
@@ -272,6 +285,12 @@ async def upsert_cuts(db: AsyncSession, items: list[CutBase]) -> list[UpsertResp
                 db.add(cut)
 
             stored_image = await resolve_cut_image_for_upsert(db, item)
+            scene_id = None
+            if "scene_id" in item.model_fields_set and item.scene_id is not None:
+                scene_id = await validate_scene_id(db, item.scene_id)
+            prev_cut_id = None
+            if "prev_cut_id" in item.model_fields_set and item.prev_cut_id is not None:
+                prev_cut_id = await validate_cut_reference_id(db, item.prev_cut_id, "prev_cut_id")
             script = normalize_cut_script(item.script)
             column_values = {field: getattr(item, field) for field in CUT_PROMPT_FIELDS}
             visual_prompt = build_cut_visual_prompt(column_values)
@@ -280,6 +299,10 @@ async def upsert_cuts(db: AsyncSession, items: list[CutBase]) -> list[UpsertResp
             embedding_visual_prompt = build_cut_embedding_visual_prompt(column_values)
 
             cut.image = stored_image
+            if "scene_id" in item.model_fields_set:
+                cut.scene_id = scene_id
+            if "prev_cut_id" in item.model_fields_set:
+                cut.prev_cut_id = prev_cut_id
             cut.script = script
             cut.status_change = item.status_change
             cut.embedding = await make_cut_embedding(embedding_visual_prompt, script)
@@ -330,11 +353,124 @@ async def update_cut_image(db: AsyncSession, request: UpdateCutImageRequestBase)
     return cut
 
 
+async def update_cut_links(db: AsyncSession, request: UpdateCutLinksRequestBase) -> Cut:
+    cut = (
+        await db.execute(
+            select(Cut)
+            .options(cut_image_load_option())
+            .where(Cut.id == request.cut_id)
+        )
+    ).scalar_one_or_none()
+    if cut is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="cut not found")
+
+    next_scene_id = cut.scene_id
+    if "scene_id" in request.model_fields_set:
+        next_scene_id = None if request.scene_id is None else await validate_scene_id(db, request.scene_id)
+
+    next_prev_cut_id = cut.prev_cut_id
+    if "prev_cut_id" in request.model_fields_set:
+        next_prev_cut_id = None
+        if request.prev_cut_id is not None:
+            next_prev_cut_id = await validate_prev_cut_id(
+                db,
+                cut_id=cut.id,
+                prev_cut_id=request.prev_cut_id,
+                scene_id=next_scene_id,
+            )
+    elif next_prev_cut_id is not None:
+        next_prev_cut_id = await validate_prev_cut_id(
+            db,
+            cut_id=cut.id,
+            prev_cut_id=next_prev_cut_id,
+            scene_id=next_scene_id,
+        )
+
+    try:
+        if "scene_id" in request.model_fields_set:
+            cut.scene_id = next_scene_id
+        if "prev_cut_id" in request.model_fields_set:
+            cut.prev_cut_id = next_prev_cut_id
+        await db.commit()
+        await db.refresh(cut)
+        if cut.image_id is not None:
+            await db.refresh(cut, attribute_names=["image"])
+        else:
+            cut.image = None
+    except Exception:
+        await db.rollback()
+        raise
+
+    return cut
+
+
 async def validate_image_id(db: AsyncSession, image_id: int) -> int:
     stored_image = await db.get(StoredImage, image_id)
     if stored_image is None:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="image_id not found")
     return stored_image.id
+
+
+async def validate_scene_id(db: AsyncSession, scene_id: int) -> int:
+    scene = await db.get(Scene, scene_id)
+    if scene is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="scene_id not found")
+    return scene.id
+
+
+async def validate_cut_reference_id(db: AsyncSession, cut_id: int, field_name: str) -> int:
+    cut = await db.get(Cut, cut_id)
+    if cut is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"{field_name} not found")
+    return cut.id
+
+
+async def validate_prev_cut_id(
+    db: AsyncSession,
+    *,
+    cut_id: int,
+    prev_cut_id: int,
+    scene_id: int | None,
+) -> int:
+    if prev_cut_id == cut_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="prev_cut_id cannot be the same as cut_id",
+        )
+    if scene_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="prev_cut_id requires scene_id",
+        )
+
+    prev_cut = await db.get(Cut, prev_cut_id)
+    if prev_cut is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="prev_cut_id not found")
+    if prev_cut.scene_id != scene_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="prev_cut_id must belong to the same scene",
+        )
+
+    await require_acyclic_prev_cut(db, cut_id=cut_id, prev_cut_id=prev_cut_id)
+    return prev_cut.id
+
+
+async def require_acyclic_prev_cut(db: AsyncSession, *, cut_id: int, prev_cut_id: int) -> None:
+    current_id: int | None = prev_cut_id
+    seen_ids: set[int] = set()
+    while current_id is not None:
+        if current_id == cut_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="prev_cut_id would create a cycle",
+            )
+        if current_id in seen_ids:
+            return
+        seen_ids.add(current_id)
+        current_id = (
+            await db.execute(select(Cut.prev_cut_id).where(Cut.id == current_id))
+        ).scalar_one_or_none()
 
 
 async def resolve_cut_image_for_upsert(db: AsyncSession, item: CutBase) -> StoredImage | None:

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { dbTables } from '../api/api';
-import type { GetListRequest, CutRecord } from '../api/type';
+import type { GetListRequest, CutRecord, SceneRecord } from '../api/type';
 import {
   Button,
   FormControl,
@@ -27,6 +27,16 @@ const CUT_LIST_REQUEST: GetListRequest = {
   sort: ['id', 'desc'],
 };
 
+const SCENE_LIST_REQUEST: GetListRequest = {
+  offset: 0,
+  limit: null,
+  selected_ids: [],
+  search_text: null,
+  text_filter: {},
+  filter: {},
+  sort: ['id', 'desc'],
+};
+
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
     return error.message;
@@ -44,6 +54,7 @@ export function CutExplorerComponent({
   onSelect,
 }: CutExplorerComponentProps) {
   const [cuts, setCuts] = useState<CutRecord[]>([]);
+  const [scenes, setScenes] = useState<SceneRecord[]>([]);
   const [searchText, setSearchText] = useState('');
   const [submittedSearchText, setSubmittedSearchText] = useState('');
   const [page, setPage] = useState(1);
@@ -51,6 +62,30 @@ export function CutExplorerComponent({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const isSemanticSearch = submittedSearchText.length > 0;
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadScenes() {
+      try {
+        const response = await dbTables.Scene.listRows(SCENE_LIST_REQUEST);
+        if (isActive) {
+          setScenes(response.items);
+        }
+      } catch (sceneLoadError) {
+        if (isActive) {
+          setScenes([]);
+        }
+        console.error('Failed to load scenes for cut explorer.', sceneLoadError);
+      }
+    }
+
+    void loadScenes();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (isSemanticSearch) {
@@ -92,6 +127,15 @@ export function CutExplorerComponent({
   }, [isSemanticSearch, page]);
 
   const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
+  const sceneTitleById = useMemo(() => {
+    const sceneMap = new Map<number, string>();
+    for (const scene of scenes) {
+      if (typeof scene.id === 'number') {
+        sceneMap.set(scene.id, scene.title.trim() || '제목 없음');
+      }
+    }
+    return sceneMap;
+  }, [scenes]);
   const visibleCuts = useMemo(() => {
     if (!isSemanticSearch) {
       return cuts;
@@ -208,6 +252,12 @@ export function CutExplorerComponent({
             const isCurrentCut = cutId !== null && cutId === currentCutId;
             const scriptSummary = getScriptSummary(cut);
             const cutLabel = `Cut #${cutId ?? '-'}`;
+            const sceneTitle = typeof cut.scene_id === 'number'
+              ? sceneTitleById.get(cut.scene_id) ?? `Scene #${cut.scene_id}`
+              : null;
+            const accessibleLabel = sceneTitle
+              ? `${cutLabel}\n${sceneTitle}\n${scriptSummary}`
+              : `${cutLabel}\n${scriptSummary}`;
             return (
               <button
                 key={cutId ?? `cut-${index}`}
@@ -223,8 +273,8 @@ export function CutExplorerComponent({
                   }
                 }}
                 disabled={!isSelectable}
-                title={`${cutLabel}\n${scriptSummary}`}
-                aria-label={`${cutLabel}: ${scriptSummary}`}
+                title={accessibleLabel}
+                aria-label={accessibleLabel.replace(/\n/g, ': ')}
               >
                 <ImageFrame className="relative h-full w-full rounded-[6px] border border-[rgba(255,218,228,0.22)] bg-[linear-gradient(135deg,rgba(255,224,235,0.12),transparent_46%),rgba(12,5,18,0.82)]">
                   {cut.image_url ? (
@@ -236,6 +286,11 @@ export function CutExplorerComponent({
                   ) : (
                     null
                   )}
+                  {sceneTitle ? (
+                    <span className="pointer-events-none absolute bottom-1 left-1 right-1 min-w-0 truncate rounded-[6px] border border-[rgba(255,226,121,0.48)] bg-[rgba(18,8,18,0.82)] px-1.5 py-1 text-center text-[0.64rem] font-extrabold leading-none text-[#fff4c7] shadow-[0_8px_18px_rgba(0,0,0,0.34)] backdrop-blur-[8px]">
+                      {sceneTitle}
+                    </span>
+                  ) : null}
                 </ImageFrame>
               </button>
             );

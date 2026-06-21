@@ -89,6 +89,8 @@ def cut_to_base(cut) -> CutBase:
     return CutBase(
         id=cut.id,
         image_id=cut.image_id,
+        scene_id=cut.scene_id,
+        prev_cut_id=cut.prev_cut_id,
         image_url=public_file_url_from_reference(cut.image_url),
         scribble_url=public_file_url_from_reference(cut.scribble_url),
         pose_url=public_file_url_from_reference(cut.pose_url),

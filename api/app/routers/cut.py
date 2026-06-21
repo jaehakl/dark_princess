@@ -11,6 +11,7 @@ from models import (
     StatusBase,
     UpdateCutContextRequestBase,
     UpdateCutImageRequestBase,
+    UpdateCutLinksRequestBase,
     UpsertResponseBase,
 )
 from service.cut import (
@@ -19,6 +20,7 @@ from service.cut import (
     cut_image_load_option,
     update_cut_context,
     update_cut_image,
+    update_cut_links,
     upsert_cuts,
 )
 from utils.crud_helpers import CrudSpec, delete_items, get_list_response
@@ -69,10 +71,21 @@ async def api_update_cut_image(
     return cut_to_base(cut)
 
 
+@router.post("/update-links", response_model=CutBase)
+async def api_update_cut_links(
+    request: UpdateCutLinksRequestBase,
+    db: AsyncSession = Depends(get_db),
+):
+    cut = await update_cut_links(db, request)
+    return cut_to_base(cut)
+
+
 def cut_to_base(cut: Cut) -> CutBase:
     return CutBase(
         id=cut.id,
         image_id=cut.image_id,
+        scene_id=cut.scene_id,
+        prev_cut_id=cut.prev_cut_id,
         image_url=public_file_url_from_reference(cut.image_url),
         scribble_url=public_file_url_from_reference(cut.scribble_url),
         pose_url=public_file_url_from_reference(cut.pose_url),

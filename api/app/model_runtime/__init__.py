@@ -5,6 +5,7 @@ from .image import _reset_image_runtime_for_tests, generate_images_batch, get_av
 from .llm import (
     PromptLlmConfig,
     analyze_cut_components,
+    ask_llm,
     build_prompt_llm_config,
     extract_visual_keywords,
     generate_prompt_with_llm,
@@ -22,6 +23,7 @@ from .wd14 import _reset_wd14_runtime_for_tests, predict_wd14_tags
 __all__ = [
     "PromptLlmConfig",
     "analyze_cut_components",
+    "ask_llm",
     "build_prompt_llm_config",
     "encode_cut_text",
     "extract_visual_keywords",

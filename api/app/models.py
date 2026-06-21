@@ -49,6 +49,17 @@ class UpdateCutImageRequestBase(BaseModel):
     image_id: Optional[int] = None
 
 
+class UpdateCutLinksRequestBase(BaseModel):
+    cut_id: int
+    scene_id: Optional[int] = None
+    prev_cut_id: Optional[int] = None
+
+
+class UpdateSceneFirstCutRequestBase(BaseModel):
+    scene_id: int
+    cut_id: Optional[int] = None
+
+
 class ImageGenerationSettingsBase(BaseModel):
     model_filename: Optional[str] = None
     model_filenames: Optional[List[str]] = None
@@ -90,6 +101,8 @@ class GenerateImageRequestBase(BaseModel):
 class GenerateCutRequestBase(BaseModel):
     cut_id: Optional[int] = None
     image_id: Optional[int] = None
+    scene_id: Optional[int] = None
+    prev_cut_id: Optional[int] = None
     parent_image_id: Optional[int] = None
     script: str = ""
     status_change: Dict[str, Any] = Field(default_factory=dict)
@@ -114,6 +127,13 @@ class GenerateCutPromptResponseBase(BaseModel):
     prompt: str
 
 
+class LlmAskRequestBase(BaseModel):
+    system_message: str
+    question: str
+    max_tokens: Optional[int] = None
+    temperature: Optional[float] = None
+
+
 class GenerateSelectionModelRequestBase(BaseModel):
     model_id: Optional[int] = None
     name: str
@@ -133,6 +153,8 @@ class AdjustSelectionModelRequestBase(NextCutRequestBase):
 class CutBase(BaseModel):
     id: Optional[int] = None
     image_id: Optional[int] = None
+    scene_id: Optional[int] = None
+    prev_cut_id: Optional[int] = None
     image_url: Optional[str] = None
     scribble_url: Optional[str] = None
     pose_url: Optional[str] = None
@@ -143,6 +165,24 @@ class CutBase(BaseModel):
     prompt_camera: Optional[str] = None
     prompt_detail: Optional[str] = None
     prompt_negative: Optional[str] = None
+
+
+class SceneBase(BaseModel):
+    id: Optional[int] = None
+    title: str = ""
+    context: str = ""
+    turn: int = 0
+    cash: int = 0
+    strength: int = 0
+    agility: int = 0
+    intelligence: int = 0
+    sense: int = 0
+    attractiveness: int = 0
+    toughness: int = 0
+    stress: int = 0
+    first_cut_id: Optional[int] = None
+    first_cut_image_url: Optional[str] = None
+    cut_count: int = 0
 
 
 class ImageBase(BaseModel):

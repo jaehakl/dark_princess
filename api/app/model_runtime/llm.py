@@ -10,9 +10,11 @@ from typing import Any
 
 from fastapi import HTTPException, status
 
-LLM_MODEL_PATH = ""
-LLM_REPO_ID = "LGAI-EXAONE/EXAONE-4.0-1.2B-GGUF"
-LLM_MODEL_FILENAME = "EXAONE-4.0-1.2B-Q4_K_M.gguf"
+LLM_MODEL_PATH = "../../../ai_models/llm/Jiunsong/supergemma4-26b-uncensored-gguf-v2/supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf"
+#LLM_REPO_ID = "LGAI-EXAONE/EXAONE-4.0-1.2B-GGUF"
+#LLM_MODEL_FILENAME = "EXAONE-4.0-1.2B-Q4_K_M.gguf"
+LLM_REPO_ID = ""
+LLM_MODEL_FILENAME = "supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf"
 LLM_CONTEXT_SIZE = 8192
 LLM_N_GPU_LAYERS = 0
 LLM_N_THREADS = 0
@@ -377,10 +379,53 @@ async def generate_prompt_with_llm(
     messages: list[dict[str, str]],
     max_tokens: int | None = None,
     temperature: float | None = None,
+    response_format_json: bool = True,
 ) -> str:
     config = build_prompt_llm_config(max_tokens=max_tokens, temperature=temperature)
     async with _prompt_llm_lock:
-        return await asyncio.to_thread(_generate_prompt_with_llm_locked, config, messages)
+        return await asyncio.to_thread(
+            _generate_prompt_with_llm_locked,
+            config,
+            messages,
+            response_format_json,
+        )
+
+
+async def ask_llm(
+    system_message: str,
+    question: str,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
+) -> str:
+    trimmed_system_message = system_message.strip()
+    trimmed_question = question.strip()
+    if not trimmed_system_message:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="system_message is required")
+    if not trimmed_question:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="question is required")
+    if len(trimmed_system_message) > LLM_MAX_SOURCE_TEXT_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"system_message must be {LLM_MAX_SOURCE_TEXT_LENGTH} characters or fewer",
+        )
+    if len(trimmed_question) > LLM_MAX_SOURCE_TEXT_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"question must be {LLM_MAX_SOURCE_TEXT_LENGTH} characters or fewer",
+        )
+
+    answer = await generate_prompt_with_llm(
+        [
+            {"role": "system", "content": trimmed_system_message},
+            {"role": "user", "content": trimmed_question},
+        ],
+        max_tokens=max_tokens,
+        temperature=temperature,
+        response_format_json=False,
+    )
+    if not answer.strip():
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="LLM returned empty answer")
+    return answer
 
 
 def build_prompt_llm_config(
@@ -532,15 +577,18 @@ def _normalize_visual_keyword_payload(
 def _generate_prompt_with_llm_locked(
     config: PromptLlmConfig,
     messages: list[dict[str, str]],
+    response_format_json: bool,
 ) -> str:
     llm = _get_prompt_llm_locked(config)
-    response = llm.create_chat_completion(
-        messages=messages,
-        max_tokens=config.max_tokens,
-        temperature=config.temperature,
-        top_p=config.top_p,
-        response_format={"type": "json_object"},
-    )
+    completion_kwargs: dict[str, Any] = {
+        "messages": messages,
+        "max_tokens": config.max_tokens,
+        "temperature": config.temperature,
+        "top_p": config.top_p,
+    }
+    if response_format_json:
+        completion_kwargs["response_format"] = {"type": "json_object"}
+    response = llm.create_chat_completion(**completion_kwargs)
     if not isinstance(response, dict):
         return ""
 

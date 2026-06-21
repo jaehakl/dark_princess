@@ -64,6 +64,8 @@ export type GenImageResponse = {
 export type GenerateCutRequest = {
   cut_id?: number | null;
   image_id?: number | null;
+  scene_id?: number | null;
+  prev_cut_id?: number | null;
   parent_image_id?: number | null;
   script: string;
   status_change: Record<string, unknown>;
@@ -78,9 +80,27 @@ export type GenerateCutRequest = {
   prompt_negative?: string | null;
 };
 
+export type LlmAskRequest = {
+  system_message: string;
+  question: string;
+  max_tokens?: number | null;
+  temperature?: number | null;
+};
+
 export type UpdateCutImageRequest = {
   cut_id: number;
   image_id: number | null;
+};
+
+export type UpdateCutLinksRequest = {
+  cut_id: number;
+  scene_id?: number | null;
+  prev_cut_id?: number | null;
+};
+
+export type UpdateSceneFirstCutRequest = {
+  scene_id: number;
+  cut_id: number | null;
 };
 
 export type PromptColumnName = 'prompt_situation' | 'prompt_hero' | 'prompt_camera' | 'prompt_detail';
@@ -88,6 +108,8 @@ export type PromptColumnName = 'prompt_situation' | 'prompt_hero' | 'prompt_came
 export type CutRecord = {
   id?: number | null;
   image_id?: number | null;
+  scene_id?: number | null;
+  prev_cut_id?: number | null;
   image_url?: string | null;
   scribble_url?: string | null;
   pose_url?: string | null;
@@ -98,6 +120,24 @@ export type CutRecord = {
   prompt_camera?: string | null;
   prompt_detail?: string | null;
   prompt_negative?: string | null;
+};
+
+export type SceneRecord = {
+  id?: number | null;
+  title: string;
+  context: string;
+  turn: number;
+  cash: number;
+  strength: number;
+  agility: number;
+  intelligence: number;
+  sense: number;
+  attractiveness: number;
+  toughness: number;
+  stress: number;
+  first_cut_id?: number | null;
+  first_cut_image_url?: string | null;
+  cut_count?: number;
 };
 
 export type ImageRecord = {
@@ -159,6 +199,7 @@ export type StatusRecord = {
 
 export type DbTableName =
   | 'Cut'
+  | 'Scene'
   | 'Image'
   | 'SelectionModel'
   | 'Status';

@@ -11,6 +11,8 @@ import { ImageManagerPage } from '../pages/image-manager/ImageManagerPage';
 import { LandingPage } from '../pages/landing/LandingPage';
 import { PlayPage } from '../pages/play/PlayPage';
 import { CutWizardPage } from '../pages/cut_wizard/CutWizardPage';
+import { SceneEditPage } from '../pages/scene-edit/SceneEditPage';
+import { SceneListPage } from '../pages/scenes/SceneListPage';
 
 function RouteErrorBoundary() {
   const error = useRouteError();
@@ -42,6 +44,22 @@ export const routeObjects: RouteObject[] = [
         handle: {
           breadcrumb: 'Play',
           pageTitle: 'Play',
+        },
+      },
+      {
+        path: 'scenes',
+        element: createElement(SceneListPage),
+        handle: {
+          breadcrumb: 'Scene',
+          pageTitle: 'Scene',
+        },
+      },
+      {
+        path: 'scene-edit/:scene_id',
+        element: createElement(SceneEditPage),
+        handle: {
+          breadcrumb: 'Scene Edit',
+          pageTitle: 'Scene Edit',
         },
       },
       {

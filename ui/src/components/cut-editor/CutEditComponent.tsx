@@ -527,6 +527,8 @@ export function CutEditComponent({
       const payload: GenerateCutRequest = {
         cut_id: cutId ?? null,
         image_id: displayedImageId,
+        scene_id: activeCut?.scene_id ?? null,
+        prev_cut_id: activeCut?.prev_cut_id ?? null,
         script,
         status_change: statusChange,
         generate_image: false,
@@ -561,6 +563,8 @@ export function CutEditComponent({
     try {
       const payload: GenerateCutRequest = {
         cut_id: cutId ?? null,
+        scene_id: activeCut?.scene_id ?? null,
+        prev_cut_id: activeCut?.prev_cut_id ?? null,
         parent_image_id: displayedImageId,
         script,
         status_change: statusChange,
@@ -633,6 +637,8 @@ export function CutEditComponent({
     onDuplicate({
       id: null,
       image_id: activeCut.image_id ?? null,
+      scene_id: activeCut.scene_id ?? null,
+      prev_cut_id: activeCut.prev_cut_id ?? null,
       image_url: activeCut.image_url ?? null,
       scribble_url: activeCut.scribble_url ?? null,
       pose_url: activeCut.pose_url ?? null,
