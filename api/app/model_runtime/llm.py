@@ -11,21 +11,18 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException, status
+from settings import settings
 
-LLM_MODEL_PATH = "../../../ai_models/llm/Jiunsong/supergemma4-26b-uncensored-gguf-v2/supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf"
 #LLM_REPO_ID = "LGAI-EXAONE/EXAONE-4.0-1.2B-GGUF"
 #LLM_MODEL_FILENAME = "EXAONE-4.0-1.2B-Q4_K_M.gguf"
 LLM_REPO_ID = ""
 LLM_MODEL_FILENAME = "supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf"
 LLM_CONTEXT_SIZE = 8192
-# True offloads all possible layers to GPU; False keeps LLM inference CPU-only.
-LLM_USE_MAX_GPU = True
-LLM_N_GPU_LAYERS = -1 if LLM_USE_MAX_GPU else 0
 LLM_N_THREADS = 0
-LLM_MAX_TOKENS = 180
-LLM_TEMPERATURE = 0.2
+LLM_MAX_TOKENS = 512
+LLM_TEMPERATURE = 0.5
 LLM_TOP_P = 0.9
-LLM_MAX_SOURCE_TEXT_LENGTH = 4000
+LLM_MAX_SOURCE_TEXT_LENGTH = 8000
 LLM_MIN_MAX_TOKENS = 16
 LLM_MAX_MAX_TOKENS = 1024
 LLM_MIN_TEMPERATURE = 0.0
@@ -127,7 +124,7 @@ def build_prompt_llm_config(
             ),
         )
 
-    model_path_value = LLM_MODEL_PATH.strip()
+    model_path_value = settings.llm_model_path.strip()
     if model_path_value:
         model_path = Path(model_path_value).expanduser()
         try:
@@ -151,7 +148,7 @@ def build_prompt_llm_config(
         repo_id=repo_id,
         model_filename=model_filename,
         context_size=LLM_CONTEXT_SIZE,
-        n_gpu_layers=LLM_N_GPU_LAYERS,
+        n_gpu_layers=-1 if settings.llm_use_max_gpu else 0,
         n_threads=LLM_N_THREADS,
         max_tokens=resolved_max_tokens,
         temperature=resolved_temperature,

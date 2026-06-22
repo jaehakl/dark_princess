@@ -10,6 +10,11 @@ DEFAULT_LOCAL_UPLOAD_DIR = str(API_ROOT / "uploads")
 DEFAULT_CUT_EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-large"
 DEFAULT_CONTROLNET_SCRIBBLE_MODEL_ID = "xinsir/controlnet-scribble-sdxl-1.0"
 DEFAULT_CONTROLNET_OPENPOSE_MODEL_ID = "xinsir/controlnet-openpose-sdxl-1.0"
+DEFAULT_LLM_MODEL_PATH = (
+    API_ROOT.parent.parent
+    / "ai_models/llm/Jiunsong/supergemma4-26b-uncensored-gguf-v2/supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf"
+)
+DEFAULT_LLM_USE_MAX_GPU = True
 
 load_dotenv(ENV_PATH)
 
@@ -41,9 +46,12 @@ class Settings(BaseModel):
     CUT_EMBEDDING_MODEL_NAME: str
     CONTROLNET_SCRIBBLE_MODEL_ID: str
     CONTROLNET_OPENPOSE_MODEL_ID: str
+    llm_model_path: str
+    llm_use_max_gpu: bool
 
 
 def build_settings() -> Settings:
+    raw_llm_use_max_gpu = os.getenv("LLM_USE_MAX_GPU")
     return Settings(
         db_url=os.getenv("DB_URL") or DEFAULT_DB_URL,
         app_base_url=os.getenv("APP_BASE_URL", "http://localhost:5173"),
@@ -58,6 +66,12 @@ def build_settings() -> Settings:
         ),
         CONTROLNET_OPENPOSE_MODEL_ID=(
             os.getenv("CONTROLNET_OPENPOSE_MODEL_ID") or DEFAULT_CONTROLNET_OPENPOSE_MODEL_ID
+        ),
+        llm_model_path=get_local_path_env("LLM_MODEL_PATH", DEFAULT_LLM_MODEL_PATH),
+        llm_use_max_gpu=(
+            DEFAULT_LLM_USE_MAX_GPU
+            if raw_llm_use_max_gpu is None
+            else raw_llm_use_max_gpu.strip().lower() in {"1", "true", "yes", "on"}
         ),
     )
 

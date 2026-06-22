@@ -198,10 +198,11 @@ export function CutPromptPanel({
         </div>
         <FormControl
           as="textarea"
-          rows={10}
+          rows={12}
           value={script}
           onChange={(event) => setScript(event.target.value)}
-          className="min-h-44 w-full resize-y px-3 py-2 text-sm leading-6"
+          className="min-h-44 w-full resize-y px-3 py-2 leading-6"
+          style={{ fontSize: '14.5px' }}
           disabled={isInputDisabled}
         />
       </div>
