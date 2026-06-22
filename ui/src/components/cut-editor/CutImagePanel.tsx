@@ -17,6 +17,7 @@ import type {
 } from './types';
 
 type CutImagePanelProps = {
+  cutId: number | null;
   imageId: number | null;
   baseImageUrl: string | null;
   scribbleImageUrl: string | null;
@@ -44,6 +45,7 @@ type CutImagePanelProps = {
 };
 
 export function CutImagePanel({
+  cutId,
   imageId,
   baseImageUrl,
   scribbleImageUrl,
@@ -106,6 +108,7 @@ export function CutImagePanel({
 
           {imageSettings ? (
             <ImageEditor
+              key={cutId === null ? 'draft-cut' : `cut-${cutId}`}
               ref={imageEditorRef}
               parameters={imageSettings}
               promptColumns={promptDraft}

@@ -147,9 +147,12 @@ export const ImageEditor = forwardRef<ImageEditorHandle, ImageEditorProps>(funct
   const [isObjectGenerateOpen, setIsObjectGenerateOpen] = useState(false);
   const [objectEditSource, setObjectEditSource] = useState<{ objectId: string; canvas: HTMLCanvasElement } | null>(null);
   const [postprocessSourceBlob, setPostprocessSourceBlob] = useState<Blob | null>(null);
-  const [isLoadingSource, setIsLoadingSource] = useState(false);
+  const [isLoadingBaseImage, setIsLoadingBaseImage] = useState(false);
+  const [isLoadingScribbleImage, setIsLoadingScribbleImage] = useState(false);
+  const [isLoadingPoseImage, setIsLoadingPoseImage] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isLoadingSource = isLoadingBaseImage || isLoadingScribbleImage || isLoadingPoseImage;
   const isDisabled = disabled || isSubmitting || isLoadingSource;
   const activeObject = objectsRef.current.find((object) => object.id === activeObjectIdRef.current) ?? null;
   const hasImage = Boolean(baseImageRef.current || objectsRef.current.length > 0);
@@ -267,9 +270,10 @@ export const ImageEditor = forwardRef<ImageEditorHandle, ImageEditorProps>(funct
 
     async function loadBaseImage() {
       if ((baseImageRef.current?.sourceUrl ?? null) === (baseImageUrl ?? null)) {
+        setIsLoadingBaseImage(false);
         return;
       }
-      setIsLoadingSource(true);
+      setIsLoadingBaseImage(true);
       setError(null);
       try {
         if (!baseImageUrl) {
@@ -291,7 +295,7 @@ export const ImageEditor = forwardRef<ImageEditorHandle, ImageEditorProps>(funct
         }
       } finally {
         if (!isCancelled) {
-          setIsLoadingSource(false);
+          setIsLoadingBaseImage(false);
         }
       }
     }
@@ -306,7 +310,7 @@ export const ImageEditor = forwardRef<ImageEditorHandle, ImageEditorProps>(funct
     let isCancelled = false;
 
     async function loadScribbleImage() {
-      setIsLoadingSource(true);
+      setIsLoadingScribbleImage(true);
       setError(null);
       try {
         if (!scribbleImageUrl) {
@@ -333,7 +337,7 @@ export const ImageEditor = forwardRef<ImageEditorHandle, ImageEditorProps>(funct
         }
       } finally {
         if (!isCancelled) {
-          setIsLoadingSource(false);
+          setIsLoadingScribbleImage(false);
         }
       }
     }
@@ -348,7 +352,7 @@ export const ImageEditor = forwardRef<ImageEditorHandle, ImageEditorProps>(funct
     let isCancelled = false;
 
     async function loadPoseImage() {
-      setIsLoadingSource(true);
+      setIsLoadingPoseImage(true);
       setError(null);
       try {
         if (!poseImageUrl) {
@@ -368,7 +372,7 @@ export const ImageEditor = forwardRef<ImageEditorHandle, ImageEditorProps>(funct
         }
       } finally {
         if (!isCancelled) {
-          setIsLoadingSource(false);
+          setIsLoadingPoseImage(false);
         }
       }
     }

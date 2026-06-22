@@ -936,6 +936,7 @@ export function CutEditComponent({
               />
 
               <CutImagePanel
+                cutId={cutId}
                 imageId={displayedImageId}
                 baseImageUrl={displayedBaseImageUrl}
                 scribbleImageUrl={displayedScribbleImageUrl}
