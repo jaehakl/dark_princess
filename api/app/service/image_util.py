@@ -5,11 +5,8 @@ from pathlib import Path
 
 from fastapi import HTTPException, UploadFile, status
 from PIL import Image, ImageOps, UnidentifiedImageError
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from db import Cut
-from models import ImageGenerationSettingsBase, ImagePromptExtractionResponseBase, RecommendPromptItemBase
+from models import ImageGenerationSettingsBase, ImagePromptExtractionResponseBase
 from settings import API_ROOT, settings
 from service.image_util_constants import (
     GEN_IMAGE_ALLOWED_SAMPLERS,
@@ -32,24 +29,16 @@ from service.image_util_constants import (
     GEN_IMAGE_STEPS,
     GEN_IMAGE_STRENGTH,
     GEN_IMAGE_WIDTH,
-    RECOMMEND_PROMPT_DISTANCE_EPSILON,
-    CUT_PROMPT_FIELDS,
     WD14_DEFAULT_CHARACTER_THRESHOLD,
     WD14_DEFAULT_GENERAL_THRESHOLD,
     WD14_TAGGER_MODEL_ID,
 )
-from service.selection_model import cosine_distance
 from utils.image_processing import process_image
 from utils.local_storage import is_allowed_content_type
 from model_runtime import (
-    encode_cut_text,
-    extract_visual_keywords,
     get_available_cuda_device_ids,
     predict_wd14_tags,
-    translate_korean_to_english,
-    translate_visual_keywords_to_english,
 )
-from utils.vector import VECTOR_DIMENSION, validate_embedding
 
 POSTPROCESS_OUTPUT_FORMATS = {
     "jpeg": ("JPEG", "image/jpeg"),
@@ -202,133 +191,6 @@ def _postprocess_output_quality(parameters: dict[str, object]) -> int:
     if quality < 1 or quality > 100:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="quality must be between 1 and 100")
     return quality
-
-
-async def translate_comma_texts(texts: list[str]) -> list[str]:
-    if not texts:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="texts are required")
-
-    translated_items: list[str] = []
-    for text in texts:
-        trimmed_text = text.strip()
-        if not trimmed_text:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text item is required")
-
-        parts = [part.strip() for part in trimmed_text.split(",") if part.strip()]
-        if not parts:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text item must include comma text")
-
-        translated_parts = []
-        for part in parts:
-            translated_parts.append(await translate_korean_to_english(part))
-        translated_items.append(", ".join(translated_parts))
-
-    return translated_items
-
-
-async def recommend_prompt(db: AsyncSession, text: str) -> list[RecommendPromptItemBase]:
-    prompt_text = text.strip()
-    if not prompt_text:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text is required")
-
-    model_name = settings.CUT_EMBEDDING_MODEL_NAME.strip()
-    if not model_name:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="cut embedding model name is required",
-        )
-
-    text_embedding = await encode_cut_text(model_name, f"query: {prompt_text}")
-    if len(text_embedding) != VECTOR_DIMENSION:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"cut embedding model must return {VECTOR_DIMENSION} dimensions",
-        )
-
-    cuts = (await db.execute(select(Cut))).scalars().all()
-    score_sums: dict[str, float] = {}
-    frequencies: dict[str, int] = {}
-    for cut in cuts:
-        try:
-            cut_embedding = validate_embedding(cut.embedding, "cut.embedding")
-        except HTTPException:
-            continue
-
-        distance = cosine_distance(text_embedding, cut_embedding)
-        if distance is None:
-            continue
-
-        cut_weight = 1 / (distance + RECOMMEND_PROMPT_DISTANCE_EPSILON)
-        for field in CUT_PROMPT_FIELDS:
-            column_text = getattr(cut, field)
-            if not isinstance(column_text, str):
-                continue
-
-            for raw_word in column_text.split(","):
-                word = raw_word.strip()
-                if not word:
-                    continue
-                score_sums[word] = score_sums.get(word, 0.0) + cut_weight
-                frequencies[word] = frequencies.get(word, 0) + 1
-
-    return [
-        RecommendPromptItemBase(word=word, score=score_sums[word] / frequencies[word])
-        for word in sorted(
-            score_sums,
-            key=lambda item: (-(score_sums[item] / frequencies[item]), item),
-        )
-    ]
-
-
-async def generate_prompt(
-    text: str,
-    max_tokens: int | None = None,
-    temperature: float | None = None,
-) -> str:
-    print("[generate_prompt] start", flush=True)
-    print(
-        f"[generate_prompt] options max_tokens={max_tokens!r} temperature={temperature!r}",
-        flush=True,
-    )
-    print(f"[generate_prompt] source_text={text!r}", flush=True)
-    try:
-        korean_keywords = await extract_visual_keywords(
-            text,
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
-    except HTTPException as exc:
-        print(
-            f"[generate_prompt] extract_keywords failed status={exc.status_code} detail={exc.detail!r}",
-            flush=True,
-        )
-        raise
-    print(f"[generate_prompt] korean_keywords={korean_keywords!r}", flush=True)
-
-    try:
-        english_keywords = await translate_visual_keywords_to_english(
-            korean_keywords,
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
-    except HTTPException as exc:
-        print(
-            f"[generate_prompt] translate_keywords failed status={exc.status_code} detail={exc.detail!r}",
-            flush=True,
-        )
-        raise
-    print(f"[generate_prompt] english_keywords={english_keywords!r}", flush=True)
-
-    prompt_keywords = [
-        keyword.strip()
-        for keyword_list in english_keywords.values()
-        for keyword in keyword_list
-        if isinstance(keyword, str) and keyword.strip()
-    ]
-    prompt = ", ".join(prompt_keywords)
-    print(f"[generate_prompt] prompt_keywords={prompt_keywords!r}", flush=True)
-    print(f"[generate_prompt] prompt={prompt!r}", flush=True)
-    return prompt
 
 
 def get_default_image_generation_settings() -> ImageGenerationSettingsBase:

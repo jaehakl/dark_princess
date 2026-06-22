@@ -1,28 +1,17 @@
-from typing import List
-
-from fastapi import APIRouter, Body, Depends, File, Form, Response, UploadFile
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from db import get_db
+from fastapi import APIRouter, File, Form, Response, UploadFile
 from models import (
     GenerateImageRequestBase,
-    GenerateCutPromptRequestBase,
-    GenerateCutPromptResponseBase,
     ImageGenerationSettingsBase,
     ImagePromptExtractionResponseBase,
-    RecommendPromptItemBase,
 )
 from service.image import generate_image_blob
 from service.image_util import (
     WD14_DEFAULT_CHARACTER_THRESHOLD,
     WD14_DEFAULT_GENERAL_THRESHOLD,
     extract_prompt_from_image,
-    generate_prompt,
     get_default_image_generation_settings,
     postprocess_image,
     read_image_upload,
-    recommend_prompt,
-    translate_comma_texts,
 )
 
 router = APIRouter(prefix="/image-util", tags=["image-util"])
@@ -31,34 +20,6 @@ router = APIRouter(prefix="/image-util", tags=["image-util"])
 @router.get("/image-settings/defaults", response_model=ImageGenerationSettingsBase)
 async def api_get_image_settings_defaults():
     return get_default_image_generation_settings()
-
-
-@router.post("/translate-comma-texts", response_model=List[str])
-async def api_translate_comma_texts(
-    texts: List[str] = Body(...),
-):
-    return await translate_comma_texts(texts)
-
-
-@router.post("/recommend-prompt", response_model=List[RecommendPromptItemBase])
-async def api_recommend_prompt(
-    text: str = Body(..., embed=True),
-    db: AsyncSession = Depends(get_db),
-):
-    return await recommend_prompt(db, text)
-
-
-@router.post("/generate-prompt", response_model=GenerateCutPromptResponseBase)
-async def api_generate_prompt(
-    request: GenerateCutPromptRequestBase,
-):
-    return GenerateCutPromptResponseBase(
-        prompt=await generate_prompt(
-            request.text,
-            max_tokens=request.max_tokens,
-            temperature=request.temperature,
-        ),
-    )
 
 
 @router.post("/extract-prompt", response_model=ImagePromptExtractionResponseBase)

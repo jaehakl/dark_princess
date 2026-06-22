@@ -148,8 +148,6 @@ export const dbTables = {
   ImageUtil: {
     getImageSettingsDefaults: () =>
       request<ImageGenerationSettings>('get', '/image-util/image-settings/defaults'),
-    translateCommaTexts: (texts: string[]) =>
-      request<string[]>('post', '/image-util/translate-comma-texts', texts),
     generateImageBlob: (item: GenerateImageRequest) =>
       requestResponse<Blob>('post', '/image-util/generate-image', item, { responseType: 'blob', fallbackMessage: '이미지 생성에 실패했습니다.' }),
     postprocessImage: (formData: FormData) =>

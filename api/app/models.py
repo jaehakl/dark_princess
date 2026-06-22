@@ -117,16 +117,6 @@ class GenerateCutRequestBase(BaseModel):
     prompt_negative: Optional[str] = None
 
 
-class GenerateCutPromptRequestBase(BaseModel):
-    text: str
-    max_tokens: Optional[int] = None
-    temperature: Optional[float] = None
-
-
-class GenerateCutPromptResponseBase(BaseModel):
-    prompt: str
-
-
 class LlmAskRequestBase(BaseModel):
     system_message: str
     question: str
@@ -138,11 +128,6 @@ class GenerateSelectionModelRequestBase(BaseModel):
     model_id: Optional[int] = None
     name: str
     parameters: Dict[str, Any] = Field(default_factory=dict)
-
-
-class RecommendPromptItemBase(BaseModel):
-    word: str
-    score: float
 
 
 class AdjustSelectionModelRequestBase(NextCutRequestBase):
