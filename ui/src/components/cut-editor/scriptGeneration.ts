@@ -27,6 +27,9 @@ export async function generateCutScript(previousSituation: string, currentSituat
     system_message: (
       'You write Korean visual-novel cut scripts. ' +
       'Use the previous situation as past context and the current situation as the present draft to continue from. ' +
+      'Write from the first-person point of view, using Korean first-person narration such as 내가 or 나는. ' +
+      'Describe what the viewpoint character sees, feels, thinks, and does from inside the scene. ' +
+      'Avoid third-person narration for the viewpoint character. ' +
       'Return only the generated Korean script text, about 10 short lines separated by newline characters. ' +
       'Do not return markdown, code fences, explanations, numbering, bullets, titles, or labels.'
     ),

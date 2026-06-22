@@ -1,11 +1,11 @@
-import type { Dispatch, SetStateAction } from 'react';
+import type { Dispatch, Ref, SetStateAction } from 'react';
 import type {
   ImageGenerationSettings,
   ImageRecord,
   PromptColumnName,
 } from '../../api/type';
 import { ImageEditor } from '../image-editor';
-import type { ImageEditorSubmitPayload } from '../image-editor';
+import type { ImageEditorHandle, ImageEditorSubmitPayload } from '../image-editor';
 import { Button, FieldLabel, FormControl } from '../ui';
 import {
   QUICK_IMAGE_STRENGTHS,
@@ -33,6 +33,7 @@ type CutImagePanelProps = {
   savingMode: SaveMode | null;
   canGoPreviousImage: boolean;
   canGoNextImage: boolean;
+  imageEditorRef: Ref<ImageEditorHandle>;
   setStatusChangeValues: Dispatch<SetStateAction<StatusChangeValues>>;
   onImageStrengthChange: (value: string) => void;
   onImageParametersUpdated: (settings: ImageGenerationSettings) => void;
@@ -59,6 +60,7 @@ export function CutImagePanel({
   savingMode,
   canGoPreviousImage,
   canGoNextImage,
+  imageEditorRef,
   setStatusChangeValues,
   onImageStrengthChange,
   onImageParametersUpdated,
@@ -104,6 +106,7 @@ export function CutImagePanel({
 
           {imageSettings ? (
             <ImageEditor
+              ref={imageEditorRef}
               parameters={imageSettings}
               promptColumns={promptDraft}
               imageId={imageId}

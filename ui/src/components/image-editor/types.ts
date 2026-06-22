@@ -69,6 +69,10 @@ export type ImageEditorSubmitPayload = {
   poseImage: Blob | null;
 };
 
+export type ImageEditorHandle = {
+  addImageObjectFromUrl: (imageUrl: string) => Promise<void>;
+};
+
 export type ImageEditorProps = {
   parameters: ImageGenerationSettings;
   promptColumns: Record<PromptColumnName, string>;

@@ -14,7 +14,7 @@ const PAGE_SIZE = 100;
 
 type CutExplorerComponentProps = {
   currentCutId: number | null;
-  onSelect: (cutId: number) => void;
+  onSelect: (cut: CutRecord) => void;
 };
 
 const CUT_LIST_REQUEST: GetListRequest = {
@@ -269,7 +269,7 @@ export function CutExplorerComponent({
                 )}
                 onClick={() => {
                   if (cutId !== null) {
-                    onSelect(cutId);
+                    onSelect(cut);
                   }
                 }}
                 disabled={!isSelectable}

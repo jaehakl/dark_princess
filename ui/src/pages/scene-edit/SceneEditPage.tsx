@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { dbTables } from '../../api/api';
 import type {
   CutRecord,
@@ -9,8 +9,6 @@ import type {
 import { CutEditComponent } from '../../components/cut-editor';
 import {
   Button,
-  FieldLabel,
-  FormControl,
   ImageFrame,
   ModalBackdrop,
   Panel,
@@ -19,6 +17,7 @@ import {
   Spinner,
   cx,
 } from '../../components/ui';
+import { SceneInfoEditModal, type SceneInfoDraft } from './SceneInfoEditModal';
 
 const SCENE_CUT_LIST_REQUEST: GetListRequest = {
   offset: 0,
@@ -50,33 +49,26 @@ const SCENE_BY_ID_REQUEST: GetListRequest = {
   sort: null,
 };
 
-const SCENE_STAT_FIELDS = [
-  { key: 'cash', label: '현금' },
-  { key: 'strength', label: '힘' },
-  { key: 'agility', label: '민첩' },
-  { key: 'intelligence', label: '지력' },
-  { key: 'sense', label: '센스' },
-  { key: 'attractiveness', label: '매력' },
-  { key: 'toughness', label: '근성' },
-  { key: 'stress', label: '스트레스' },
-] as const;
+const UNASSIGNED_SCENE_PARAM = 'unassigned';
+const UNASSIGNED_SCENE_TITLE = '미분류 cut';
 
-type SceneDraft = Pick<
-  SceneRecord,
-  | 'title'
-  | 'context'
-  | 'turn'
-  | 'cash'
-  | 'strength'
-  | 'agility'
-  | 'intelligence'
-  | 'sense'
-  | 'attractiveness'
-  | 'toughness'
-  | 'stress'
->;
+const UNASSIGNED_SCENE: SceneRecord = {
+  id: null,
+  title: UNASSIGNED_SCENE_TITLE,
+  context: '',
+  turn: 0,
+  cash: 0,
+  strength: 0,
+  agility: 0,
+  intelligence: 0,
+  sense: 0,
+  attractiveness: 0,
+  toughness: 0,
+  stress: 0,
+  first_cut_id: null,
+};
 
-function createEmptySceneCut(sceneId: number): CutRecord {
+function createEmptySceneCut(sceneId: number | null): CutRecord {
   return {
     id: null,
     image_id: null,
@@ -95,7 +87,7 @@ function createEmptySceneCut(sceneId: number): CutRecord {
   };
 }
 
-function createNextCutDraft(sceneId: number, sourceCut: CutRecord): CutRecord {
+function createNextCutDraft(sceneId: number | null, sourceCut: CutRecord): CutRecord {
   return {
     ...sourceCut,
     id: null,
@@ -116,22 +108,6 @@ function getErrorMessage(error: unknown) {
 function getScriptSummary(cut: CutRecord) {
   const summary = cut.script.replace(/\s+/g, ' ').trim();
   return summary || 'script 없음';
-}
-
-function toSceneDraft(scene: SceneRecord): SceneDraft {
-  return {
-    title: scene.title,
-    context: scene.context,
-    turn: scene.turn,
-    cash: scene.cash,
-    strength: scene.strength,
-    agility: scene.agility,
-    intelligence: scene.intelligence,
-    sense: scene.sense,
-    attractiveness: scene.attractiveness,
-    toughness: scene.toughness,
-    stress: scene.stress,
-  };
 }
 
 function orderCuts(cuts: CutRecord[], selectedCutId: number | null) {
@@ -194,19 +170,28 @@ function orderCuts(cuts: CutRecord[], selectedCutId: number | null) {
 
 export function SceneEditPage() {
   const { scene_id: rawSceneId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const isUnassignedScene = rawSceneId === UNASSIGNED_SCENE_PARAM;
   const sceneId = Number(rawSceneId);
   const isValidSceneId = Number.isInteger(sceneId) && sceneId > 0;
+  const isValidScenePage = isUnassignedScene || isValidSceneId;
+  const activeSceneId = isUnassignedScene ? null : sceneId;
+  const rawSelectedCutId = searchParams.get('cut_id');
+  const parsedSelectedCutId = rawSelectedCutId === null ? null : Number(rawSelectedCutId);
+  const selectedCutId =
+    typeof parsedSelectedCutId === 'number' && Number.isInteger(parsedSelectedCutId) && parsedSelectedCutId > 0
+      ? parsedSelectedCutId
+      : null;
 
   const [scene, setScene] = useState<SceneRecord | null>(null);
   const [cuts, setCuts] = useState<CutRecord[]>([]);
-  const [selectedCutId, setSelectedCutId] = useState<number | null>(null);
   const [editorInitialCut, setEditorInitialCut] = useState<CutRecord | null>(null);
+  const [isDraftCutOpen, setIsDraftCutOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingScene, setIsSavingScene] = useState(false);
   const [isUpdatingLinks, setIsUpdatingLinks] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSceneModalOpen, setIsSceneModalOpen] = useState(false);
-  const [sceneDraft, setSceneDraft] = useState<SceneDraft | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [unassignedCuts, setUnassignedCuts] = useState<CutRecord[]>([]);
   const [selectedImportIds, setSelectedImportIds] = useState<Set<number>>(new Set());
@@ -218,17 +203,28 @@ export function SceneEditPage() {
     () => cuts.find((cut) => cut.id === selectedCutId) ?? null,
     [cuts, selectedCutId],
   );
-  const draftParentCutId = selectedCutId === null && typeof editorInitialCut?.prev_cut_id === 'number'
+  const draftParentCutId = typeof editorInitialCut?.prev_cut_id === 'number'
     ? editorInitialCut.prev_cut_id
     : null;
-  const genealogyFocusCutId = selectedCutId ?? draftParentCutId;
+  const genealogyFocusCutId = isDraftCutOpen ? draftParentCutId : selectedCutId;
   const visibleCuts = useMemo(
     () => orderCuts(cuts, genealogyFocusCutId),
     [cuts, genealogyFocusCutId],
   );
+  const editorCutId = isDraftCutOpen ? null : selectedCutId;
+
+  const updateSelectedCutId = useCallback((cutId: number | null, replace = false) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (cutId === null) {
+      nextParams.delete('cut_id');
+    } else {
+      nextParams.set('cut_id', String(cutId));
+    }
+    setSearchParams(nextParams, { replace });
+  }, [searchParams, setSearchParams]);
 
   async function loadSceneData(preferredCutId?: number | null) {
-    if (!isValidSceneId) {
+    if (!isValidScenePage) {
       setError('올바르지 않은 Scene ID입니다.');
       setIsLoading(false);
       return;
@@ -237,42 +233,52 @@ export function SceneEditPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const [sceneResponse, cutResponse] = await Promise.all([
-        dbTables.Scene.listRows({
-          ...SCENE_BY_ID_REQUEST,
-          selected_ids: [sceneId],
-        }),
-        dbTables.Cut.listRows({
+      let loadedScene: SceneRecord;
+      let loadedCuts: CutRecord[];
+      if (isUnassignedScene) {
+        const cutResponse = await dbTables.Cut.listRows({
           ...SCENE_CUT_LIST_REQUEST,
-          filter: { scene_id: [sceneId, sceneId] },
-        }),
-      ]);
-      const loadedScene = sceneResponse.items[0] ?? null;
-      if (!loadedScene) {
-        throw new Error('Scene을 찾을 수 없습니다.');
+          filter: { scene_id: [null] },
+        });
+        loadedScene = UNASSIGNED_SCENE;
+        loadedCuts = cutResponse.items;
+      } else {
+        const [sceneResponse, cutResponse] = await Promise.all([
+          dbTables.Scene.listRows({
+            ...SCENE_BY_ID_REQUEST,
+            selected_ids: [sceneId],
+          }),
+          dbTables.Cut.listRows({
+            ...SCENE_CUT_LIST_REQUEST,
+            filter: { scene_id: [sceneId, sceneId] },
+          }),
+        ]);
+        const realScene = sceneResponse.items[0] ?? null;
+        if (!realScene) {
+          throw new Error('Scene을 찾을 수 없습니다.');
+        }
+        loadedScene = realScene;
+        loadedCuts = cutResponse.items;
       }
 
-      const loadedCuts = cutResponse.items;
-      const loadedCutIds = new Set(
-        loadedCuts.map((cut) => cut.id).filter((id): id is number => typeof id === 'number'),
-      );
-      const nextSelectedCutId =
-        preferredCutId !== undefined && preferredCutId !== null && loadedCutIds.has(preferredCutId)
-          ? preferredCutId
-          : selectedCutId !== null && loadedCutIds.has(selectedCutId)
-            ? selectedCutId
-            : loadedScene.first_cut_id && loadedCutIds.has(loadedScene.first_cut_id)
+      if (preferredCutId !== undefined) {
+        const loadedCutIds = new Set(
+          loadedCuts.map((cut) => cut.id).filter((id): id is number => typeof id === 'number'),
+        );
+        const nextSelectedCutId =
+          preferredCutId !== null && loadedCutIds.has(preferredCutId)
+            ? preferredCutId
+            : !isUnassignedScene && loadedScene.first_cut_id && loadedCutIds.has(loadedScene.first_cut_id)
               ? loadedScene.first_cut_id
               : loadedCuts.find((cut) => typeof cut.id === 'number')?.id ?? null;
-
+        updateSelectedCutId(nextSelectedCutId);
+      }
       setScene(loadedScene);
       setCuts(loadedCuts);
-      setSelectedCutId(nextSelectedCutId);
-      setEditorInitialCut(nextSelectedCutId === null ? null : createEmptySceneCut(sceneId));
     } catch (loadError) {
       setScene(null);
       setCuts([]);
-      setSelectedCutId(null);
+      setIsDraftCutOpen(false);
       setEditorInitialCut(null);
       setError(getErrorMessage(loadError));
     } finally {
@@ -281,28 +287,70 @@ export function SceneEditPage() {
   }
 
   useEffect(() => {
-    void loadSceneData(null);
+    setIsDraftCutOpen(false);
+    setEditorInitialCut(null);
+    void loadSceneData();
   }, [rawSceneId]);
+
+  useEffect(() => {
+    if (isLoading || !scene) {
+      return;
+    }
+
+    const loadedCutIds = new Set(
+      cuts.map((cut) => cut.id).filter((id): id is number => typeof id === 'number'),
+    );
+    if (isDraftCutOpen) {
+      return;
+    }
+
+    if (selectedCutId !== null && loadedCutIds.has(selectedCutId)) {
+      setIsDraftCutOpen(false);
+      setEditorInitialCut(createEmptySceneCut(activeSceneId));
+      return;
+    }
+
+    const nextSelectedCutId =
+      !isUnassignedScene && scene.first_cut_id && loadedCutIds.has(scene.first_cut_id)
+        ? scene.first_cut_id
+        : cuts.find((cut) => typeof cut.id === 'number')?.id ?? null;
+    if (nextSelectedCutId !== selectedCutId || (rawSelectedCutId !== null && selectedCutId === null)) {
+      updateSelectedCutId(nextSelectedCutId, true);
+      return;
+    }
+
+    setEditorInitialCut(nextSelectedCutId === null ? null : createEmptySceneCut(activeSceneId));
+  }, [
+    activeSceneId,
+    cuts,
+    isDraftCutOpen,
+    isLoading,
+    isUnassignedScene,
+    rawSelectedCutId,
+    scene,
+    selectedCutId,
+    updateSelectedCutId,
+  ]);
 
   function selectCut(cut: CutRecord) {
     if (typeof cut.id !== 'number') {
       return;
     }
-    setSelectedCutId(cut.id);
-    setEditorInitialCut(createEmptySceneCut(sceneId));
+    updateSelectedCutId(cut.id);
+    setIsDraftCutOpen(false);
+    setEditorInitialCut(createEmptySceneCut(activeSceneId));
     setError(null);
   }
 
   function openSceneModal() {
-    if (!scene) {
+    if (!scene || isUnassignedScene) {
       return;
     }
-    setSceneDraft(toSceneDraft(scene));
     setIsSceneModalOpen(true);
   }
 
-  async function saveScene() {
-    if (!scene || !sceneDraft) {
+  async function saveScene(sceneDraft: SceneInfoDraft) {
+    if (!scene || isUnassignedScene) {
       return;
     }
 
@@ -318,7 +366,7 @@ export function SceneEditPage() {
         },
       ]);
       setIsSceneModalOpen(false);
-      await loadSceneData(selectedCutId);
+      await loadSceneData();
     } catch (saveError) {
       setError(getErrorMessage(saveError));
     } finally {
@@ -327,7 +375,7 @@ export function SceneEditPage() {
   }
 
   async function setCurrentAsFirstCut() {
-    if (!scene || selectedCutId === null || isUpdatingLinks) {
+    if (!scene || isUnassignedScene || selectedCutId === null || isUpdatingLinks) {
       return;
     }
 
@@ -339,7 +387,7 @@ export function SceneEditPage() {
         cut_id: selectedCutId,
       });
       setScene(updatedScene);
-      await loadSceneData(selectedCutId);
+      await loadSceneData();
     } catch (linkError) {
       setError(getErrorMessage(linkError));
     } finally {
@@ -359,7 +407,7 @@ export function SceneEditPage() {
         cut_id: selectedCutId,
         prev_cut_id: prevCutId,
       });
-      await loadSceneData(selectedCutId);
+      await loadSceneData();
     } catch (linkError) {
       setError(getErrorMessage(linkError));
     } finally {
@@ -379,7 +427,7 @@ export function SceneEditPage() {
         cut_id: nextCutId,
         prev_cut_id: selectedCutId,
       });
-      await loadSceneData(selectedCutId);
+      await loadSceneData();
     } catch (linkError) {
       setError(getErrorMessage(linkError));
     } finally {
@@ -399,7 +447,7 @@ export function SceneEditPage() {
         cut_id: selectedCutId,
         prev_cut_id: null,
       });
-      await loadSceneData(selectedCutId);
+      await loadSceneData();
     } catch (linkError) {
       setError(getErrorMessage(linkError));
     } finally {
@@ -408,12 +456,21 @@ export function SceneEditPage() {
   }
 
   function createNextCut() {
-    if (!selectedCut || !isValidSceneId) {
+    if (!isValidScenePage) {
       return;
     }
-    setSelectedCutId(null);
-    setEditorInitialCut(createNextCutDraft(sceneId, selectedCut));
+    const nextDraft = selectedCut
+      ? createNextCutDraft(activeSceneId, selectedCut)
+      : cuts.length === 0
+        ? createEmptySceneCut(activeSceneId)
+        : null;
+    if (!nextDraft) {
+      return;
+    }
+    setIsDraftCutOpen(true);
+    setEditorInitialCut(nextDraft);
     setError(null);
+    updateSelectedCutId(null);
   }
 
   async function openImportModal() {
@@ -457,7 +514,7 @@ export function SceneEditPage() {
       for (const cutId of importIds) {
         await dbTables.Cut.updateLinks({
           cut_id: cutId,
-          scene_id: sceneId,
+          scene_id: activeSceneId,
           prev_cut_id: null,
         });
         importedIds.push(cutId);
@@ -465,6 +522,7 @@ export function SceneEditPage() {
       setIsImportModalOpen(false);
       setUnassignedCuts([]);
       setSelectedImportIds(new Set());
+      setIsDraftCutOpen(false);
       await loadSceneData(importIds[0] ?? selectedCutId);
     } catch (importCutsError) {
       setImportError(getErrorMessage(importCutsError));
@@ -476,6 +534,7 @@ export function SceneEditPage() {
         importedIds.forEach((cutId) => next.delete(cutId));
         return next;
       });
+      setIsDraftCutOpen(false);
       await loadSceneData(importedIds[0] ?? selectedCutId);
     } finally {
       setIsImportingCuts(false);
@@ -483,26 +542,17 @@ export function SceneEditPage() {
   }
 
   function handleSaved(cutId: number) {
+    setIsDraftCutOpen(false);
     void loadSceneData(cutId);
   }
 
   function handleDeleted(deletedCutId: number) {
     const nextCutId = cuts.find((cut) => cut.id !== deletedCutId && typeof cut.id === 'number')?.id ?? null;
+    setIsDraftCutOpen(false);
     void loadSceneData(nextCutId);
   }
 
-  function duplicateCut(cut: CutRecord) {
-    setSelectedCutId(null);
-    setEditorInitialCut({
-      ...cut,
-      scene_id: sceneId,
-      prev_cut_id: selectedCutId,
-      script: '',
-      status_change: { turn: 1 },
-    });
-  }
-
-  if (!isValidSceneId) {
+  if (!isValidScenePage) {
     return (
       <div className="grid min-h-[calc(100vh-10rem)] place-items-center text-sm font-semibold text-[#ff9ab8]">
         올바르지 않은 Scene ID입니다.
@@ -559,7 +609,9 @@ export function SceneEditPage() {
                   {scene.title || 'Scene'}
                 </p>
                 <p className="mt-1 text-xs font-semibold text-[var(--app-muted)]">
-                  #{scene.id ?? sceneId} · Cut {cuts.length} · First #{scene.first_cut_id ?? '-'}
+                  {isUnassignedScene
+                    ? `unassigned · Cut ${cuts.length}`
+                    : `#${scene.id ?? sceneId} · Cut ${cuts.length} · First #${scene.first_cut_id ?? '-'}`}
                 </p>
               </div>
               <Link
@@ -569,31 +621,37 @@ export function SceneEditPage() {
                 목록
               </Link>
             </div>
-            <div className="grid grid-cols-3 gap-1 text-xs font-semibold text-[var(--app-muted)] sm:grid-cols-5">
-              <span>턴 {scene.turn}</span>
-              <span>현금 {scene.cash}</span>
-              <span>힘 {scene.strength}</span>
-              <span>민첩 {scene.agility}</span>
-              <span>스트레스 {scene.stress}</span>
-            </div>
+            {!isUnassignedScene ? (
+              <div className="grid grid-cols-3 gap-1 text-xs font-semibold text-[var(--app-muted)] sm:grid-cols-5">
+                <span>턴 {scene.turn}</span>
+                <span>현금 {scene.cash}</span>
+                <span>힘 {scene.strength}</span>
+                <span>민첩 {scene.agility}</span>
+                <span>스트레스 {scene.stress}</span>
+              </div>
+            ) : null}
             <div className="flex flex-wrap gap-2">
-              <Button className="px-3 py-2 text-xs" onClick={openSceneModal}>
-                Scene 정보 편집
-              </Button>
-              <Button
-                className="px-3 py-2 text-xs"
-                onClick={() => void openImportModal()}
-                disabled={isLoadingImportCuts || isImportingCuts}
-              >
-                Cut import
-              </Button>
-              <Button
-                className="px-3 py-2 text-xs"
-                onClick={() => void setCurrentAsFirstCut()}
-                disabled={selectedCutId === null || isUpdatingLinks}
-              >
-                first_cut 지정
-              </Button>
+              {!isUnassignedScene ? (
+                <>
+                  <Button className="px-3 py-2 text-xs" onClick={openSceneModal}>
+                    Scene 정보 편집
+                  </Button>
+                  <Button
+                    className="px-3 py-2 text-xs"
+                    onClick={() => void openImportModal()}
+                    disabled={isLoadingImportCuts || isImportingCuts}
+                  >
+                    Cut import
+                  </Button>
+                  <Button
+                    className="px-3 py-2 text-xs"
+                    onClick={() => void setCurrentAsFirstCut()}
+                    disabled={selectedCutId === null || isUpdatingLinks}
+                  >
+                    first_cut 지정
+                  </Button>
+                </>
+              ) : null}
               <Button
                 className="px-3 py-2 text-xs"
                 onClick={() => void clearPrevCut()}
@@ -605,7 +663,7 @@ export function SceneEditPage() {
                 variant="primary"
                 className="px-3 py-2 text-xs"
                 onClick={createNextCut}
-                disabled={!selectedCut}
+                disabled={!isValidScenePage || (!selectedCut && cuts.length > 0)}
               >
                 next_cut 생성
               </Button>
@@ -617,15 +675,23 @@ export function SceneEditPage() {
 
           <SectionBody className="space-y-3">
             {visibleCuts.length === 0 ? (
-              <div className="grid min-h-56 place-items-center text-sm font-semibold text-[var(--app-muted)]">
-                Scene에 연결된 Cut 없음
+              <div className="grid min-h-56 place-items-center gap-3 text-sm font-semibold text-[var(--app-muted)]">
+                <span>{isUnassignedScene ? '미분류 Cut 없음' : 'Scene에 연결된 Cut 없음'}</span>
+                <Button
+                  variant="primary"
+                  className="px-3 py-2 text-xs"
+                  onClick={createNextCut}
+                  disabled={!isValidScenePage}
+                >
+                  첫 Cut 생성
+                </Button>
               </div>
             ) : (
               <div className="max-h-[calc(100vh-20rem)] space-y-2 overflow-y-auto pr-1">
                 {visibleCuts.map((cut, index) => {
                   const cutId = cut.id ?? null;
                   const isSelected = cutId !== null && cutId === selectedCutId;
-                  const isFirst = cutId !== null && cutId === scene.first_cut_id;
+                  const isFirst = !isUnassignedScene && cutId !== null && cutId === scene.first_cut_id;
                   return (
                     <div
                       key={cutId ?? `cut-${index}`}
@@ -721,11 +787,10 @@ export function SceneEditPage() {
         <div className="min-w-0">
           {editorInitialCut ? (
             <CutEditComponent
-              cutId={selectedCutId}
+              cutId={editorCutId}
               initialCut={editorInitialCut}
               onSaved={handleSaved}
               onDeleted={handleDeleted}
-              onDuplicate={duplicateCut}
             />
           ) : (
             <Panel className="min-h-[calc(100vh-10rem)]">
@@ -737,78 +802,13 @@ export function SceneEditPage() {
         </div>
       </div>
 
-      {isSceneModalOpen && sceneDraft ? (
-        <ModalBackdrop role="presentation" topAligned>
-          <Panel
-            role="dialog"
-            aria-modal="true"
-            className="max-h-[calc(100dvh-3rem)] w-[min(42rem,calc(100vw-2rem))] overflow-y-auto"
-          >
-            <PanelHeader>
-              <h2 className="text-base font-semibold text-[#fff7ef]">Scene 정보 편집</h2>
-              <Button
-                className="px-3 py-2 text-xs"
-                onClick={() => setIsSceneModalOpen(false)}
-                disabled={isSavingScene}
-              >
-                닫기
-              </Button>
-            </PanelHeader>
-            <SectionBody className="space-y-4">
-              <div className="space-y-1">
-                <FieldLabel htmlFor="scene-title">제목</FieldLabel>
-                <FormControl
-                  id="scene-title"
-                  value={sceneDraft.title}
-                  onChange={(event) => setSceneDraft((current) => current ? { ...current, title: event.target.value } : current)}
-                  className="h-11 w-full px-3"
-                />
-              </div>
-              <div className="space-y-1">
-                <FieldLabel htmlFor="scene-context">context</FieldLabel>
-                <FormControl
-                  as="textarea"
-                  id="scene-context"
-                  value={sceneDraft.context}
-                  onChange={(event) => setSceneDraft((current) => current ? { ...current, context: event.target.value } : current)}
-                  className="min-h-48 w-full resize-y px-3 py-2 text-sm leading-6"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                <SceneNumberField
-                  label="턴"
-                  value={sceneDraft.turn}
-                  onChange={(value) => setSceneDraft((current) => current ? { ...current, turn: value } : current)}
-                />
-                {SCENE_STAT_FIELDS.map((field) => (
-                  <SceneNumberField
-                    key={field.key}
-                    label={field.label}
-                    value={sceneDraft[field.key]}
-                    onChange={(value) => setSceneDraft((current) => current ? { ...current, [field.key]: value } : current)}
-                  />
-                ))}
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button
-                  className="px-4 py-2 text-xs"
-                  onClick={() => setIsSceneModalOpen(false)}
-                  disabled={isSavingScene}
-                >
-                  취소
-                </Button>
-                <Button
-                  variant="primary"
-                  className="px-4 py-2 text-xs"
-                  onClick={() => void saveScene()}
-                  disabled={isSavingScene}
-                >
-                  {isSavingScene ? '저장 중' : '저장'}
-                </Button>
-              </div>
-            </SectionBody>
-          </Panel>
-        </ModalBackdrop>
+      {isSceneModalOpen && scene && !isUnassignedScene ? (
+        <SceneInfoEditModal
+          scene={scene}
+          isSaving={isSavingScene}
+          onClose={() => setIsSceneModalOpen(false)}
+          onSave={saveScene}
+        />
       ) : null}
 
       {isImportModalOpen ? (
@@ -921,31 +921,6 @@ export function SceneEditPage() {
         </ModalBackdrop>
       ) : null}
 
-    </div>
-  );
-}
-
-function SceneNumberField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <div className="space-y-1">
-      <FieldLabel>{label}</FieldLabel>
-      <FormControl
-        type="number"
-        value={value}
-        onChange={(event) => {
-          const parsedValue = Number(event.target.value);
-          onChange(Number.isFinite(parsedValue) ? parsedValue : 0);
-        }}
-        className="h-11 w-full px-3"
-      />
     </div>
   );
 }

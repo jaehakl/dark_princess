@@ -55,6 +55,11 @@ class UpdateCutLinksRequestBase(BaseModel):
     prev_cut_id: Optional[int] = None
 
 
+class UpdateCutFavoriteRequestBase(BaseModel):
+    cut_id: int
+    favorited: bool
+
+
 class UpdateSceneFirstCutRequestBase(BaseModel):
     scene_id: int
     cut_id: Optional[int] = None
@@ -106,6 +111,7 @@ class GenerateCutRequestBase(BaseModel):
     parent_image_id: Optional[int] = None
     script: str = ""
     status_change: Dict[str, Any] = Field(default_factory=dict)
+    favorited: Optional[bool] = None
     generate_image: bool = True
     image_settings: Optional[ImageGenerationSettingsBase] = None
     prompt_situation: Optional[str] = None
@@ -143,6 +149,7 @@ class CutBase(BaseModel):
     image_url: Optional[str] = None
     scribble_url: Optional[str] = None
     pose_url: Optional[str] = None
+    favorited: bool = False
     script: str = ""
     status_change: Dict[str, Any] = Field(default_factory=dict)
     prompt_situation: Optional[str] = None

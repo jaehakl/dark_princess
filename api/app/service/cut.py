@@ -18,6 +18,7 @@ from models import (
     GenerateCutRequestBase,
     ImageGenerationSettingsBase,
     UpdateCutContextRequestBase,
+    UpdateCutFavoriteRequestBase,
     UpdateCutImageRequestBase,
     UpdateCutLinksRequestBase,
     UpsertResponseBase,
@@ -218,6 +219,8 @@ async def generate_cut(
 
         cut.script = script
         cut.status_change = request.status_change
+        if request.favorited is not None:
+            cut.favorited = request.favorited
         cut.embedding = embedding
         for field in CUT_PROMPT_FIELDS:
             setattr(cut, field, column_values[field])
@@ -280,6 +283,7 @@ async def upsert_cuts(db: AsyncSession, items: list[CutBase]) -> list[UpsertResp
     try:
         for item in items:
             cut = existing_cuts.get(item.id) if item.id is not None else None
+            is_new_cut = cut is None
             if cut is None:
                 cut = Cut()
                 db.add(cut)
@@ -305,6 +309,8 @@ async def upsert_cuts(db: AsyncSession, items: list[CutBase]) -> list[UpsertResp
                 cut.prev_cut_id = prev_cut_id
             cut.script = script
             cut.status_change = item.status_change
+            if is_new_cut or "favorited" in item.model_fields_set:
+                cut.favorited = item.favorited
             cut.embedding = await make_cut_embedding(embedding_visual_prompt, script)
             for field in CUT_PROMPT_FIELDS:
                 setattr(cut, field, column_values[field])
@@ -340,6 +346,32 @@ async def update_cut_image(db: AsyncSession, request: UpdateCutImageRequestBase)
         cut.image_id = image_id
         if image_id is None:
             cut.image = None
+        await db.commit()
+        await db.refresh(cut)
+        if cut.image_id is not None:
+            await db.refresh(cut, attribute_names=["image"])
+        else:
+            cut.image = None
+    except Exception:
+        await db.rollback()
+        raise
+
+    return cut
+
+
+async def update_cut_favorite(db: AsyncSession, request: UpdateCutFavoriteRequestBase) -> Cut:
+    cut = (
+        await db.execute(
+            select(Cut)
+            .options(cut_image_load_option())
+            .where(Cut.id == request.cut_id)
+        )
+    ).scalar_one_or_none()
+    if cut is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="cut not found")
+
+    try:
+        cut.favorited = request.favorited
         await db.commit()
         await db.refresh(cut)
         if cut.image_id is not None:
@@ -437,12 +469,6 @@ async def validate_prev_cut_id(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="prev_cut_id cannot be the same as cut_id",
         )
-    if scene_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="prev_cut_id requires scene_id",
-        )
-
     prev_cut = await db.get(Cut, prev_cut_id)
     if prev_cut is None:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="prev_cut_id not found")

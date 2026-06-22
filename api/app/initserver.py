@@ -12,6 +12,12 @@ from settings import settings
 from utils.local_storage import object_key_from_public_url
 
 
+async def run_startup_migrations(conn):
+    cut_columns = (await conn.execute(text("PRAGMA table_info(cuts)"))).mappings().all()
+    if "favorited" not in {column["name"] for column in cut_columns}:
+        await conn.execute(text("ALTER TABLE cuts ADD COLUMN favorited BOOLEAN NOT NULL DEFAULT 0"))
+
+
 def server():
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -51,6 +57,7 @@ def server():
         app.state.progress = 0
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            await run_startup_migrations(conn)
         print("service is started.")
 
     def shutdown():

@@ -27,6 +27,18 @@ const SCENE_LIST_REQUEST: GetListRequest = {
   sort: ['id', 'desc'],
 };
 
+const UNASSIGNED_SCENE_TITLE = '미분류 cut';
+
+const UNASSIGNED_CUT_SUMMARY_REQUEST: GetListRequest = {
+  offset: 0,
+  limit: 1,
+  selected_ids: [],
+  search_text: null,
+  text_filter: {},
+  filter: { scene_id: [null] },
+  sort: ['id', 'desc'],
+};
+
 const SCENE_STAT_FIELDS = [
   { key: 'cash', label: '현금' },
   { key: 'strength', label: '힘' },
@@ -77,6 +89,8 @@ function getErrorMessage(error: unknown) {
 export function SceneListPage() {
   const navigate = useNavigate();
   const [scenes, setScenes] = useState<SceneRecord[]>([]);
+  const [unassignedCutCount, setUnassignedCutCount] = useState(0);
+  const [unassignedCutPreviewUrl, setUnassignedCutPreviewUrl] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [totalRows, setTotalRows] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -91,6 +105,7 @@ export function SceneListPage() {
     [totalRows],
   );
   const canCreateScene = sceneDraft.title.trim().length > 0 && !isCreatingScene;
+  const showUnassignedCutCard = page === 1;
 
   useEffect(() => {
     let isActive = true;
@@ -99,21 +114,30 @@ export function SceneListPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const response = await dbTables.Scene.listRows({
-          ...SCENE_LIST_REQUEST,
-          offset: (page - 1) * PAGE_SIZE,
-        });
+        const [response, unassignedCutResponse] = await Promise.all([
+          dbTables.Scene.listRows({
+            ...SCENE_LIST_REQUEST,
+            offset: (page - 1) * PAGE_SIZE,
+          }),
+          page === 1 ? dbTables.Cut.listRows(UNASSIGNED_CUT_SUMMARY_REQUEST) : Promise.resolve(null),
+        ]);
         if (!isActive) {
           return;
         }
         setScenes(response.items);
         setTotalRows(response.total);
+        if (unassignedCutResponse) {
+          setUnassignedCutCount(unassignedCutResponse.total);
+          setUnassignedCutPreviewUrl(unassignedCutResponse.items[0]?.image_url ?? null);
+        }
       } catch (loadError) {
         if (!isActive) {
           return;
         }
         setScenes([]);
         setTotalRows(0);
+        setUnassignedCutCount(0);
+        setUnassignedCutPreviewUrl(null);
         setError(loadError instanceof Error ? loadError.message : '요청에 실패했습니다.');
       } finally {
         if (isActive) {
@@ -189,7 +213,7 @@ export function SceneListPage() {
       <Panel>
         <PanelHeader>
           <span className="text-xs font-semibold text-[var(--app-muted)]">
-            {scenes.length} / {totalRows}
+            {scenes.length + (showUnassignedCutCard ? 1 : 0)} / {totalRows + 1}
           </span>
           <span className="text-xs font-semibold text-[var(--app-muted)]">
             {page} / {totalPages}
@@ -206,12 +230,43 @@ export function SceneListPage() {
             <div className="grid min-h-80 place-items-center text-sm font-semibold text-[#ff9ab8]">
               {error}
             </div>
-          ) : scenes.length === 0 ? (
+          ) : scenes.length === 0 && !showUnassignedCutCard ? (
             <div className="grid min-h-80 place-items-center text-sm font-semibold text-[var(--app-muted)]">
               Scene 없음
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+              {showUnassignedCutCard ? (
+                <Link
+                  to="/scene-edit/unassigned"
+                  className={cx(
+                    'group relative aspect-square min-w-0 rounded-[8px] border bg-[rgba(11,4,16,0.72)] p-1 text-left transition-[border-color,filter,transform,box-shadow]',
+                    'hover:-translate-y-px hover:border-[rgba(255,226,186,0.82)] hover:brightness-[1.06]',
+                    'border-[rgba(255,218,228,0.22)]',
+                  )}
+                  title={UNASSIGNED_SCENE_TITLE}
+                  aria-label={UNASSIGNED_SCENE_TITLE}
+                >
+                  <ImageFrame className="relative h-full w-full rounded-[6px] border border-[rgba(255,218,228,0.18)] bg-[linear-gradient(135deg,rgba(255,224,235,0.12),transparent_46%),rgba(12,5,18,0.82)]">
+                    {unassignedCutPreviewUrl ? (
+                      <img
+                        src={unassignedCutPreviewUrl}
+                        alt={UNASSIGNED_SCENE_TITLE}
+                        className="absolute inset-0 h-full w-full object-contain"
+                        draggable={false}
+                      />
+                    ) : null}
+                  </ImageFrame>
+                  <span className="pointer-events-none absolute bottom-2 left-2 right-2 min-w-0 rounded-[7px] border border-[rgba(255,218,228,0.26)] bg-[rgba(8,2,13,0.78)] px-2 py-1 shadow-[0_10px_22px_rgba(0,0,0,0.32)] backdrop-blur-[8px]">
+                    <span className="block truncate text-sm font-extrabold text-[#fff7ef]">
+                      {UNASSIGNED_SCENE_TITLE}
+                    </span>
+                    <span className="mt-0.5 inline-flex rounded-full border border-[rgba(255,226,121,0.62)] bg-[rgba(128,91,18,0.72)] px-1.5 py-0.5 text-[0.62rem] font-extrabold leading-none text-[#fff4c7]">
+                      Cut {unassignedCutCount}
+                    </span>
+                  </span>
+                </Link>
+              ) : null}
               {scenes.map((scene, index) => {
                 const sceneId = typeof scene.id === 'number' ? scene.id : null;
                 const title = scene.title.trim() || '제목 없음';

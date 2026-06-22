@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import ctypes
 import gc
+import importlib.util
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -15,7 +18,9 @@ LLM_MODEL_PATH = "../../../ai_models/llm/Jiunsong/supergemma4-26b-uncensored-ggu
 LLM_REPO_ID = ""
 LLM_MODEL_FILENAME = "supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf"
 LLM_CONTEXT_SIZE = 8192
-LLM_N_GPU_LAYERS = 0
+# True offloads all possible layers to GPU; False keeps LLM inference CPU-only.
+LLM_USE_MAX_GPU = True
+LLM_N_GPU_LAYERS = -1 if LLM_USE_MAX_GPU else 0
 LLM_N_THREADS = 0
 LLM_MAX_TOKENS = 180
 LLM_TEMPERATURE = 0.2
@@ -29,6 +34,8 @@ LLM_MAX_TEMPERATURE = 2.0
 _prompt_llm_lock = asyncio.Lock()
 _prompt_llm_model_key: tuple[str, str, str, int, int, int] | None = None
 _prompt_llm: Any | None = None
+_llm_dll_directory_handles: list[Any] = []
+_llm_loaded_dlls: list[Any] = []
 
 
 @dataclass(frozen=True)
@@ -243,6 +250,7 @@ def _get_prompt_llm_locked(config: PromptLlmConfig) -> Any:
 
     if _prompt_llm is None:
         try:
+            _add_llm_dll_directories()
             from llama_cpp import Llama
         except (ModuleNotFoundError, OSError, RuntimeError) as exc:
             raise HTTPException(
@@ -272,3 +280,33 @@ def _get_prompt_llm_locked(config: PromptLlmConfig) -> Any:
             )
         _prompt_llm_model_key = model_key
     return _prompt_llm
+
+
+def _add_llm_dll_directories() -> None:
+    if _llm_loaded_dlls or not hasattr(os, "add_dll_directory"):
+        return
+
+    llama_lib_paths: list[Path] = []
+    llama_cpp_spec = importlib.util.find_spec("llama_cpp")
+    if llama_cpp_spec is not None and llama_cpp_spec.submodule_search_locations is not None:
+        for location in llama_cpp_spec.submodule_search_locations:
+            dll_path = Path(location) / "lib"
+            if dll_path.exists():
+                llama_lib_paths.append(dll_path)
+                _llm_dll_directory_handles.append(os.add_dll_directory(str(dll_path)))
+
+    nvidia_spec = importlib.util.find_spec("nvidia")
+    if nvidia_spec is None or nvidia_spec.submodule_search_locations is None:
+        return
+
+    for location in nvidia_spec.submodule_search_locations:
+        dll_path = Path(location) / "cu13" / "bin" / "x86_64"
+        if dll_path.exists():
+            _llm_dll_directory_handles.append(os.add_dll_directory(str(dll_path)))
+
+    for dll_name in ("ggml-base.dll", "ggml-cpu.dll", "ggml-cuda.dll", "ggml.dll", "llama.dll"):
+        for dll_path in llama_lib_paths:
+            full_path = dll_path / dll_name
+            if full_path.exists():
+                _llm_loaded_dlls.append(ctypes.CDLL(str(full_path)))
+                break

@@ -198,6 +198,7 @@ export function CutPromptPanel({
         </div>
         <FormControl
           as="textarea"
+          rows={10}
           value={script}
           onChange={(event) => setScript(event.target.value)}
           className="min-h-44 w-full resize-y px-3 py-2 text-sm leading-6"

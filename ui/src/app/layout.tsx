@@ -1,8 +1,7 @@
 import { useEffect } from 'react';
 import { Link, Outlet, useMatches } from 'react-router-dom';
-import { dbTables } from '../api/api';
 import { useImageSettingsStore, useCutStore } from '../api/store';
-import type { GetListRequest } from '../api/type';
+import type { CutRecord } from '../api/type';
 import { ImageSettingsDialog } from '../components/image-settings/ImageSettingsDialog';
 import { CutExplorerModal } from '../components/CutExplorerModal';
 import { Button, cx } from '../components/ui';
@@ -10,16 +9,6 @@ import { Button, cx } from '../components/ui';
 type RouteHandle = {
   breadcrumb?: string;
   pageTitle?: string;
-};
-
-const FETCH_CUT_BY_ID_REQUEST: GetListRequest = {
-  offset: 0,
-  limit: 1,
-  selected_ids: [],
-  search_text: null,
-  text_filter: {},
-  filter: {},
-  sort: null,
 };
 
 export function AppLayout() {
@@ -63,19 +52,8 @@ export function AppLayout() {
     breadcrumbs = [currentPageTitle];
   }
 
-  async function handleCutExplorerSelect(cutId: number) {
-    try {
-      const cutResponse = await dbTables.Cut.listRows({
-        ...FETCH_CUT_BY_ID_REQUEST,
-        selected_ids: [cutId],
-      });
-      const cut = cutResponse.items[0];
-      if (cut) {
-        selectCut(cut);
-      }
-    } catch (error) {
-      console.error('Failed to select cut from explorer.', error);
-    }
+  function handleCutExplorerSelect(cut: CutRecord) {
+    selectCut(cut);
   }
 
   return (
@@ -157,13 +135,13 @@ export function AppLayout() {
         <CutExplorerModal
           currentCutId={currentCut?.id ?? null}
           onClose={closeCutExplorer}
-          onSelect={(cutId) => void handleCutExplorerSelect(cutId)}
+          onSelect={handleCutExplorerSelect}
         />
       ) : null}
 
       {isImageSettingsOpen && imageSettingsDraft ? (
         <ImageSettingsDialog
-          modalLayout={false}
+          nestedBackdrop={false}
           imageSettingsDraft={imageSettingsDraft}
           imageModelFilenameOptions={imageModelFilenameOptions}
           imageSettingsError={imageSettingsError}

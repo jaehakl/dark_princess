@@ -1,2 +1,2 @@
 export { ImageEditor } from './ImageEditor';
-export type { ImageEditorProps, ImageEditorSubmitPayload } from './types';
+export type { ImageEditorHandle, ImageEditorProps, ImageEditorSubmitPayload } from './types';

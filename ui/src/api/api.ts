@@ -17,6 +17,7 @@ import type {
   SelectionModelRecord,
   StatusRecord,
   UpdateCutContextRequest,
+  UpdateCutFavoriteRequest,
   UpdateCutImageRequest,
   UpdateCutLinksRequest,
   UpdateSceneFirstCutRequest,
@@ -36,6 +37,7 @@ export const dbTables = {
       image_url: { label: '이미지 URL', type: 'text' },
       scribble_url: { label: 'Scribble URL', type: 'text' },
       pose_url: { label: 'Pose URL', type: 'text' },
+      favorited: { label: '즐겨찾기', type: 'bool' },
       script: { label: '스크립트', type: 'text' },
       status_change: { label: '상태 변화', type: 'dict-list' },
       prompt_situation: { label: '상황 프롬프트', type: 'text' },
@@ -55,6 +57,8 @@ export const dbTables = {
       request<StatusRecord>('post', '/cut/update-context', item),
     updateImage: (item: UpdateCutImageRequest) =>
       request<CutRecord>('post', '/cut/update-image', item),
+    updateFavorite: (item: UpdateCutFavoriteRequest) =>
+      request<CutRecord>('post', '/cut/update-favorite', item),
     updateLinks: (item: UpdateCutLinksRequest) =>
       request<CutRecord>('post', '/cut/update-links', item),
     deleteRows: (ids: number[]) => request<null>('delete', '/cut/', ids).then(() => undefined),

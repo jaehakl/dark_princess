@@ -1,4 +1,5 @@
 import { CutExplorerComponent } from './CutExplorerComponent';
+import type { CutRecord } from '../api/type';
 import {
   Button,
   ModalBackdrop,
@@ -9,7 +10,7 @@ import {
 type CutExplorerModalProps = {
   currentCutId: number | null;
   onClose: () => void;
-  onSelect: (cutId: number) => void;
+  onSelect: (cut: CutRecord) => void;
 };
 
 export function CutExplorerModal({

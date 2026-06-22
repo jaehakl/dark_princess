@@ -4,22 +4,24 @@ import type { SaveMode } from './types';
 type CutEditorHeaderProps = {
   selectedLabel: string;
   cutId: number | null;
-  modalLayout: boolean;
-  showDuplicate: boolean;
+  favorited: boolean;
   canDelete: boolean;
-  canDuplicate: boolean;
+  canToggleFavorite: boolean;
+  canOpenImport: boolean;
+  canOpenSceneEdit: boolean;
   canSaveData: boolean;
   canOpenCutContext: boolean;
   canOpenImageSettings: boolean;
-  isBusy: boolean;
   isDeleting: boolean;
+  isUpdatingFavorite: boolean;
   savingMode: SaveMode | null;
   onDelete: () => void;
-  onDuplicate: () => void;
+  onToggleFavorite: () => void;
+  onOpenImport: () => void;
+  onOpenSceneEdit: () => void;
   onSaveData: () => void;
   onOpenCutContext: () => void;
   onOpenImageSettings: () => void;
-  onClose?: () => void;
 };
 
 function confirmAction(message: string, action: () => void) {
@@ -31,31 +33,30 @@ function confirmAction(message: string, action: () => void) {
 export function CutEditorHeader({
   selectedLabel,
   cutId,
-  modalLayout,
-  showDuplicate,
+  favorited,
   canDelete,
-  canDuplicate,
+  canToggleFavorite,
+  canOpenImport,
+  canOpenSceneEdit,
   canSaveData,
   canOpenCutContext,
   canOpenImageSettings,
-  isBusy,
   isDeleting,
+  isUpdatingFavorite,
   savingMode,
   onDelete,
-  onDuplicate,
+  onToggleFavorite,
+  onOpenImport,
+  onOpenSceneEdit,
   onSaveData,
   onOpenCutContext,
   onOpenImageSettings,
-  onClose,
 }: CutEditorHeaderProps) {
   return (
     <PanelHeader className="flex-wrap items-start">
       <div className="min-w-0">
         <p className="text-[0.85rem] tracking-[0.16em] text-[var(--app-muted)] uppercase">Cut edit</p>
-        <h2
-          id={modalLayout ? 'cut-edit-modal-title' : undefined}
-          className="truncate text-base font-semibold text-[#fff7ef]"
-        >
+        <h2 className="truncate text-base font-semibold text-[#fff7ef]">
           {selectedLabel}
         </h2>
       </div>
@@ -71,13 +72,30 @@ export function CutEditorHeader({
             {isDeleting ? '삭제 중' : '삭제'}
           </Button>
         ) : null}
-        {showDuplicate ? (
+        <Button
+          className="inline-flex items-center gap-2 px-3 py-2 text-xs"
+          variant={favorited ? 'primary' : 'default'}
+          onClick={onToggleFavorite}
+          disabled={!canToggleFavorite}
+          aria-pressed={favorited}
+          title={favorited ? '즐겨찾기 해제' : '즐겨찾기'}
+        >
+          {isUpdatingFavorite ? <Spinner aria-hidden="true" /> : null}
+          {favorited ? '★ favorited' : '☆ favorite'}
+        </Button>
+        <Button
+          className="inline-flex items-center gap-2 px-3 py-2 text-xs"
+          onClick={onOpenImport}
+          disabled={!canOpenImport}
+        >
+          다른 Cut 에서 Import
+        </Button>
+        {canOpenSceneEdit ? (
           <Button
             className="inline-flex items-center gap-2 px-3 py-2 text-xs"
-            onClick={() => confirmAction('현재 입력값으로 새 컷 편집을 세팅할까요?', onDuplicate)}
-            disabled={!canDuplicate}
+            onClick={onOpenSceneEdit}
           >
-            컷 복제
+            Scene edit
           </Button>
         ) : null}
         <Button
@@ -104,16 +122,6 @@ export function CutEditorHeader({
         >
           ⚙️
         </Button>
-        {modalLayout && onClose ? (
-          <Button
-            variant="danger"
-            className="px-3 py-2 text-xs"
-            onClick={onClose}
-            disabled={isBusy}
-          >
-            닫기
-          </Button>
-        ) : null}
       </div>
     </PanelHeader>
   );

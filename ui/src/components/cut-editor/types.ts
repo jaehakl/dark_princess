@@ -22,7 +22,4 @@ export type CutEditComponentProps = {
   initialCut: CutRecord;
   onSaved: (cutId: number) => void;
   onDeleted?: (cutId: number) => void;
-  onClose?: () => void;
-  onDuplicate?: (cut: CutRecord) => void;
-  modalLayout?: boolean;
 };

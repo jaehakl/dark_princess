@@ -297,6 +297,19 @@ async def get_list_response(
 
         return None
 
+    def _coerce_bool_filter_value(value: Any) -> bool | None:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized_value = value.strip().lower()
+            if normalized_value in {"true", "1", "yes"}:
+                return True
+            if normalized_value in {"false", "0", "no"}:
+                return False
+        if isinstance(value, int) and value in (0, 1):
+            return bool(value)
+        return None
+
     selected_clause = None
     normalized_selected_ids = normalize_int_ids(request.selected_ids, sort=True)
     if normalized_selected_ids:
@@ -345,14 +358,31 @@ async def get_list_response(
     filter_conditions: List[Any] = []
     for field_name, bounds in (request.filter or {}).items():
         python_type = _get_column_python_type(field_name)
-        if python_type not in (int, float, datetime):
-            continue
-
         column = spec.model.__table__.columns.get(field_name)
         if column is None:
             continue
 
         values = list(bounds or [])
+        non_null_values = [value for value in values if value is not None]
+        if len(non_null_values) != len(values) and not non_null_values:
+            if column.nullable:
+                filter_conditions.append(column.is_(None))
+            continue
+        values = non_null_values
+
+        if python_type is bool:
+            bool_values = []
+            for value in values:
+                bool_value = _coerce_bool_filter_value(value)
+                if bool_value is not None and bool_value not in bool_values:
+                    bool_values.append(bool_value)
+            if bool_values:
+                filter_conditions.append(column.in_(bool_values))
+            continue
+
+        if python_type not in (int, float, datetime):
+            continue
+
         min_value = _coerce_filter_bound(values[0], python_type) if len(values) > 0 else None
         max_value = _coerce_filter_bound(values[1], python_type) if len(values) > 1 else None
         filter_clause = _combine_clauses(

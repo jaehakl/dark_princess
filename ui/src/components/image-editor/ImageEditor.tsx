@@ -1,6 +1,8 @@
 import {
+  forwardRef,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useRef,
   useState,
 } from 'react';
@@ -72,6 +74,7 @@ import type {
   DragState,
   EditorTab,
   ImageEditorProps,
+  ImageEditorHandle,
   ImageLayerSnapshot,
   ImageObject,
   ImageTool,
@@ -90,7 +93,7 @@ const EMPTY_POSE: PoseLayer = {
   modified: false,
 };
 
-export function ImageEditor({
+export const ImageEditor = forwardRef<ImageEditorHandle, ImageEditorProps>(function ImageEditor({
   parameters,
   promptColumns,
   imageId,
@@ -106,7 +109,7 @@ export function ImageEditor({
   onPreviousImage,
   onNextImage,
   onSelectLineageImage,
-}: ImageEditorProps) {
+}, ref) {
   const width = parameters.width;
   const height = parameters.height;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -493,6 +496,15 @@ export function ImageEditor({
     setTool('object');
     setSelectionRect(null);
   }
+
+  useImperativeHandle(ref, () => ({
+    addImageObjectFromUrl: async (imageUrl: string) => {
+      if (isDisabled) {
+        throw new Error('이미지 에디터를 사용할 수 없습니다.');
+      }
+      await addImageObject(await fetchImageBlob(imageUrl));
+    },
+  }));
 
   async function confirmGeneratedObject(blob: Blob, placementRect: Rect | null) {
     await addImageObject(blob, placementRect);
@@ -1261,4 +1273,4 @@ export function ImageEditor({
       ) : null}
     </div>
   );
-}
+});

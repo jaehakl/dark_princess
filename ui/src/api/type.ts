@@ -69,6 +69,7 @@ export type GenerateCutRequest = {
   parent_image_id?: number | null;
   script: string;
   status_change: Record<string, unknown>;
+  favorited?: boolean | null;
   generate_image?: boolean;
   image_settings?: Partial<ImageGenerationSettings> | null;
   prompt_situation?: string | null;
@@ -98,6 +99,11 @@ export type UpdateCutLinksRequest = {
   prev_cut_id?: number | null;
 };
 
+export type UpdateCutFavoriteRequest = {
+  cut_id: number;
+  favorited: boolean;
+};
+
 export type UpdateSceneFirstCutRequest = {
   scene_id: number;
   cut_id: number | null;
@@ -113,6 +119,7 @@ export type CutRecord = {
   image_url?: string | null;
   scribble_url?: string | null;
   pose_url?: string | null;
+  favorited?: boolean;
   script: string;
   status_change: Record<string, unknown>;
   prompt_situation?: string | null;

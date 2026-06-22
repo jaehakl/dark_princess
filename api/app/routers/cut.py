@@ -10,6 +10,7 @@ from models import (
     CutBase,
     StatusBase,
     UpdateCutContextRequestBase,
+    UpdateCutFavoriteRequestBase,
     UpdateCutImageRequestBase,
     UpdateCutLinksRequestBase,
     UpsertResponseBase,
@@ -19,6 +20,7 @@ from service.cut import (
     get_similar_cuts,
     cut_image_load_option,
     update_cut_context,
+    update_cut_favorite,
     update_cut_image,
     update_cut_links,
     upsert_cuts,
@@ -71,6 +73,15 @@ async def api_update_cut_image(
     return cut_to_base(cut)
 
 
+@router.post("/update-favorite", response_model=CutBase)
+async def api_update_cut_favorite(
+    request: UpdateCutFavoriteRequestBase,
+    db: AsyncSession = Depends(get_db),
+):
+    cut = await update_cut_favorite(db, request)
+    return cut_to_base(cut)
+
+
 @router.post("/update-links", response_model=CutBase)
 async def api_update_cut_links(
     request: UpdateCutLinksRequestBase,
@@ -89,6 +100,7 @@ def cut_to_base(cut: Cut) -> CutBase:
         image_url=public_file_url_from_reference(cut.image_url),
         scribble_url=public_file_url_from_reference(cut.scribble_url),
         pose_url=public_file_url_from_reference(cut.pose_url),
+        favorited=cut.favorited,
         script=cut.script,
         status_change=cut.status_change,
         prompt_situation=cut.prompt_situation,

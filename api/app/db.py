@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from sqlalchemy import ForeignKey, Integer, JSON, MetaData, Text, event
+from sqlalchemy import Boolean, ForeignKey, Integer, JSON, MetaData, Text, event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -144,6 +144,7 @@ class Cut(Base):
         nullable=True,
     )
     embedding: Mapped[Optional[List[float]]] = mapped_column(JSON, nullable=True)
+    favorited: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     script: Mapped[str] = mapped_column(Text, nullable=False, default="")
     status_change: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     prompt_situation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

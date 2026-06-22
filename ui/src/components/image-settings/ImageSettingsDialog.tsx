@@ -10,7 +10,7 @@ import {
 } from '../ui';
 
 type ImageSettingsDialogProps = {
-  modalLayout: boolean;
+  nestedBackdrop: boolean;
   imageSettingsDraft: ImageGenerationSettingsDraft;
   imageModelFilenameOptions: string[];
   imageSettingsError: string | null;
@@ -21,7 +21,7 @@ type ImageSettingsDialogProps = {
 };
 
 export function ImageSettingsDialog({
-  modalLayout,
+  nestedBackdrop,
   imageSettingsDraft,
   imageModelFilenameOptions,
   imageSettingsError,
@@ -31,7 +31,7 @@ export function ImageSettingsDialog({
   onClose,
 }: ImageSettingsDialogProps) {
   return (
-    <ModalBackdrop nested={modalLayout} role="presentation">
+    <ModalBackdrop nested={nestedBackdrop} role="presentation">
       <Panel
         className="max-h-[min(46rem,calc(100dvh-3rem))] w-[min(48rem,100%)] overflow-y-auto"
         role="dialog"

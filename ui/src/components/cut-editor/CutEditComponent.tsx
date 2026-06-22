@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { dbTables } from '../../api/api';
 import { useImageSettingsStore } from '../../api/store';
 import type {
@@ -6,9 +7,8 @@ import type {
   ImageRecord,
   PromptColumnName,
   CutRecord,
-  SceneRecord,
 } from '../../api/type';
-import type { ImageEditorSubmitPayload } from '../image-editor';
+import type { ImageEditorHandle, ImageEditorSubmitPayload } from '../image-editor';
 import {
   Panel,
   PanelHeader,
@@ -16,7 +16,6 @@ import {
   Spinner,
   Button,
   ModalBackdrop,
-  cx,
 } from '../ui';
 import {
   DEFAULT_STATUS_CHANGE,
@@ -32,10 +31,13 @@ import {
 } from './constants';
 import { CutEditorHeader } from './CutEditorHeader';
 import { CutImagePanel } from './CutImagePanel';
+import { CutImportModal } from './CutImportModal';
 import { CutPromptPanel } from './CutPromptPanel';
+import { buildCutContext } from './cutContext';
 import { generatePromptItemsFromScript } from './promptGeneration';
 import { generateCutScript } from './scriptGeneration';
 import { translatePromptTexts } from './promptTranslation';
+import type { CutImportFields } from './CutImportModal';
 import type {
   InstantPromptName,
   PromptEditorColumnName,
@@ -58,6 +60,16 @@ function cutToPromptDraft(cut: CutRecord): Record<PromptColumnName, string> {
     prompt_detail: cut.prompt_detail ?? '',
     prompt_camera: cut.prompt_camera ?? '',
   };
+}
+
+function appendText(currentValue: string, nextValue: string | null | undefined, separator: string) {
+  const nextText = (nextValue ?? '').trim();
+  if (!nextText) {
+    return currentValue;
+  }
+
+  const currentText = currentValue.trim();
+  return currentText ? `${currentText}${separator}${nextText}` : nextText;
 }
 
 function statusChangeToValues(statusChange: Record<string, unknown> | undefined): StatusChangeValues {
@@ -83,43 +95,14 @@ function promptColumnsToCutPayload(
   };
 }
 
-function buildCutContext(scene: SceneRecord, cuts: CutRecord[], lastContextCutId: number | null) {
-  const cutById = new Map(
-    cuts
-      .filter((cut): cut is CutRecord & { id: number } => typeof cut.id === 'number')
-      .map((cut) => [cut.id, cut]),
-  );
-  const chainCuts: CutRecord[] = [];
-  const seenIds = new Set<number>();
-  let nextCutId = lastContextCutId;
-  while (nextCutId !== null && !seenIds.has(nextCutId)) {
-    const contextCut = cutById.get(nextCutId);
-    if (!contextCut) {
-      break;
-    }
-
-    chainCuts.push(contextCut);
-    seenIds.add(nextCutId);
-    nextCutId = contextCut.prev_cut_id ?? null;
-  }
-
-  return [
-    scene.context.trim(),
-    ...chainCuts.reverse().map((cut) => cut.script.trim()),
-  ]
-    .filter(Boolean)
-    .join('\n\n');
-}
-
 export function CutEditComponent({
   cutId,
   initialCut,
   onSaved,
   onDeleted,
-  onClose,
-  onDuplicate,
-  modalLayout = false,
 }: CutEditComponentProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [activeCut, setActiveCut] = useState<CutRecord | null>(initialCut);
   const [isLoadingCut, setIsLoadingCut] = useState(false);
   const [promptDraft, setPromptDraft] = useState<Record<PromptColumnName, string>>(
@@ -148,6 +131,7 @@ export function CutEditComponent({
   const [selectedImageOverride, setSelectedImageOverride] = useState<ImageRecord | null>(null);
   const [isLoadingHistoryImage, setIsLoadingHistoryImage] = useState(false);
   const [isUpdatingCutImage, setIsUpdatingCutImage] = useState(false);
+  const [isUpdatingFavorite, setIsUpdatingFavorite] = useState(false);
   const [isGeneratingScript, setIsGeneratingScript] = useState(false);
   const [isTranslatingPromptColumns, setIsTranslatingPromptColumns] = useState(false);
   const [isGeneratingPromptItems, setIsGeneratingPromptItems] = useState(false);
@@ -155,10 +139,12 @@ export function CutEditComponent({
   const [savingMode, setSavingMode] = useState<SaveMode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isCutContextOpen, setIsCutContextOpen] = useState(false);
+  const [isCutImportOpen, setIsCutImportOpen] = useState(false);
   const [isLoadingCutContext, setIsLoadingCutContext] = useState(false);
   const [cutContextText, setCutContextText] = useState('');
   const [cutContextError, setCutContextError] = useState<string | null>(null);
   const preserveInstantPromptCutIdRef = useRef<number | null>(null);
+  const imageEditorRef = useRef<ImageEditorHandle | null>(null);
 
   const composedPrompt = useMemo(
     () =>
@@ -172,6 +158,7 @@ export function CutEditComponent({
     isLoadingCut ||
     isLoadingHistoryImage ||
     isUpdatingCutImage ||
+    isUpdatingFavorite ||
     isGeneratingScript ||
     isTranslatingPromptColumns ||
     isGeneratingPromptItems ||
@@ -181,6 +168,18 @@ export function CutEditComponent({
   const canEdit = Boolean(activeCut);
   const canSaveData = canEdit && composedPrompt.length > 0 && !isBusy;
   const canDelete = cutId !== null && !isBusy;
+  const canToggleFavorite = canEdit && !isBusy;
+  const canOpenImport = canEdit && !isBusy;
+  const activeSceneId = typeof activeCut?.scene_id === 'number' ? activeCut.scene_id : null;
+  const activeCutId = typeof cutId === 'number' ? cutId : null;
+  const sceneEditPath = activeSceneId === null
+    ? activeCut && activeCut.scene_id == null ? '/scene-edit/unassigned' : null
+    : `/scene-edit/${activeSceneId}`;
+  const isCurrentSceneEditUrl = sceneEditPath !== null
+    && activeCutId !== null
+    && location.pathname.replace(/\/$/, '') === sceneEditPath
+    && new URLSearchParams(location.search).get('cut_id') === String(activeCutId);
+  const canOpenSceneEdit = sceneEditPath !== null && activeCutId !== null && !isCurrentSceneEditUrl;
   const canOpenCutContext = canEdit && typeof activeCut?.scene_id === 'number' && !isBusy && !isLoadingCutContext;
   const canTranslatePromptColumns =
     canEdit
@@ -189,7 +188,6 @@ export function CutEditComponent({
       (column) => column.key !== 'prompt_camera' && translationDraft[column.key].trim().length > 0,
     );
   const canGeneratePromptItems = canEdit && script.trim().length > 0 && !isBusy;
-  const canDuplicate = Boolean(modalLayout && onDuplicate && cutId !== null && canEdit && !isBusy);
   const cameraSamples = imageSettingsDefaults?.camera_samples ?? imageSettings?.camera_samples ?? {};
   const displayedImageId = selectedImageOverride?.id ?? activeCut?.image_id ?? null;
   const displayedBaseImageUrl = selectedImageOverride
@@ -220,8 +218,10 @@ export function CutEditComponent({
     setScript(cut.script ?? '');
     setStatusChangeValues(statusChangeToValues(cut.status_change));
     setError(null);
+    setIsUpdatingFavorite(false);
     setIsGeneratingScript(false);
     setIsCutContextOpen(false);
+    setIsCutImportOpen(false);
     setIsLoadingCutContext(false);
     setCutContextText('');
     setCutContextError(null);
@@ -231,6 +231,7 @@ export function CutEditComponent({
     if (cutId === null) {
       setIsLoadingCut(false);
       setIsUpdatingCutImage(false);
+      setIsUpdatingFavorite(false);
       setIsGeneratingScript(false);
       setIsDeleting(false);
       setSavingMode(null);
@@ -245,6 +246,7 @@ export function CutEditComponent({
     async function loadCut() {
       setIsLoadingCut(true);
       setIsUpdatingCutImage(false);
+      setIsUpdatingFavorite(false);
       setIsGeneratingScript(false);
       setIsDeleting(false);
       setSavingMode(null);
@@ -296,7 +298,9 @@ export function CutEditComponent({
     setSelectedImageOverride(null);
     setIsLoadingHistoryImage(false);
     setIsUpdatingCutImage(false);
+    setIsUpdatingFavorite(false);
     setIsGeneratingScript(false);
+    setIsCutImportOpen(false);
   }, [cutId]);
 
   useEffect(() => {
@@ -587,6 +591,76 @@ export function CutEditComponent({
     }
   }
 
+  async function toggleFavorite() {
+    const currentCut = activeCut;
+    if (!currentCut) {
+      setError('Cut을 먼저 불러와 주세요.');
+      return;
+    }
+
+    const nextFavorited = !(currentCut.favorited ?? false);
+    if (cutId === null) {
+      setActiveCut({ ...currentCut, favorited: nextFavorited });
+      setError(null);
+      return;
+    }
+
+    setIsUpdatingFavorite(true);
+    setError(null);
+    try {
+      const updatedCut = await dbTables.Cut.updateFavorite({
+        cut_id: cutId,
+        favorited: nextFavorited,
+      });
+      setActiveCut((current) => (
+        current
+          ? { ...current, favorited: updatedCut.favorited ?? nextFavorited }
+          : updatedCut
+      ));
+    } catch (favoriteError) {
+      setError(getErrorMessage(favoriteError));
+    } finally {
+      setIsUpdatingFavorite(false);
+    }
+  }
+
+  async function importCutDraft(importCut: CutRecord, fields: CutImportFields) {
+    if (!Object.values(fields).some(Boolean)) {
+      throw new Error('가져올 항목을 하나 이상 선택해 주세요.');
+    }
+
+    if (fields.image) {
+      const imageUrl = importCut.image_url?.trim();
+      if (!imageUrl) {
+        throw new Error('선택한 Cut에 가져올 이미지가 없습니다.');
+      }
+      if (!imageEditorRef.current) {
+        throw new Error('이미지 에디터를 사용할 수 없습니다.');
+      }
+      await imageEditorRef.current.addImageObjectFromUrl(imageUrl);
+    }
+
+    if (fields.script) {
+      setScript((current) => appendText(current, importCut.script, '\n'));
+    }
+
+    if (fields.prompt) {
+      setPromptDraft((current) => ({
+        prompt_situation: appendText(current.prompt_situation, importCut.prompt_situation, ', '),
+        prompt_hero: appendText(current.prompt_hero, importCut.prompt_hero, ', '),
+        prompt_detail: appendText(current.prompt_detail, importCut.prompt_detail, ', '),
+        prompt_camera: appendText(current.prompt_camera, importCut.prompt_camera, ', '),
+      }));
+      setPromptNegativeDraft((current) => appendText(current, importCut.prompt_negative, ', '));
+    }
+
+    if (fields.status_change) {
+      setStatusChangeValues(statusChangeToValues(importCut.status_change));
+    }
+
+    setError(null);
+  }
+
   function goPreviousImage() {
     if (!canGoPreviousImage || isBusy || isLoadingHistoryImage) {
       return;
@@ -693,6 +767,7 @@ export function CutEditComponent({
         prev_cut_id: activeCut?.prev_cut_id ?? null,
         script,
         status_change: statusChange,
+        favorited: activeCut?.favorited ?? false,
         generate_image: false,
         ...promptColumnsToCutPayload(promptDraft, promptNegativeDraft),
       };
@@ -730,6 +805,7 @@ export function CutEditComponent({
         parent_image_id: displayedImageId,
         script,
         status_change: statusChange,
+        favorited: activeCut?.favorited ?? false,
         generate_image: true,
         image_settings: imagePayload.parameters,
         ...promptColumnsToCutPayload(imagePayload.promptColumns, promptNegativeDraft),
@@ -786,72 +862,42 @@ export function CutEditComponent({
     }
   }
 
-  function duplicateCut() {
-    if (!onDuplicate || !activeCut) {
+  function openSceneEdit() {
+    if (sceneEditPath === null || activeCutId === null) {
       return;
     }
 
-    const statusChange = buildStatusChange();
-    if (!statusChange) {
-      return;
-    }
-
-    onDuplicate({
-      id: null,
-      image_id: activeCut.image_id ?? null,
-      scene_id: activeCut.scene_id ?? null,
-      prev_cut_id: activeCut.prev_cut_id ?? null,
-      image_url: activeCut.image_url ?? null,
-      scribble_url: activeCut.scribble_url ?? null,
-      pose_url: activeCut.pose_url ?? null,
-      script,
-      status_change: { ...statusChange },
-      prompt_situation: promptDraft.prompt_situation,
-      prompt_hero: promptDraft.prompt_hero,
-      prompt_detail: promptDraft.prompt_detail,
-      prompt_camera: promptDraft.prompt_camera,
-      prompt_negative: promptNegativeDraft,
-    });
-  }
-
-  function closeEditor() {
-    preserveInstantPromptCutIdRef.current = null;
-    onClose?.();
+    navigate(`${sceneEditPath}?cut_id=${activeCutId}`);
   }
 
   return (
     <>
       <Panel
-        className={cx(
-          modalLayout
-            ? 'max-h-[calc(100dvh-3rem)] w-[min(96rem,calc(100vw-2rem))] overflow-y-auto'
-            : 'min-h-[calc(100vh-10rem)]',
-        )}
-        role={modalLayout ? 'dialog' : undefined}
-        aria-modal={modalLayout ? true : undefined}
-        aria-labelledby={modalLayout ? 'cut-edit-modal-title' : undefined}
+        className="min-h-[calc(100vh-10rem)]"
       >
         <CutEditorHeader
           selectedLabel={selectedLabel}
           cutId={cutId}
-          modalLayout={modalLayout}
-          showDuplicate={Boolean(modalLayout && onDuplicate && cutId !== null)}
+          favorited={activeCut?.favorited ?? false}
           canDelete={canDelete}
-          canDuplicate={canDuplicate}
+          canToggleFavorite={canToggleFavorite}
+          canOpenImport={canOpenImport}
+          canOpenSceneEdit={canOpenSceneEdit}
           canSaveData={canSaveData}
           canOpenCutContext={canOpenCutContext}
           canOpenImageSettings={Boolean(imageSettings && !isBusy)}
-          isBusy={isBusy}
           isDeleting={isDeleting}
+          isUpdatingFavorite={isUpdatingFavorite}
           savingMode={savingMode}
           onDelete={() => void deleteCut()}
-          onDuplicate={duplicateCut}
+          onToggleFavorite={() => void toggleFavorite()}
+          onOpenImport={() => setIsCutImportOpen(true)}
+          onOpenSceneEdit={openSceneEdit}
           onSaveData={() => {
             void saveDataOnlyCut();
           }}
           onOpenCutContext={() => void openCutContextModal()}
           onOpenImageSettings={openImageSettings}
-          onClose={onClose ? closeEditor : undefined}
         />
 
         <SectionBody>
@@ -906,6 +952,7 @@ export function CutEditComponent({
                 savingMode={savingMode}
                 canGoPreviousImage={canGoPreviousImage}
                 canGoNextImage={canGoNextImage}
+                imageEditorRef={imageEditorRef}
                 setStatusChangeValues={setStatusChangeValues}
                 onImageStrengthChange={updateImageStrength}
                 onImageParametersUpdated={updateImageParameters}
@@ -949,6 +996,13 @@ export function CutEditComponent({
             </SectionBody>
           </Panel>
         </ModalBackdrop>
+      ) : null}
+      {isCutImportOpen ? (
+        <CutImportModal
+          currentCutId={cutId}
+          onClose={() => setIsCutImportOpen(false)}
+          onSelect={importCutDraft}
+        />
       ) : null}
     </>
   );

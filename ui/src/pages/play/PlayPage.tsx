@@ -8,7 +8,6 @@ import type {
   StatusRecord,
 } from '../../api/type';
 import { useCutStore } from '../../api/store';
-import { CutEditModal } from '../../components/CutEditModal';
 import { CutExplorerModal } from '../../components/CutExplorerModal';
 import {
   Button,
@@ -55,7 +54,6 @@ type ScriptLineState = {
   script: string;
   index: number;
 };
-type CutEditorMode = 'edit' | 'replace' | 'next';
 
 const FEEDBACK_LEARN_RATE = 0.1;
 const AUTO_PLAY_INTERVAL_MS = 2000;
@@ -139,21 +137,12 @@ function isValidId(value: string | undefined) {
   return Number.isInteger(parsed) && parsed > 0;
 }
 
-function createNextCutDraft(cut: CutRecord): CutRecord {
-  return {
-    ...cut,
-    id: null,
-    status_change: { ...cut.status_change },
-  };
-}
-
 export function PlayPage() {
   const { statusId } = useParams();
   const parsedStatusId = isValidId(statusId) ? Number(statusId) : null;
   const selectedCut = useCutStore((state) => state.selectedCut);
   const deletedCutId = useCutStore((state) => state.deletedCutId);
   const setCurrentCut = useCutStore((state) => state.setCurrentCut);
-  const handleCutDeleted = useCutStore((state) => state.handleCutDeleted);
   const clearDeletedCut = useCutStore((state) => state.clearDeletedCut);
   const [status, setStatus] = useState<StatusRecord | null>(null);
   const [cut, setCut] = useState<CutRecord | null>(null);
@@ -161,9 +150,6 @@ export function PlayPage() {
   const [pendingTransition, setPendingTransition] = useState<PendingTransition | null>(null);
   const [contextSyncedCutId, setContextSyncedCutId] = useState<number | null>(null);
   const [optionText, setOptionText] = useState('');
-  const [currentCutEditorCutId, setCurrentCutEditorCutId] = useState<number | null>(null);
-  const [currentCutEditorInitialCut, setCurrentCutEditorInitialCut] = useState<CutRecord | null>(null);
-  const [currentCutEditorMode, setCurrentCutEditorMode] = useState<CutEditorMode>('edit');
   const [isCutExplorerOpen, setIsCutExplorerOpen] = useState(false);
   const [isAutoPlaying, setIsAutoPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -193,13 +179,11 @@ export function PlayPage() {
   const canReverseScript = visibleScriptLineIndex > 0;
   const canAdvanceScript = visibleScriptLineIndex < scriptLines.length - 1;
   const canNavigateScript = canReverseScript || canAdvanceScript;
-  const canEditNextCut = Boolean(cut?.id && status?.id && !isAdvancing);
   const canStartAutoPlay = Boolean(
     cut?.id &&
     status?.id &&
     !isLoading &&
     !error &&
-    !currentCutEditorInitialCut &&
     !isCutExplorerOpen,
   );
   const canRerollCut =
@@ -371,94 +355,6 @@ export function PlayPage() {
     };
   }, [parsedStatusId]);
 
-  function openCurrentCutEditor() {
-    if (!cut || !currentCutId || isAdvancing) {
-      return;
-    }
-    setIsAutoPlaying(false);
-    setCurrentCutEditorMode('edit');
-    setCurrentCutEditorCutId(currentCutId);
-    setCurrentCutEditorInitialCut(cut);
-  }
-
-  function openNextCutEditor() {
-    if (!cut?.id || !status?.id || isAdvancing) {
-      return;
-    }
-    setIsAutoPlaying(false);
-    setError(null);
-    setCurrentCutEditorMode('next');
-    setCurrentCutEditorCutId(null);
-    setCurrentCutEditorInitialCut(createNextCutDraft(cut));
-  }
-
-  function closeCurrentCutEditor() {
-    setCurrentCutEditorCutId(null);
-    setCurrentCutEditorInitialCut(null);
-    setCurrentCutEditorMode('edit');
-  }
-
-  async function handleCurrentCutSaved(cutId: number) {
-    setError(null);
-    try {
-      const cutResponse = await dbTables.Cut.listRows(
-        createListRequest({
-          limit: 1,
-          selected_ids: [cutId],
-        }),
-      );
-      const reloadedCut = cutResponse.items[0] ?? null;
-      if (!reloadedCut) {
-        throw new Error('저장한 Cut을 다시 불러올 수 없습니다.');
-      }
-
-      const isDuplicateSave = currentCutEditorCutId === null;
-      const shouldCreateNextCut = isDuplicateSave && currentCutEditorMode === 'next';
-      const shouldReplacePendingCut =
-        isDuplicateSave &&
-        currentCutEditorMode === 'replace' &&
-        Boolean(pendingTransition && status?.id && cut?.id === pendingTransition.targetCutId);
-
-      if (shouldCreateNextCut) {
-        const didAdvance = await advanceToCreatedCut(reloadedCut);
-        if (!didAdvance) {
-          return;
-        }
-      } else if (shouldReplacePendingCut) {
-        const didReplace = await replacePendingCut(reloadedCut);
-        if (!didReplace) {
-          return;
-        }
-      } else {
-        setCut(reloadedCut);
-        setCurrentCut(reloadedCut);
-        setPendingTransition(null);
-        setContextSyncedCutId(null);
-        setIsAutoPlaying(false);
-      }
-      setCurrentCutEditorCutId(cutId);
-      setCurrentCutEditorInitialCut(reloadedCut);
-      setCurrentCutEditorMode('edit');
-    } catch (saveError) {
-      setError(getErrorMessage(saveError));
-    }
-  }
-
-  function handleCurrentCutDuplicate(cutDraft: CutRecord) {
-    setCurrentCutEditorMode('replace');
-    setCurrentCutEditorCutId(null);
-    setCurrentCutEditorInitialCut({
-      ...cutDraft,
-      id: null,
-      status_change: { ...cutDraft.status_change },
-    });
-  }
-
-  function handleCurrentCutDeleted(deletedCutId: number) {
-    closeCurrentCutEditor();
-    handleCutDeleted(deletedCutId);
-  }
-
   function openManualCutExplorer() {
     if (!pendingTransition || isAdvancing) {
       return;
@@ -469,52 +365,6 @@ export function PlayPage() {
 
   function closeManualCutExplorer() {
     setIsCutExplorerOpen(false);
-  }
-
-  async function advanceToCreatedCut(nextCut: CutRecord): Promise<boolean> {
-    if (!cut?.id || !status?.id) {
-      setError('현재 Cut 또는 Status를 확인할 수 없습니다.');
-      return false;
-    }
-    if (!nextCut.id) {
-      setError('Cut ID를 확인할 수 없습니다.');
-      return false;
-    }
-
-    const sourceCutId = cut.id;
-    const sourceCut = cut;
-    const statusBeforeTarget = { ...status };
-    setIsAdvancing(true);
-    setError(null);
-    try {
-      await reinforcePendingTransitionIfCurrent(sourceCutId, status.id);
-      await syncCutContextOnce(status.id, sourceCutId);
-
-      const { nextStatus, deltas: nextDeltas } = applyStatusChange(
-        statusBeforeTarget,
-        nextCut.status_change,
-      );
-
-      await dbTables.Status.upsertRow([nextStatus]);
-      setStatus(nextStatus);
-      setDeltas(nextDeltas);
-      setCut(nextCut);
-      setCurrentCut(nextCut);
-      setPendingTransition({
-        sourceCut,
-        sourceCutId,
-        optionText: '',
-        targetCutId: nextCut.id,
-        statusBeforeTarget,
-      });
-      setOptionText('');
-      return true;
-    } catch (advanceError) {
-      setError(getErrorMessage(advanceError));
-      return false;
-    } finally {
-      setIsAdvancing(false);
-    }
   }
 
   async function syncCutContextOnce(statusId: number, cutId: number) {
@@ -728,27 +578,20 @@ export function PlayPage() {
     }
   }
 
-  async function selectManualCut(cutId: number) {
+  async function selectManualCut(selectedCut: CutRecord) {
+    const selectedCutId = selectedCut.id;
     setIsAutoPlaying(false);
-    if (cutId === cut?.id) {
+    if (typeof selectedCutId !== 'number') {
+      setError('선택한 Cut ID를 확인할 수 없습니다.');
+      return;
+    }
+    if (selectedCutId === cut?.id) {
       setIsCutExplorerOpen(false);
       return;
     }
 
     setError(null);
     try {
-      const cutResponse = await dbTables.Cut.listRows(
-        createListRequest({
-          limit: 1,
-          selected_ids: [cutId],
-        }),
-      );
-      const selectedCut = cutResponse.items[0] ?? null;
-      if (!selectedCut) {
-        setError('선택한 Cut을 찾을 수 없습니다.');
-        return;
-      }
-
       const didReplace = await replacePendingCut(selectedCut);
       if (didReplace) {
         setIsCutExplorerOpen(false);
@@ -809,7 +652,6 @@ export function PlayPage() {
     if (
       isLoading ||
       isAdvancing ||
-      currentCutEditorInitialCut ||
       isCutExplorerOpen ||
       !cut?.id
     ) {
@@ -838,7 +680,6 @@ export function PlayPage() {
     isLoading,
     isAdvancing,
     error,
-    currentCutEditorInitialCut,
     isCutExplorerOpen,
     cut,
     canAdvanceScript,
@@ -1058,20 +899,6 @@ export function PlayPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <Button
                     className="min-h-11 w-full px-3 py-2 text-sm leading-tight"
-                    onClick={openCurrentCutEditor}
-                    disabled={!currentCutId || isAdvancing}
-                  >
-                    현재 컷 편집
-                  </Button>
-                  <Button
-                    className="min-h-11 w-full px-3 py-2 text-sm leading-tight"
-                    onClick={openNextCutEditor}
-                    disabled={!canEditNextCut}
-                  >
-                    다음컷 편집
-                  </Button>
-                  <Button
-                    className="min-h-11 w-full px-3 py-2 text-sm leading-tight"
                     onClick={toggleAutoPlay}
                     disabled={!isAutoPlaying && !canStartAutoPlay}
                   >
@@ -1182,22 +1009,11 @@ export function PlayPage() {
         </Panel>
       </div>
 
-      {currentCutEditorInitialCut ? (
-        <CutEditModal
-          cutId={currentCutEditorCutId}
-          initialCut={currentCutEditorInitialCut}
-          onClose={closeCurrentCutEditor}
-          onSaved={(cutId) => void handleCurrentCutSaved(cutId)}
-          onDeleted={handleCurrentCutDeleted}
-          onDuplicate={handleCurrentCutDuplicate}
-        />
-      ) : null}
-
       {isCutExplorerOpen ? (
         <CutExplorerModal
           currentCutId={cut?.id ?? null}
           onClose={closeManualCutExplorer}
-          onSelect={(cutId) => void selectManualCut(cutId)}
+          onSelect={(selectedCut) => void selectManualCut(selectedCut)}
         />
       ) : null}
     </div>

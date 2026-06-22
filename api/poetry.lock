@@ -631,19 +631,14 @@ files = [
 
 [[package]]
 name = "llama-cpp-python"
-version = "0.3.28"
+version = "0.3.31"
 description = "Python bindings for the llama.cpp library"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "llama_cpp_python-0.3.28-py3-none-linux_riscv64.whl", hash = "sha256:64f75ad83430fc8e8d0fbee7ad4b07960d7dc58180b1edb1192785f2a108a985"},
-    {file = "llama_cpp_python-0.3.28-py3-none-macosx_11_0_arm64.whl", hash = "sha256:ae3ed7a7d1c7f9949d912fee27d7186611f560a69f26906bdf4d78776d2e47fd"},
-    {file = "llama_cpp_python-0.3.28-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:bcd6c5c9c8c4c1d4b23ba7cf96c922c2753d8189aae330eed71859cf943cd84e"},
-    {file = "llama_cpp_python-0.3.28-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:f35fa93ebd4ec99bb03251e97fae73719b712f8ab865042caf0edfc95808784d"},
-    {file = "llama_cpp_python-0.3.28-py3-none-musllinux_1_2_aarch64.whl", hash = "sha256:9521f00aaf8252eb1411952803a2afd1e1e6089d9b08c3766b722f2968ca6b5e"},
-    {file = "llama_cpp_python-0.3.28-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:5c6dc2b4fcab8fffbe9fc868148d12146d7a0367ddece372047ed8b36eb48c51"},
-    {file = "llama_cpp_python-0.3.28-py3-none-win_amd64.whl", hash = "sha256:22baaf0b2bf19278c66d77e35770c3442f60a3e7b1efc44770eb2496aedb73e0"},
+    {file = "llama_cpp_python-0.3.31-py3-none-manylinux_2_35_x86_64.whl", hash = "sha256:aa3065f1f0043c378b5a7f165a91e151f520a75298572e47191d49a545edadee"},
+    {file = "llama_cpp_python-0.3.31-py3-none-win_amd64.whl", hash = "sha256:a009e696904d0592b79d35b4e69da812ab9d95d0eacf5b9a46257bc40bcfdbf7"},
 ]
 
 [package.dependencies]
@@ -660,8 +655,8 @@ test = ["fastapi (>=0.100.0)", "httpx (>=0.24.1)", "huggingface-hub (>=0.23.0)",
 
 [package.source]
 type = "legacy"
-url = "https://abetlen.github.io/llama-cpp-python/whl/cpu"
-reference = "llama-cpp-python-cpu"
+url = "https://abetlen.github.io/llama-cpp-python/whl/cu130"
+reference = "llama-cpp-python-cu130"
 
 [[package]]
 name = "markupsafe"
@@ -886,6 +881,22 @@ files = [
 ]
 
 [[package]]
+name = "nvidia-cublas"
+version = "13.1.1.3"
+description = "CUBLAS native runtime libraries"
+optional = false
+python-versions = ">=3"
+groups = ["main"]
+files = [
+    {file = "nvidia_cublas-13.1.1.3-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:b7a210458267ac818974c53038fbec2e969d5c99f305ab15c72522fa9f001dd5"},
+    {file = "nvidia_cublas-13.1.1.3-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:37936a16db8fe4ac1f065c2139360608a543a09275cb1a1af612e08cfa065436"},
+    {file = "nvidia_cublas-13.1.1.3-py3-none-win_amd64.whl", hash = "sha256:b6cdce694e47ff6aadf0a69df1cab6628d696f5ff56e8d16af50309d855fa20f"},
+]
+
+[package.dependencies]
+nvidia-cuda-nvrtc = "*"
+
+[[package]]
 name = "nvidia-cublas-cu12"
 version = "12.8.3.14"
 description = "CUBLAS native runtime libraries"
@@ -911,6 +922,19 @@ files = [
     {file = "nvidia_cuda_cupti_cu12-12.8.57-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:ff154211724fd824e758ce176b66007b558eea19c9a5135fc991827ee147e317"},
     {file = "nvidia_cuda_cupti_cu12-12.8.57-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:8e0b2eb847de260739bee4a3f66fac31378f4ff49538ff527a38a01a9a39f950"},
     {file = "nvidia_cuda_cupti_cu12-12.8.57-py3-none-win_amd64.whl", hash = "sha256:bbed719c52a476958a74cfc42f2b95a3fd6b3fd94eb40134acc4601feb4acac3"},
+]
+
+[[package]]
+name = "nvidia-cuda-nvrtc"
+version = "13.3.33"
+description = "NVRTC native runtime libraries"
+optional = false
+python-versions = ">=3"
+groups = ["main"]
+files = [
+    {file = "nvidia_cuda_nvrtc-13.3.33-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl", hash = "sha256:82530788b8c6164a54d3fd9ae8bcca8893d397c4aeb998861982a03bbe41e204"},
+    {file = "nvidia_cuda_nvrtc-13.3.33-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:7b05ecda494c6dabc44231a608b060a71008a730d9dfda932cc508e6d29159e0"},
+    {file = "nvidia_cuda_nvrtc-13.3.33-py3-none-win_amd64.whl", hash = "sha256:7d2af818851c0c224d5f92221e9226e51ee23c236df4b51f9194563979c888be"},
 ]
 
 [[package]]
@@ -2464,4 +2488,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.15"
-content-hash = "173bb0e7bce47cef25b94ed9b05a42946751e79ee6a8c561bc746c516fb8ffa5"
+content-hash = "f7809b19fb9788b5c1a9f8aec981a56f8b7b714ea110fe7e2fb7a3628f2a0b12"
