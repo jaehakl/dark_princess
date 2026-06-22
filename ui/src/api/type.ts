@@ -109,6 +109,13 @@ export type UpdateSceneFirstCutRequest = {
   cut_id: number | null;
 };
 
+export type RecommendSceneRequest = {
+  status_id: number;
+  current_scene_id?: number | null;
+  current_cut_id?: number | null;
+  option_text: string;
+};
+
 export type PromptColumnName = 'prompt_situation' | 'prompt_hero' | 'prompt_detail' | 'prompt_camera';
 
 export type CutRecord = {
@@ -145,6 +152,11 @@ export type SceneRecord = {
   first_cut_id?: number | null;
   first_cut_image_url?: string | null;
   cut_count?: number;
+};
+
+export type SceneRecommendation = {
+  scene: SceneRecord;
+  first_cut: CutRecord;
 };
 
 export type ImageRecord = {

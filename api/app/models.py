@@ -65,6 +65,13 @@ class UpdateSceneFirstCutRequestBase(BaseModel):
     cut_id: Optional[int] = None
 
 
+class RecommendSceneRequestBase(BaseModel):
+    status_id: int
+    current_scene_id: Optional[int] = None
+    current_cut_id: Optional[int] = None
+    option_text: str = ""
+
+
 class ImageGenerationSettingsBase(BaseModel):
     model_filename: Optional[str] = None
     model_filenames: Optional[List[str]] = None
@@ -175,6 +182,11 @@ class SceneBase(BaseModel):
     first_cut_id: Optional[int] = None
     first_cut_image_url: Optional[str] = None
     cut_count: int = 0
+
+
+class SceneRecommendationBase(BaseModel):
+    scene: SceneBase
+    first_cut: CutBase
 
 
 class ImageBase(BaseModel):

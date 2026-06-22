@@ -7,13 +7,16 @@ from db import get_db
 from models import (
     GetListRequestBase,
     GetListResponseBase,
+    RecommendSceneRequestBase,
     SceneBase,
+    SceneRecommendationBase,
     UpdateSceneFirstCutRequestBase,
     UpsertResponseBase,
 )
 from service.scene import (
     delete_scenes,
     get_scene_list,
+    recommend_scene,
     update_scene_first_cut,
     upsert_scenes,
 )
@@ -43,6 +46,14 @@ async def api_update_scene_first_cut(
     db: AsyncSession = Depends(get_db),
 ):
     return await update_scene_first_cut(db, request)
+
+
+@router.post("/recommend", response_model=SceneRecommendationBase)
+async def api_recommend_scene(
+    request: RecommendSceneRequestBase,
+    db: AsyncSession = Depends(get_db),
+):
+    return await recommend_scene(db, request)
 
 
 @router.delete("/", status_code=200)

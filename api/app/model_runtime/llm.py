@@ -280,7 +280,7 @@ def _get_prompt_llm_locked(config: PromptLlmConfig) -> Any:
 
 
 def _add_llm_dll_directories() -> None:
-    if _llm_loaded_dlls or not hasattr(os, "add_dll_directory"):
+    if _llm_loaded_dlls:
         return
 
     llama_lib_paths: list[Path] = []
@@ -290,20 +290,44 @@ def _add_llm_dll_directories() -> None:
             dll_path = Path(location) / "lib"
             if dll_path.exists():
                 llama_lib_paths.append(dll_path)
-                _llm_dll_directory_handles.append(os.add_dll_directory(str(dll_path)))
+                if hasattr(os, "add_dll_directory"):
+                    _llm_dll_directory_handles.append(os.add_dll_directory(str(dll_path)))
 
+    nvidia_lib_paths: list[Path] = []
     nvidia_spec = importlib.util.find_spec("nvidia")
-    if nvidia_spec is None or nvidia_spec.submodule_search_locations is None:
-        return
+    if nvidia_spec is not None and nvidia_spec.submodule_search_locations is not None:
+        for location in nvidia_spec.submodule_search_locations:
+            for dll_path in (
+                Path(location) / "cu13" / "bin" / "x86_64",
+                Path(location) / "cu13" / "lib",
+            ):
+                if dll_path.exists():
+                    nvidia_lib_paths.append(dll_path)
+                    if hasattr(os, "add_dll_directory"):
+                        _llm_dll_directory_handles.append(os.add_dll_directory(str(dll_path)))
 
-    for location in nvidia_spec.submodule_search_locations:
-        dll_path = Path(location) / "cu13" / "bin" / "x86_64"
-        if dll_path.exists():
-            _llm_dll_directory_handles.append(os.add_dll_directory(str(dll_path)))
+    load_kwargs = {"mode": ctypes.RTLD_GLOBAL} if hasattr(ctypes, "RTLD_GLOBAL") else {}
+    for dll_name in ("libcublasLt.so.13", "libcublas.so.13", "cublas64_13.dll"):
+        for dll_path in nvidia_lib_paths:
+            full_path = dll_path / dll_name
+            if full_path.exists():
+                _llm_loaded_dlls.append(ctypes.CDLL(str(full_path), **load_kwargs))
+                break
 
-    for dll_name in ("ggml-base.dll", "ggml-cpu.dll", "ggml-cuda.dll", "ggml.dll", "llama.dll"):
+    for dll_name in (
+        "ggml-base.dll",
+        "ggml-cpu.dll",
+        "ggml-cuda.dll",
+        "ggml.dll",
+        "llama.dll",
+        "libggml-base.so",
+        "libggml-cpu.so",
+        "libggml-cuda.so",
+        "libggml.so",
+        "libllama.so",
+    ):
         for dll_path in llama_lib_paths:
             full_path = dll_path / dll_name
             if full_path.exists():
-                _llm_loaded_dlls.append(ctypes.CDLL(str(full_path)))
+                _llm_loaded_dlls.append(ctypes.CDLL(str(full_path), **load_kwargs))
                 break

@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { WheelEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { dbTables } from '../../api/api';
 import type {
-  GetListRequest,
   CutRecord,
+  GetListRequest,
+  SceneRecord,
   StatusRecord,
 } from '../../api/type';
 import { useCutStore } from '../../api/store';
-import { CutExplorerModal } from '../../components/CutExplorerModal';
 import {
   Button,
   FieldLabel,
@@ -42,20 +42,12 @@ const STATUS_FIELDS = [
 
 type StatusNumberKey = (typeof STATUS_FIELDS)[number]['key'];
 type StatusDeltas = Partial<Record<StatusNumberKey, number>>;
-type PendingTransition = {
-  sourceCut: CutRecord;
-  sourceCutId: number;
-  optionText: string;
-  targetCutId: number;
-  statusBeforeTarget: StatusRecord;
-};
 type ScriptLineState = {
   cutId: number | null;
   script: string;
   index: number;
 };
 
-const FEEDBACK_LEARN_RATE = 0.1;
 const AUTO_PLAY_INTERVAL_MS = 2000;
 const SCRIPT_WHEEL_THRESHOLD = 20;
 const STATUS_CHART_CENTER = 110;
@@ -88,6 +80,18 @@ function toScriptLines(script: string): string[] {
     .split(/\r\n|\r|\n/)
     .map((line) => line.trim())
     .filter(Boolean);
+}
+
+function getFirstScriptLine(script: string): string | null {
+  return toScriptLines(script)[0] ?? null;
+}
+
+function getCutChoiceLabel(cut: CutRecord): string {
+  const firstLine = getFirstScriptLine(cut.script);
+  if (firstLine) {
+    return firstLine;
+  }
+  return `Cut #${cut.id ?? '-'}`;
 }
 
 function clampStatusValue(value: number): number {
@@ -140,22 +144,19 @@ function isValidId(value: string | undefined) {
 export function PlayPage() {
   const { statusId } = useParams();
   const parsedStatusId = isValidId(statusId) ? Number(statusId) : null;
-  const selectedCut = useCutStore((state) => state.selectedCut);
-  const deletedCutId = useCutStore((state) => state.deletedCutId);
   const setCurrentCut = useCutStore((state) => state.setCurrentCut);
-  const clearDeletedCut = useCutStore((state) => state.clearDeletedCut);
   const [status, setStatus] = useState<StatusRecord | null>(null);
+  const [scene, setScene] = useState<SceneRecord | null>(null);
   const [cut, setCut] = useState<CutRecord | null>(null);
+  const [nextCuts, setNextCuts] = useState<CutRecord[]>([]);
   const [deltas, setDeltas] = useState<StatusDeltas>({});
-  const [pendingTransition, setPendingTransition] = useState<PendingTransition | null>(null);
-  const [contextSyncedCutId, setContextSyncedCutId] = useState<number | null>(null);
   const [optionText, setOptionText] = useState('');
-  const [isCutExplorerOpen, setIsCutExplorerOpen] = useState(false);
+  const [lastOptionText, setLastOptionText] = useState<string | null>(null);
+  const [isTerminalCut, setIsTerminalCut] = useState(false);
   const [isAutoPlaying, setIsAutoPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isAdvancing, setIsAdvancing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const optionTextRef = useRef('');
   const [scriptLineState, setScriptLineState] = useState<ScriptLineState>({
     cutId: null,
     script: '',
@@ -164,6 +165,9 @@ export function PlayPage() {
 
   const currentCutId = cut?.id ?? null;
   const currentCutLabel = currentCutId ? `Cut #${currentCutId}` : 'Cut 없음';
+  const currentSceneLabel = scene
+    ? scene.title.trim() || `Scene #${scene.id ?? '-'}`
+    : 'Scene 없음';
   const currentScript = cut?.script ?? '';
   const scriptLines = useMemo(
     () => toScriptLines(currentScript),
@@ -179,20 +183,18 @@ export function PlayPage() {
   const canReverseScript = visibleScriptLineIndex > 0;
   const canAdvanceScript = visibleScriptLineIndex < scriptLines.length - 1;
   const canNavigateScript = canReverseScript || canAdvanceScript;
+  const singleNextCut = nextCuts.length === 1 ? nextCuts[0] ?? null : null;
+  const isAtScriptEnd = !canAdvanceScript;
+  const canShowProgressControls = Boolean(!isLoading && !error && cut?.id && isAtScriptEnd);
   const canStartAutoPlay = Boolean(
     cut?.id &&
     status?.id &&
     !isLoading &&
+    !isAdvancing &&
     !error &&
-    !isCutExplorerOpen,
+    (!isTerminalCut || canAdvanceScript) &&
+    nextCuts.length <= 1,
   );
-  const canRerollCut =
-    Boolean(pendingTransition && cut?.id === pendingTransition.targetCutId && status?.id);
-  const canGoBackCut = canRerollCut;
-  const previousOptionText =
-    pendingTransition && cut?.id === pendingTransition.targetCutId
-      ? pendingTransition.optionText
-      : null;
   const coreStatusChartPoints = status
     ? CORE_STATUS_FIELDS.map((field, index) =>
         getHexPoint(index, STATUS_CHART_RADIUS * (clampStatusValue(status[field.key]) / 100)),
@@ -204,79 +206,52 @@ export function PlayPage() {
     setCurrentCut(cut);
   }, [cut, setCurrentCut]);
 
-  useEffect(() => {
-    optionTextRef.current = optionText;
-  }, [optionText]);
+  const loadNextCutsForCut = useCallback(async (cutId: number) => {
+    const response = await dbTables.Cut.listRows(
+      createListRequest({
+        limit: null,
+        filter: { prev_cut_id: [cutId, cutId] },
+        sort: ['id', 'asc'],
+      }),
+    );
+    return response.items.filter(
+      (item): item is CutRecord & { id: number } =>
+        typeof item.id === 'number' && item.prev_cut_id === cutId,
+    );
+  }, []);
 
-  useEffect(() => {
-    if (!selectedCut?.id || selectedCut.id === cut?.id) {
-      return;
+  const enterCut = useCallback(async (
+    nextScene: SceneRecord,
+    nextCut: CutRecord,
+    baseStatus: StatusRecord,
+    submittedOptionText: string | null,
+  ) => {
+    if (!nextCut.id) {
+      throw new Error('Cut ID를 확인할 수 없습니다.');
     }
-    setCut(selectedCut);
-    setDeltas({});
-    setPendingTransition(null);
-    setContextSyncedCutId(null);
+
+    const { nextStatus, deltas: nextDeltas } = applyStatusChange(
+      baseStatus,
+      nextCut.status_change,
+    );
+    const loadedNextCuts = await loadNextCutsForCut(nextCut.id);
+    await dbTables.Status.upsertRow([nextStatus]);
+
+    setStatus(nextStatus);
+    setDeltas(nextDeltas);
+    setScene(nextScene);
+    setCut(nextCut);
+    setCurrentCut(nextCut);
+    setNextCuts(loadedNextCuts);
+    setIsTerminalCut(loadedNextCuts.length === 0);
+    setLastOptionText(submittedOptionText);
     setOptionText('');
-    setIsAutoPlaying(false);
-    setError(null);
-  }, [selectedCut, cut?.id]);
-
-  useEffect(() => {
-    if (!deletedCutId) {
-      return;
-    }
-
-    if (cut?.id !== deletedCutId) {
-      clearDeletedCut();
-      return;
-    }
-
-    let isActive = true;
-
-    async function loadFallbackCut() {
-      setIsLoading(true);
-      setError(null);
-      setOptionText('');
-      try {
-        const cutResponse = await dbTables.Cut.listRows(
-          createListRequest({
-            limit: 1,
-            sort: ['id', 'asc'],
-          }),
-        );
-        if (!isActive) {
-          return;
-        }
-
-        const fallbackCut = cutResponse.items[0] ?? null;
-        setCut(fallbackCut);
-        setDeltas({});
-        setPendingTransition(null);
-        setContextSyncedCutId(null);
-        setOptionText('');
-        setIsAutoPlaying(false);
-        if (!fallbackCut) {
-          setError('시작할 Cut이 없습니다.');
-        }
-      } catch (loadError) {
-        if (isActive) {
-          setCut(null);
-          setError(getErrorMessage(loadError));
-        }
-      } finally {
-        if (isActive) {
-          setIsLoading(false);
-          clearDeletedCut();
-        }
-      }
-    }
-
-    void loadFallbackCut();
-
-    return () => {
-      isActive = false;
-    };
-  }, [deletedCutId, cut?.id, clearDeletedCut]);
+    setScriptLineState({
+      cutId: nextCut.id,
+      script: nextCut.script,
+      index: 0,
+    });
+  }, [loadNextCutsForCut, setCurrentCut]);
 
   useEffect(() => {
     let isActive = true;
@@ -309,36 +284,27 @@ export function PlayPage() {
           throw new Error('Status ID를 확인할 수 없습니다.');
         }
 
-        const initialCut = await dbTables.SelectionModel.nextCut({
-          cut_id: null,
+        const recommendation = await dbTables.Scene.recommend({
           status_id: loadedStatus.id,
+          current_scene_id: null,
+          current_cut_id: null,
           option_text: '',
         });
         if (!isActive) {
           return;
         }
-        if (!initialCut.id) {
-          throw new Error('시작할 Cut ID를 확인할 수 없습니다.');
-        }
 
-        const { nextStatus, deltas: nextDeltas } = applyStatusChange(
-          loadedStatus,
-          initialCut.status_change,
-        );
-        await dbTables.Status.upsertRow([nextStatus]);
+        await enterCut(recommendation.scene, recommendation.first_cut, loadedStatus, null);
         if (!isActive) {
           return;
         }
-
-        setStatus(nextStatus);
-        setDeltas(nextDeltas);
-        setCut(initialCut);
-        setPendingTransition(null);
-        setContextSyncedCutId(null);
-        setOptionText('');
         setIsAutoPlaying(false);
       } catch (loadError) {
         if (isActive) {
+          setScene(null);
+          setCut(null);
+          setNextCuts([]);
+          setIsTerminalCut(false);
           setError(getErrorMessage(loadError));
         }
       } finally {
@@ -353,255 +319,53 @@ export function PlayPage() {
     return () => {
       isActive = false;
     };
-  }, [parsedStatusId]);
+  }, [parsedStatusId, enterCut]);
 
-  function openManualCutExplorer() {
-    if (!pendingTransition || isAdvancing) {
-      return;
-    }
-    setIsAutoPlaying(false);
-    setIsCutExplorerOpen(true);
-  }
-
-  function closeManualCutExplorer() {
-    setIsCutExplorerOpen(false);
-  }
-
-  async function syncCutContextOnce(statusId: number, cutId: number) {
-    if (contextSyncedCutId === cutId) {
-      return;
-    }
-
-    await dbTables.Cut.updateContext({
-      status_id: statusId,
-      cut_id: cutId,
-    });
-    setContextSyncedCutId(cutId);
-  }
-
-  async function reinforcePendingTransitionIfCurrent(cutId: number, statusId: number) {
-    if (!pendingTransition || pendingTransition.targetCutId !== cutId) {
-      return;
-    }
-
-    await dbTables.SelectionModel.adjustModel({
-      cut_id: pendingTransition.sourceCutId,
-      status_id: statusId,
-      option_text: pendingTransition.optionText,
-      target_cut_id: pendingTransition.targetCutId,
-      learn_rate: FEEDBACK_LEARN_RATE,
-    });
-  }
-
-  async function advanceToNextCut(sourceCut: CutRecord, submittedOptionText: string): Promise<boolean> {
-    if (!status?.id || !sourceCut.id) {
+  const advanceToCut = useCallback(async (nextCut: CutRecord): Promise<boolean> => {
+    if (!status || !scene || !nextCut.id || isAdvancing) {
       return false;
     }
 
-    const sourceCutId = sourceCut.id;
     setIsAdvancing(true);
     setError(null);
     try {
-      await reinforcePendingTransitionIfCurrent(sourceCutId, status.id);
-      await syncCutContextOnce(status.id, sourceCutId);
-      setPendingTransition(null);
-
-      const nextCut = await dbTables.SelectionModel.nextCut({
-        cut_id: sourceCutId,
-        status_id: status.id,
-        option_text: submittedOptionText,
-      });
-      if (!nextCut.id) {
-        throw new Error('다음 Cut ID를 확인할 수 없습니다.');
-      }
-
-      const { nextStatus, deltas: nextDeltas } = applyStatusChange(
-        status,
-        nextCut.status_change,
-      );
-
-      await dbTables.Status.upsertRow([nextStatus]);
-      setStatus(nextStatus);
-      setDeltas(nextDeltas);
-      setCut(nextCut);
-      setCurrentCut(nextCut);
-      setPendingTransition({
-        sourceCut,
-        sourceCutId,
-        optionText: submittedOptionText,
-        targetCutId: nextCut.id,
-        statusBeforeTarget: { ...status },
-      });
-      setOptionText('');
+      await enterCut(scene, nextCut, status, lastOptionText);
       return true;
     } catch (advanceError) {
+      setIsAutoPlaying(false);
       setError(getErrorMessage(advanceError));
       return false;
     } finally {
       setIsAdvancing(false);
     }
-  }
+  }, [enterCut, isAdvancing, lastOptionText, scene, status]);
 
-  async function submitOptionText() {
-    if (!cut?.id) {
+  async function submitSceneOption() {
+    if (!status?.id || !scene?.id || !cut?.id || isAdvancing) {
       return;
     }
 
-    await advanceToNextCut(cut, optionText.trim());
-  }
-
-  async function goBackToPreviousCut() {
-    if (!pendingTransition || !status?.id || cut?.id !== pendingTransition.targetCutId) {
-      return;
-    }
-
-    setIsAutoPlaying(false);
+    const submittedOptionText = optionText.trim();
     setIsAdvancing(true);
     setError(null);
     try {
-      const restoredStatus = { ...pendingTransition.statusBeforeTarget };
-      await dbTables.Status.upsertRow([restoredStatus]);
-      setStatus(restoredStatus);
-      setDeltas({});
-      setCut(pendingTransition.sourceCut);
-      setCurrentCut(pendingTransition.sourceCut);
-      setOptionText(pendingTransition.optionText);
-      setPendingTransition(null);
-    } catch (backError) {
-      setError(getErrorMessage(backError));
+      const recommendation = await dbTables.Scene.recommend({
+        status_id: status.id,
+        current_scene_id: scene.id,
+        current_cut_id: cut.id,
+        option_text: submittedOptionText,
+      });
+      await enterCut(recommendation.scene, recommendation.first_cut, status, submittedOptionText);
+      setIsAutoPlaying(false);
+    } catch (recommendError) {
+      setIsAutoPlaying(false);
+      setError(getErrorMessage(recommendError));
     } finally {
       setIsAdvancing(false);
     }
   }
 
-  async function rerollCut() {
-    if (!pendingTransition || !status?.id || cut?.id !== pendingTransition.targetCutId) {
-      return;
-    }
-
-    setIsAutoPlaying(false);
-    setIsAdvancing(true);
-    setError(null);
-    try {
-      const restoredStatus = { ...pendingTransition.statusBeforeTarget };
-      await dbTables.Status.upsertRow([restoredStatus]);
-      setStatus(restoredStatus);
-      setDeltas({});
-
-      await dbTables.SelectionModel.adjustModel({
-        cut_id: pendingTransition.sourceCutId,
-        status_id: status.id,
-        option_text: pendingTransition.optionText,
-        target_cut_id: pendingTransition.targetCutId,
-        learn_rate: -FEEDBACK_LEARN_RATE,
-      });
-
-      const nextCut = await dbTables.SelectionModel.nextCut({
-        cut_id: pendingTransition.sourceCutId,
-        status_id: status.id,
-        option_text: pendingTransition.optionText,
-      });
-      if (!nextCut.id) {
-        throw new Error('다음 Cut ID를 확인할 수 없습니다.');
-      }
-
-      const { nextStatus, deltas: nextDeltas } = applyStatusChange(
-        restoredStatus,
-        nextCut.status_change,
-      );
-
-      await dbTables.Status.upsertRow([nextStatus]);
-      setStatus(nextStatus);
-      setDeltas(nextDeltas);
-      setCut(nextCut);
-      setCurrentCut(nextCut);
-      setPendingTransition({
-        ...pendingTransition,
-        targetCutId: nextCut.id,
-        statusBeforeTarget: restoredStatus,
-      });
-      setOptionText('');
-    } catch (rerollError) {
-      setError(getErrorMessage(rerollError));
-    } finally {
-      setIsAdvancing(false);
-    }
-  }
-
-  async function replacePendingCut(replacementCut: CutRecord): Promise<boolean> {
-    if (!pendingTransition || !status?.id || cut?.id !== pendingTransition.targetCutId) {
-      return false;
-    }
-    if (!replacementCut.id) {
-      setError('Cut ID를 확인할 수 없습니다.');
-      return false;
-    }
-
-    setIsAdvancing(true);
-    setError(null);
-    try {
-      const restoredStatus = { ...pendingTransition.statusBeforeTarget };
-      await dbTables.Status.upsertRow([restoredStatus]);
-      setStatus(restoredStatus);
-      setDeltas({});
-
-      await dbTables.SelectionModel.adjustModel({
-        cut_id: pendingTransition.sourceCutId,
-        status_id: status.id,
-        option_text: pendingTransition.optionText,
-        target_cut_id: pendingTransition.targetCutId,
-        learn_rate: -FEEDBACK_LEARN_RATE,
-      });
-
-      const { nextStatus, deltas: nextDeltas } = applyStatusChange(
-        restoredStatus,
-        replacementCut.status_change,
-      );
-
-      await dbTables.Status.upsertRow([nextStatus]);
-      setStatus(nextStatus);
-      setDeltas(nextDeltas);
-      setCut(replacementCut);
-      setCurrentCut(replacementCut);
-      setPendingTransition({
-        ...pendingTransition,
-        targetCutId: replacementCut.id,
-        statusBeforeTarget: restoredStatus,
-      });
-      setOptionText('');
-      return true;
-    } catch (replaceError) {
-      setError(getErrorMessage(replaceError));
-      return false;
-    } finally {
-      setIsAdvancing(false);
-    }
-  }
-
-  async function selectManualCut(selectedCut: CutRecord) {
-    const selectedCutId = selectedCut.id;
-    setIsAutoPlaying(false);
-    if (typeof selectedCutId !== 'number') {
-      setError('선택한 Cut ID를 확인할 수 없습니다.');
-      return;
-    }
-    if (selectedCutId === cut?.id) {
-      setIsCutExplorerOpen(false);
-      return;
-    }
-
-    setError(null);
-    try {
-      const didReplace = await replacePendingCut(selectedCut);
-      if (didReplace) {
-        setIsCutExplorerOpen(false);
-      }
-    } catch (selectError) {
-      setError(getErrorMessage(selectError));
-    }
-  }
-
-  function moveScriptLine(direction: -1 | 1): boolean {
+  const moveScriptLine = useCallback((direction: -1 | 1): boolean => {
     const nextIndex = Math.min(
       lastScriptLineIndex,
       Math.max(0, visibleScriptLineIndex + direction),
@@ -616,7 +380,7 @@ export function PlayPage() {
       index: nextIndex,
     });
     return true;
-  }
+  }, [currentCutId, currentScript, lastScriptLineIndex, visibleScriptLineIndex]);
 
   function advanceScriptLine() {
     moveScriptLine(1);
@@ -646,15 +410,9 @@ export function PlayPage() {
       return undefined;
     }
     if (error) {
-      setIsAutoPlaying(false);
       return undefined;
     }
-    if (
-      isLoading ||
-      isAdvancing ||
-      isCutExplorerOpen ||
-      !cut?.id
-    ) {
+    if (isLoading || isAdvancing || !cut?.id) {
       return undefined;
     }
 
@@ -664,28 +422,32 @@ export function PlayPage() {
         return;
       }
 
-      void (async () => {
-        const didAdvance = await advanceToNextCut(cut, optionTextRef.current.trim());
-        if (!didAdvance) {
-          setIsAutoPlaying(false);
-        }
-      })();
+      if (singleNextCut) {
+        void (async () => {
+          const didAdvance = await advanceToCut(singleNextCut);
+          if (!didAdvance) {
+            setIsAutoPlaying(false);
+          }
+        })();
+        return;
+      }
+
+      setIsAutoPlaying(false);
     }, AUTO_PLAY_INTERVAL_MS);
 
     return () => {
       window.clearTimeout(timeoutId);
     };
   }, [
+    advanceToCut,
+    canAdvanceScript,
+    cut?.id,
+    error,
+    isAdvancing,
     isAutoPlaying,
     isLoading,
-    isAdvancing,
-    error,
-    isCutExplorerOpen,
-    cut,
-    canAdvanceScript,
-    visibleScriptLineIndex,
     moveScriptLine,
-    advanceToNextCut,
+    singleNextCut,
   ]);
 
   return (
@@ -694,10 +456,13 @@ export function PlayPage() {
         <Panel className="min-h-0 min-w-0">
           <PanelHeader>
             <div className="min-w-0">
-              <p className="text-[0.85rem] tracking-[0.16em] text-[var(--app-muted)] uppercase">Cut</p>
+              <p className="text-[0.85rem] tracking-[0.16em] text-[var(--app-muted)] uppercase">Scene</p>
               <h1 className="truncate text-lg font-semibold text-[#fff7ef]">
-                {currentCutLabel}
+                {currentSceneLabel}
               </h1>
+              <p className="mt-1 truncate text-xs font-semibold text-[var(--app-muted)]">
+                {currentCutLabel}
+              </p>
             </div>
           </PanelHeader>
           <SectionBody className="grid place-items-center p-0">
@@ -896,40 +661,13 @@ export function PlayPage() {
                     })}
                   </svg>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    className="min-h-11 w-full px-3 py-2 text-sm leading-tight"
-                    onClick={toggleAutoPlay}
-                    disabled={!isAutoPlaying && !canStartAutoPlay}
-                  >
-                    {isAutoPlaying ? '자동 정지' : '자동플레이'}
-                  </Button>
-                  {canRerollCut ? (
-                    <>
-                      <Button
-                        className="min-h-11 w-full px-3 py-2 text-sm leading-tight"
-                        onClick={() => void goBackToPreviousCut()}
-                        disabled={!canGoBackCut || isAdvancing}
-                      >
-                        이전 컷
-                      </Button>
-                      <Button
-                        className="min-h-11 w-full px-3 py-2 text-sm leading-tight"
-                        onClick={() => void rerollCut()}
-                        disabled={isAdvancing}
-                      >
-                        다시 뽑기
-                      </Button>
-                      <Button
-                        className="min-h-11 w-full px-3 py-2 text-sm leading-tight"
-                        onClick={openManualCutExplorer}
-                        disabled={isAdvancing}
-                      >
-                        다른 컷
-                      </Button>
-                    </>
-                  ) : null}
-                </div>
+                <Button
+                  className="min-h-11 w-full px-3 py-2 text-sm leading-tight"
+                  onClick={toggleAutoPlay}
+                  disabled={!isAutoPlaying && !canStartAutoPlay}
+                >
+                  {isAutoPlaying ? '자동 정지' : '자동플레이'}
+                </Button>
               </div>
             ) : (
               <p className="text-sm text-[#ff9ab8]">Status를 표시할 수 없습니다.</p>
@@ -938,11 +676,11 @@ export function PlayPage() {
         </Panel>
 
         <Panel className="col-span-full min-w-0 p-4 max-[960px]:col-auto">
-          {!isLoading && !error && previousOptionText !== null ? (
+          {!isLoading && !error && lastOptionText !== null ? (
             <div className="mb-4 rounded-[8px] border border-[rgba(255,208,222,0.25)] bg-[rgba(12,5,18,0.52)] px-4 py-3">
               <FieldLabel>이전 Option</FieldLabel>
               <p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-[#fff7ef]">
-                {previousOptionText || '(빈 선택)'}
+                {lastOptionText || '(빈 선택)'}
               </p>
             </div>
           ) : null}
@@ -977,45 +715,76 @@ export function PlayPage() {
             </div>
           ) : null}
 
-          {!isLoading && !error ? (
+          {!isLoading && !error && scriptLines.length === 0 ? (
+            <div className="rounded-[8px] border border-[rgba(255,218,228,0.28)] bg-[rgba(12,4,17,0.58)] px-5 py-4 text-sm font-semibold text-[var(--app-muted)]">
+              표시할 script가 없습니다.
+            </div>
+          ) : null}
+
+          {canShowProgressControls && singleNextCut ? (
+            <div className="mt-4 grid gap-2">
+              <FieldLabel>다음 Cut</FieldLabel>
+              <Button
+                type="button"
+                className="min-h-12 w-full justify-start px-4 py-3 text-left text-sm leading-relaxed"
+                disabled={isAdvancing}
+                onClick={() => void advanceToCut(singleNextCut)}
+              >
+                {isAdvancing ? '다음컷 여는 중' : getCutChoiceLabel(singleNextCut)}
+              </Button>
+            </div>
+          ) : null}
+
+          {canShowProgressControls && nextCuts.length > 1 ? (
+            <div className="mt-4 grid gap-2">
+              <FieldLabel>다음 Cut 선택</FieldLabel>
+              <div className="grid gap-2">
+                {nextCuts.map((nextCut) => (
+                  <Button
+                    key={nextCut.id ?? getCutChoiceLabel(nextCut)}
+                    type="button"
+                    className="min-h-12 w-full justify-start px-4 py-3 text-left text-sm leading-relaxed"
+                    disabled={isAdvancing}
+                    onClick={() => void advanceToCut(nextCut)}
+                  >
+                    {getCutChoiceLabel(nextCut)}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {canShowProgressControls && isTerminalCut ? (
             <form
               className="mt-4 grid gap-3"
               onSubmit={(event) => {
                 event.preventDefault();
-                void submitOptionText();
+                void submitSceneOption();
               }}
             >
               <div className="grid items-end gap-3 min-[760px]:grid-cols-[minmax(0,1fr)_auto]">
                 <div className="grid gap-1">
-                  <FieldLabel htmlFor="next-option-text">Option</FieldLabel>
+                  <FieldLabel htmlFor="next-option-text">다음 Option</FieldLabel>
                   <FormControl
                     id="next-option-text"
                     value={optionText}
                     onChange={(event) => setOptionText(event.target.value)}
                     className="h-12 w-full px-3"
-                    disabled={isAdvancing || !cut?.id}
+                    disabled={isAdvancing || !status?.id || !scene?.id || !cut?.id}
                   />
                 </div>
                 <Button
                   type="submit"
                   className="h-12 px-5 py-3"
-                  disabled={isAdvancing || !cut?.id}
+                  disabled={isAdvancing || !status?.id || !scene?.id || !cut?.id}
                 >
-                  {isAdvancing ? '다음컷 찾는 중' : '다음컷'}
+                  {isAdvancing ? '다음 Scene 찾는 중' : '다음 Scene'}
                 </Button>
               </div>
             </form>
           ) : null}
         </Panel>
       </div>
-
-      {isCutExplorerOpen ? (
-        <CutExplorerModal
-          currentCutId={cut?.id ?? null}
-          onClose={closeManualCutExplorer}
-          onSelect={(selectedCut) => void selectManualCut(selectedCut)}
-        />
-      ) : null}
     </div>
   );
 }

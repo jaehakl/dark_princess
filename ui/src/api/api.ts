@@ -12,8 +12,10 @@ import type {
   ImageRecord,
   LlmAskRequest,
   NextCutRequest,
+  RecommendSceneRequest,
   CutRecord,
   SceneRecord,
+  SceneRecommendation,
   SelectionModelRecord,
   StatusRecord,
   UpdateCutContextRequest,
@@ -86,6 +88,8 @@ export const dbTables = {
     upsertRow: (items: SceneRecord[]) => request<UpsertResponse[]>('post', '/scene/upsert', items),
     updateFirstCut: (item: UpdateSceneFirstCutRequest) =>
       request<SceneRecord>('post', '/scene/update-first-cut', item),
+    recommend: (item: RecommendSceneRequest) =>
+      request<SceneRecommendation>('post', '/scene/recommend', item),
     deleteRows: (ids: number[]) => request<null>('delete', '/scene/', ids).then(() => undefined),
   },
 
