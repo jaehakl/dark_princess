@@ -14,26 +14,68 @@ const apiClient = axios.create({
   baseURL: API_URL,
 });
 
-async function readErrorDetail(data: unknown) {
-  if (data && typeof data === 'object' && 'detail' in data) {
-    const detail = (data as { detail?: unknown }).detail;
-    return typeof detail === 'string' && detail ? detail : null;
-  }
+async function readErrorData(data: unknown): Promise<unknown> {
   if (data instanceof Blob) {
+    const text = await data.text();
     try {
-      return readErrorDetail(JSON.parse(await data.text()));
+      return JSON.parse(text);
     } catch {
-      return null;
+      return text || null;
     }
   }
   if (typeof data === 'string') {
     try {
-      return readErrorDetail(JSON.parse(data));
+      return JSON.parse(data);
     } catch {
-      return null;
+      return data || null;
     }
   }
-  return null;
+  return data ?? null;
+}
+
+function stringifyDetail(detail: unknown) {
+  if (typeof detail === 'string') {
+    return detail || null;
+  }
+  if (detail === null || detail === undefined) {
+    return null;
+  }
+  try {
+    return JSON.stringify(detail);
+  } catch {
+    return String(detail);
+  }
+}
+
+async function readErrorPayload(data: unknown) {
+  const parsedData = await readErrorData(data);
+  let detail: string | null = null;
+
+  if (parsedData && typeof parsedData === 'object' && 'detail' in parsedData) {
+    detail = stringifyDetail((parsedData as { detail?: unknown }).detail);
+  }
+
+  return { detail, responseData: parsedData };
+}
+
+function logApiError(
+  method: HttpMethod,
+  url: string,
+  error: unknown,
+  detail: string | null,
+  responseData: unknown,
+) {
+  if (!axios.isAxiosError(error)) {
+    return;
+  }
+  console.error('[API request failed]', {
+    method,
+    url,
+    status: error.response?.status ?? null,
+    statusText: error.response?.statusText ?? null,
+    detail,
+    responseData,
+  });
 }
 
 async function sendResponse<T>(
@@ -51,14 +93,12 @@ async function sendResponse<T>(
       ...(data === undefined ? {} : { data }),
     });
   } catch (error) {
-    if (!fallbackMessage) {
-      throw error;
-    }
     if (axios.isAxiosError(error)) {
-      const detail = await readErrorDetail(error.response?.data);
-      throw new Error(detail ?? fallbackMessage);
+      const { detail, responseData } = await readErrorPayload(error.response?.data);
+      logApiError(method, url, error, detail, responseData);
+      throw new Error(detail ?? fallbackMessage ?? error.message);
     }
-    throw error instanceof Error ? error : new Error(fallbackMessage);
+    throw error instanceof Error ? error : new Error(fallbackMessage ?? '요청에 실패했습니다.');
   }
 }
 

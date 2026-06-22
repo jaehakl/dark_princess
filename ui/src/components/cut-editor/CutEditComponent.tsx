@@ -6,12 +6,16 @@ import type {
   ImageRecord,
   PromptColumnName,
   CutRecord,
+  SceneRecord,
 } from '../../api/type';
 import type { ImageEditorSubmitPayload } from '../image-editor';
 import {
   Panel,
+  PanelHeader,
   SectionBody,
   Spinner,
+  Button,
+  ModalBackdrop,
   cx,
 } from '../ui';
 import {
@@ -20,6 +24,8 @@ import {
   EMPTY_PROMPT_DRAFT,
   EMPTY_TRANSLATION_DRAFT,
   FETCH_CUT_BY_ID_REQUEST,
+  FETCH_SCENE_BY_ID_REQUEST,
+  FETCH_SCENE_CUTS_REQUEST,
   PROMPT_COLUMNS,
   PROMPT_EDITOR_COLUMNS,
   STATUS_CHANGE_FIELDS,
@@ -28,6 +34,7 @@ import { CutEditorHeader } from './CutEditorHeader';
 import { CutImagePanel } from './CutImagePanel';
 import { CutPromptPanel } from './CutPromptPanel';
 import { generatePromptItemsFromScript } from './promptGeneration';
+import { generateCutScript } from './scriptGeneration';
 import { translatePromptTexts } from './promptTranslation';
 import type {
   InstantPromptName,
@@ -76,6 +83,34 @@ function promptColumnsToCutPayload(
   };
 }
 
+function buildCutContext(scene: SceneRecord, cuts: CutRecord[], lastContextCutId: number | null) {
+  const cutById = new Map(
+    cuts
+      .filter((cut): cut is CutRecord & { id: number } => typeof cut.id === 'number')
+      .map((cut) => [cut.id, cut]),
+  );
+  const chainCuts: CutRecord[] = [];
+  const seenIds = new Set<number>();
+  let nextCutId = lastContextCutId;
+  while (nextCutId !== null && !seenIds.has(nextCutId)) {
+    const contextCut = cutById.get(nextCutId);
+    if (!contextCut) {
+      break;
+    }
+
+    chainCuts.push(contextCut);
+    seenIds.add(nextCutId);
+    nextCutId = contextCut.prev_cut_id ?? null;
+  }
+
+  return [
+    scene.context.trim(),
+    ...chainCuts.reverse().map((cut) => cut.script.trim()),
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+}
+
 export function CutEditComponent({
   cutId,
   initialCut,
@@ -103,6 +138,9 @@ export function CutEditComponent({
   );
   const imageSettingsDefaults = useImageSettingsStore((state) => state.defaults);
   const imageSettings = useImageSettingsStore((state) => state.settings);
+  const imageSettingsError = useImageSettingsStore((state) => state.error);
+  const isLoadingImageSettings = useImageSettingsStore((state) => state.isLoading);
+  const loadImageSettingsDefaults = useImageSettingsStore((state) => state.loadDefaults);
   const openImageSettings = useImageSettingsStore((state) => state.openDialog);
   const updateImageParameters = useImageSettingsStore((state) => state.updateSettings);
   const [strengthControlValue, setStrengthControlValue] = useState('');
@@ -110,11 +148,16 @@ export function CutEditComponent({
   const [selectedImageOverride, setSelectedImageOverride] = useState<ImageRecord | null>(null);
   const [isLoadingHistoryImage, setIsLoadingHistoryImage] = useState(false);
   const [isUpdatingCutImage, setIsUpdatingCutImage] = useState(false);
+  const [isGeneratingScript, setIsGeneratingScript] = useState(false);
   const [isTranslatingPromptColumns, setIsTranslatingPromptColumns] = useState(false);
   const [isGeneratingPromptItems, setIsGeneratingPromptItems] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [savingMode, setSavingMode] = useState<SaveMode | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isCutContextOpen, setIsCutContextOpen] = useState(false);
+  const [isLoadingCutContext, setIsLoadingCutContext] = useState(false);
+  const [cutContextText, setCutContextText] = useState('');
+  const [cutContextError, setCutContextError] = useState<string | null>(null);
   const preserveInstantPromptCutIdRef = useRef<number | null>(null);
 
   const composedPrompt = useMemo(
@@ -129,6 +172,7 @@ export function CutEditComponent({
     isLoadingCut ||
     isLoadingHistoryImage ||
     isUpdatingCutImage ||
+    isGeneratingScript ||
     isTranslatingPromptColumns ||
     isGeneratingPromptItems ||
     isDeleting ||
@@ -137,6 +181,7 @@ export function CutEditComponent({
   const canEdit = Boolean(activeCut);
   const canSaveData = canEdit && composedPrompt.length > 0 && !isBusy;
   const canDelete = cutId !== null && !isBusy;
+  const canOpenCutContext = canEdit && typeof activeCut?.scene_id === 'number' && !isBusy && !isLoadingCutContext;
   const canTranslatePromptColumns =
     canEdit
     && !isBusy
@@ -175,12 +220,18 @@ export function CutEditComponent({
     setScript(cut.script ?? '');
     setStatusChangeValues(statusChangeToValues(cut.status_change));
     setError(null);
+    setIsGeneratingScript(false);
+    setIsCutContextOpen(false);
+    setIsLoadingCutContext(false);
+    setCutContextText('');
+    setCutContextError(null);
   }, []);
 
   useEffect(() => {
     if (cutId === null) {
       setIsLoadingCut(false);
       setIsUpdatingCutImage(false);
+      setIsGeneratingScript(false);
       setIsDeleting(false);
       setSavingMode(null);
       preserveInstantPromptCutIdRef.current = null;
@@ -194,6 +245,7 @@ export function CutEditComponent({
     async function loadCut() {
       setIsLoadingCut(true);
       setIsUpdatingCutImage(false);
+      setIsGeneratingScript(false);
       setIsDeleting(false);
       setSavingMode(null);
       setActiveCut(null);
@@ -244,6 +296,7 @@ export function CutEditComponent({
     setSelectedImageOverride(null);
     setIsLoadingHistoryImage(false);
     setIsUpdatingCutImage(false);
+    setIsGeneratingScript(false);
   }, [cutId]);
 
   useEffect(() => {
@@ -273,10 +326,23 @@ export function CutEditComponent({
   }, [activeCut?.id, activeCut?.image_id, cutId]);
 
   useEffect(() => {
+    if (!imageSettings && !imageSettingsDefaults && !isLoadingImageSettings) {
+      void loadImageSettingsDefaults();
+    }
+  }, [imageSettings, imageSettingsDefaults, isLoadingImageSettings, loadImageSettingsDefaults]);
+
+  useEffect(() => {
     if (imageSettings) {
       setStrengthControlValue(String(imageSettings.strength));
     }
   }, [imageSettings]);
+
+  useEffect(() => {
+    setIsCutContextOpen(false);
+    setIsLoadingCutContext(false);
+    setCutContextText('');
+    setCutContextError(null);
+  }, [cutId]);
 
   async function handleGeneratePromptItemsFromScript() {
     const trimmedScript = script.trim();
@@ -450,6 +516,74 @@ export function CutEditComponent({
       setError(getErrorMessage(historyImageError));
     } finally {
       setIsLoadingHistoryImage(false);
+    }
+  }
+
+  async function loadCutContext(currentCut: CutRecord) {
+    const sceneId = currentCut.scene_id;
+    if (typeof sceneId !== 'number') {
+      throw new Error('Scene ID를 확인할 수 없습니다.');
+    }
+
+    const [sceneResponse, cutResponse] = await Promise.all([
+      dbTables.Scene.listRows({
+        ...FETCH_SCENE_BY_ID_REQUEST,
+        selected_ids: [sceneId],
+      }),
+      dbTables.Cut.listRows({
+        ...FETCH_SCENE_CUTS_REQUEST,
+        filter: { scene_id: [sceneId, sceneId] },
+      }),
+    ]);
+    const scene = sceneResponse.items[0];
+    if (!scene) {
+      throw new Error(`Scene #${sceneId}을 찾을 수 없습니다.`);
+    }
+
+    return buildCutContext(scene, cutResponse.items, currentCut.prev_cut_id ?? null);
+  }
+
+  async function handleGenerateScript() {
+    const currentCut = activeCut;
+    if (!currentCut) {
+      setError('Cut을 먼저 불러와 주세요.');
+      return;
+    }
+
+    setIsGeneratingScript(true);
+    setError(null);
+    try {
+      const previousSituation = await loadCutContext(currentCut);
+      const generatedScript = await generateCutScript(previousSituation, script);
+      setScript((currentScript) => {
+        const trimmedCurrentScript = currentScript.trim();
+        return trimmedCurrentScript ? `${trimmedCurrentScript}\n${generatedScript}` : generatedScript;
+      });
+    } catch (generateError) {
+      setError(getErrorMessage(generateError));
+    } finally {
+      setIsGeneratingScript(false);
+    }
+  }
+
+  async function openCutContextModal() {
+    const currentCut = activeCut;
+    if (!currentCut) {
+      setError('Scene ID를 확인할 수 없습니다.');
+      return;
+    }
+
+    setIsCutContextOpen(true);
+    setIsLoadingCutContext(true);
+    setCutContextText('');
+    setCutContextError(null);
+    try {
+      setCutContextText(await loadCutContext(currentCut));
+    } catch (contextError) {
+      setCutContextText('');
+      setCutContextError(getErrorMessage(contextError));
+    } finally {
+      setIsLoadingCutContext(false);
     }
   }
 
@@ -705,6 +839,7 @@ export function CutEditComponent({
           canDelete={canDelete}
           canDuplicate={canDuplicate}
           canSaveData={canSaveData}
+          canOpenCutContext={canOpenCutContext}
           canOpenImageSettings={Boolean(imageSettings && !isBusy)}
           isBusy={isBusy}
           isDeleting={isDeleting}
@@ -714,6 +849,7 @@ export function CutEditComponent({
           onSaveData={() => {
             void saveDataOnlyCut();
           }}
+          onOpenCutContext={() => void openCutContextModal()}
           onOpenImageSettings={openImageSettings}
           onClose={onClose ? closeEditor : undefined}
         />
@@ -737,8 +873,10 @@ export function CutEditComponent({
                 cameraSamples={cameraSamples}
                 isLoadingCut={isLoadingCut}
                 savingMode={savingMode}
+                isGeneratingScript={isGeneratingScript}
                 isTranslatingPromptColumns={isTranslatingPromptColumns}
                 isGeneratingPromptItems={isGeneratingPromptItems}
+                canGenerateScript={canEdit && typeof activeCut?.scene_id === 'number' && !isBusy}
                 canTranslatePromptColumns={canTranslatePromptColumns}
                 canGeneratePromptItems={canGeneratePromptItems}
                 setScript={setScript}
@@ -746,6 +884,7 @@ export function CutEditComponent({
                 setInstantPromptDraft={setInstantPromptDraft}
                 setPromptNegativeDraft={setPromptNegativeDraft}
                 setTranslationDraft={setTranslationDraft}
+                onGenerateScript={() => void handleGenerateScript()}
                 onGeneratePromptItems={() => void handleGeneratePromptItemsFromScript()}
                 onTranslatePromptColumns={() => void translatePromptColumns()}
               />
@@ -762,6 +901,8 @@ export function CutEditComponent({
                 canSaveData={canSaveData}
                 isLoadingCut={isLoadingCut}
                 isLoadingHistoryImage={isLoadingHistoryImage}
+                isLoadingImageSettings={isLoadingImageSettings}
+                imageSettingsError={imageSettingsError}
                 savingMode={savingMode}
                 canGoPreviousImage={canGoPreviousImage}
                 canGoNextImage={canGoNextImage}
@@ -781,6 +922,34 @@ export function CutEditComponent({
           </div>
         </SectionBody>
       </Panel>
+      {isCutContextOpen ? (
+        <ModalBackdrop role="presentation" topAligned>
+          <Panel
+            role="dialog"
+            aria-modal="true"
+            className="max-h-[calc(100dvh-3rem)] w-[min(48rem,calc(100vw-2rem))] overflow-y-auto"
+          >
+            <PanelHeader>
+              <h2 className="text-base font-semibold text-[#fff7ef]">cut_context</h2>
+              <Button className="px-3 py-2 text-xs" onClick={() => setIsCutContextOpen(false)}>
+                닫기
+              </Button>
+            </PanelHeader>
+            <SectionBody>
+              {isLoadingCutContext ? (
+                <div className="flex min-h-72 items-center justify-center gap-3 text-sm font-semibold text-[var(--app-muted)]">
+                  <Spinner aria-hidden="true" />
+                  <span>cut_context를 불러오는 중</span>
+                </div>
+              ) : (
+                <pre className="min-h-72 whitespace-pre-wrap rounded-[8px] border border-[rgba(255,196,214,0.28)] bg-[rgba(9,3,14,0.76)] p-4 text-sm leading-6 text-[var(--app-text)]">
+                  {cutContextError ?? (cutContextText || '표시할 cut_context가 없습니다.')}
+                </pre>
+              )}
+            </SectionBody>
+          </Panel>
+        </ModalBackdrop>
+      ) : null}
     </>
   );
 }

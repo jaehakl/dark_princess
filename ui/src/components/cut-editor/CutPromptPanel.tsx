@@ -73,8 +73,10 @@ type CutPromptPanelProps = {
   cameraSamples: CameraSamples;
   isLoadingCut: boolean;
   savingMode: SaveMode | null;
+  isGeneratingScript: boolean;
   isTranslatingPromptColumns: boolean;
   isGeneratingPromptItems: boolean;
+  canGenerateScript: boolean;
   canTranslatePromptColumns: boolean;
   canGeneratePromptItems: boolean;
   setScript: (script: string) => void;
@@ -82,6 +84,7 @@ type CutPromptPanelProps = {
   setInstantPromptDraft: Dispatch<SetStateAction<Record<InstantPromptName, string>>>;
   setPromptNegativeDraft: Dispatch<SetStateAction<string>>;
   setTranslationDraft: Dispatch<SetStateAction<Record<PromptEditorColumnName, string>>>;
+  onGenerateScript: () => void;
   onGeneratePromptItems: () => void;
   onTranslatePromptColumns: () => void;
 };
@@ -95,8 +98,10 @@ export function CutPromptPanel({
   cameraSamples,
   isLoadingCut,
   savingMode,
+  isGeneratingScript,
   isTranslatingPromptColumns,
   isGeneratingPromptItems,
+  canGenerateScript,
   canTranslatePromptColumns,
   canGeneratePromptItems,
   setScript,
@@ -104,11 +109,12 @@ export function CutPromptPanel({
   setInstantPromptDraft,
   setPromptNegativeDraft,
   setTranslationDraft,
+  onGenerateScript,
   onGeneratePromptItems,
   onTranslatePromptColumns,
 }: CutPromptPanelProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const isInputDisabled = isLoadingCut || Boolean(savingMode) || isGeneratingPromptItems;
+  const isInputDisabled = isLoadingCut || Boolean(savingMode) || isGeneratingScript || isGeneratingPromptItems;
 
   useLayoutEffect(() => {
     const textareas = panelRef.current?.querySelectorAll<HTMLTextAreaElement>(
@@ -179,7 +185,17 @@ export function CutPromptPanel({
   return (
     <div ref={panelRef} className="min-w-0 space-y-4">
       <div className="block space-y-2">
-        <FieldLabel>컷 스크립트</FieldLabel>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <FieldLabel>컷 스크립트</FieldLabel>
+          <Button
+            className="inline-flex items-center gap-2 px-3 py-2 text-xs"
+            onClick={onGenerateScript}
+            disabled={!canGenerateScript}
+          >
+            {isGeneratingScript ? <Spinner aria-hidden="true" /> : null}
+            {isGeneratingScript ? '생성 중' : '스크립트 생성'}
+          </Button>
+        </div>
         <FormControl
           as="textarea"
           value={script}

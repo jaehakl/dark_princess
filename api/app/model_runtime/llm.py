@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import HTTPException, status
 
-LLM_MODEL_PATH = "../../ai_models/llm/Jiunsong/supergemma4-26b-uncensored-gguf-v2/supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf"
+LLM_MODEL_PATH = "../../../ai_models/llm/Jiunsong/supergemma4-26b-uncensored-gguf-v2/supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf"
 #LLM_REPO_ID = "LGAI-EXAONE/EXAONE-4.0-1.2B-GGUF"
 #LLM_MODEL_FILENAME = "EXAONE-4.0-1.2B-Q4_K_M.gguf"
 LLM_REPO_ID = ""

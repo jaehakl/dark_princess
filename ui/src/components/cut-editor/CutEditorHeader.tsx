@@ -9,6 +9,7 @@ type CutEditorHeaderProps = {
   canDelete: boolean;
   canDuplicate: boolean;
   canSaveData: boolean;
+  canOpenCutContext: boolean;
   canOpenImageSettings: boolean;
   isBusy: boolean;
   isDeleting: boolean;
@@ -16,6 +17,7 @@ type CutEditorHeaderProps = {
   onDelete: () => void;
   onDuplicate: () => void;
   onSaveData: () => void;
+  onOpenCutContext: () => void;
   onOpenImageSettings: () => void;
   onClose?: () => void;
 };
@@ -34,6 +36,7 @@ export function CutEditorHeader({
   canDelete,
   canDuplicate,
   canSaveData,
+  canOpenCutContext,
   canOpenImageSettings,
   isBusy,
   isDeleting,
@@ -41,6 +44,7 @@ export function CutEditorHeader({
   onDelete,
   onDuplicate,
   onSaveData,
+  onOpenCutContext,
   onOpenImageSettings,
   onClose,
 }: CutEditorHeaderProps) {
@@ -76,6 +80,13 @@ export function CutEditorHeader({
             컷 복제
           </Button>
         ) : null}
+        <Button
+          className="inline-flex items-center gap-2 px-3 py-2 text-xs"
+          onClick={onOpenCutContext}
+          disabled={!canOpenCutContext}
+        >
+          cut_context
+        </Button>
         <Button
           className="inline-flex items-center gap-2 px-3 py-2 text-xs"
           onClick={() => confirmAction('데이터만 저장할까요?', onSaveData)}

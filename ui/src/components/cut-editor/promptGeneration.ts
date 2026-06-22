@@ -78,9 +78,9 @@ export async function generatePromptItemsFromScript(script: string): Promise<Gen
       'prompt_situation, prompt_hero, prompt_camera, prompt_detail, prompt_negative. ' +
       'Every value must be concise English comma-separated image prompt tags. ' +
       'The combined word count of prompt_situation, prompt_hero, prompt_camera, and prompt_detail must be 20 words or fewer. ' +
-      'Use prompt_situation for environment, action, mood, and story context. ' +
-      'Use prompt_hero for visible character appearance and pose. ' +
-      'Use prompt_camera for shot size, angle, lens, composition, and lighting. ' +
+      'Use prompt_situation for story context and background. ' +
+      'Use prompt_hero for visible character appearance, pose and action. ' +
+      'Use prompt_camera for shot size, angle, lens, composition, lighting and mood. ' +
       'Use prompt_detail for props, clothing, texture, background details, and style details. ' +
       'Use prompt_negative for unwanted visual artifacts and exclusions. ' +
       'Do not include markdown, code fences, explanations, arrays, nested objects, or extra fields.'

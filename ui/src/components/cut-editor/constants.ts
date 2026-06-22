@@ -64,3 +64,23 @@ export const FETCH_CUT_BY_ID_REQUEST: GetListRequest = {
   filter: {},
   sort: null,
 };
+
+export const FETCH_SCENE_BY_ID_REQUEST: GetListRequest = {
+  offset: 0,
+  limit: 1,
+  selected_ids: [],
+  search_text: null,
+  text_filter: {},
+  filter: {},
+  sort: null,
+};
+
+export const FETCH_SCENE_CUTS_REQUEST: GetListRequest = {
+  offset: 0,
+  limit: null,
+  selected_ids: [],
+  search_text: null,
+  text_filter: {},
+  filter: {},
+  sort: ['id', 'desc'],
+};

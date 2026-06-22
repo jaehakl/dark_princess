@@ -28,6 +28,8 @@ type CutImagePanelProps = {
   canSaveData: boolean;
   isLoadingCut: boolean;
   isLoadingHistoryImage: boolean;
+  isLoadingImageSettings: boolean;
+  imageSettingsError: string | null;
   savingMode: SaveMode | null;
   canGoPreviousImage: boolean;
   canGoNextImage: boolean;
@@ -52,6 +54,8 @@ export function CutImagePanel({
   canSaveData,
   isLoadingCut,
   isLoadingHistoryImage,
+  isLoadingImageSettings,
+  imageSettingsError,
   savingMode,
   canGoPreviousImage,
   canGoNextImage,
@@ -63,6 +67,10 @@ export function CutImagePanel({
   onNextImage,
   onSelectLineageImage,
 }: CutImagePanelProps) {
+  const imageSettingsMessage = imageSettingsError ?? (
+    isLoadingImageSettings ? '이미지 설정을 불러오는 중' : '이미지 설정을 불러오지 못했습니다.'
+  );
+
   return (
     <aside className="min-w-0 space-y-3">
       <div className="space-y-3">
@@ -113,8 +121,18 @@ export function CutImagePanel({
               onSelectLineageImage={onSelectLineageImage}
             />
           ) : (
-            <div className="grid aspect-square min-h-72 w-full place-items-center rounded-[8px] border border-[rgba(255,218,228,0.22)] bg-[rgba(15,5,20,0.78)] p-6 text-center text-[0.95rem] text-[var(--app-muted)]">
-              이미지 설정을 불러오는 중
+            <div className="relative grid aspect-square min-h-72 w-full place-items-center overflow-hidden rounded-[8px] border border-[rgba(255,218,228,0.22)] bg-[rgba(15,5,20,0.78)] p-6 text-center text-[0.95rem] text-[var(--app-muted)]">
+              {baseImageUrl ? (
+                <img
+                  src={baseImageUrl}
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-contain opacity-80"
+                  draggable={false}
+                />
+              ) : null}
+              <span className="relative rounded-[8px] border border-[rgba(255,218,228,0.24)] bg-[rgba(9,3,14,0.74)] px-4 py-2 font-semibold">
+                {imageSettingsMessage}
+              </span>
             </div>
           )}
         </div>

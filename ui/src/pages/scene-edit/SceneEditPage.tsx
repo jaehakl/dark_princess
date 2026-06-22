@@ -192,33 +192,6 @@ function orderCuts(cuts: CutRecord[], selectedCutId: number | null) {
   ];
 }
 
-function getCutContext(scene: SceneRecord, cuts: CutRecord[], lastContextCutId: number | null) {
-  const cutById = new Map(
-    cuts
-      .filter((cut): cut is CutRecord & { id: number } => typeof cut.id === 'number')
-      .map((cut) => [cut.id, cut]),
-  );
-  const chainCuts: CutRecord[] = [];
-  const seenIds = new Set<number>();
-  let nextCutId = lastContextCutId;
-  while (nextCutId !== null && !seenIds.has(nextCutId)) {
-    const contextCut = cutById.get(nextCutId);
-    if (!contextCut) {
-      break;
-    }
-    chainCuts.push(contextCut);
-    seenIds.add(nextCutId);
-    nextCutId = contextCut.prev_cut_id ?? null;
-  }
-
-  return [
-    scene.context.trim(),
-    ...chainCuts.reverse().map((cut) => cut.script.trim()),
-  ]
-    .filter(Boolean)
-    .join('\n\n');
-}
-
 export function SceneEditPage() {
   const { scene_id: rawSceneId } = useParams();
   const sceneId = Number(rawSceneId);
@@ -234,7 +207,6 @@ export function SceneEditPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSceneModalOpen, setIsSceneModalOpen] = useState(false);
   const [sceneDraft, setSceneDraft] = useState<SceneDraft | null>(null);
-  const [isCutContextOpen, setIsCutContextOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [unassignedCuts, setUnassignedCuts] = useState<CutRecord[]>([]);
   const [selectedImportIds, setSelectedImportIds] = useState<Set<number>>(new Set());
@@ -250,18 +222,10 @@ export function SceneEditPage() {
     ? editorInitialCut.prev_cut_id
     : null;
   const genealogyFocusCutId = selectedCutId ?? draftParentCutId;
-  const cutContextLastCutId = selectedCutId !== null
-    ? selectedCut?.prev_cut_id ?? null
-    : draftParentCutId;
   const visibleCuts = useMemo(
     () => orderCuts(cuts, genealogyFocusCutId),
     [cuts, genealogyFocusCutId],
   );
-  const cutContextText = useMemo(
-    () => (scene ? getCutContext(scene, cuts, cutContextLastCutId) : ''),
-    [cuts, scene, cutContextLastCutId],
-  );
-  const canOpenCutContext = Boolean(scene?.context.trim()) || cutContextLastCutId !== null;
 
   async function loadSceneData(preferredCutId?: number | null) {
     if (!isValidSceneId) {
@@ -625,13 +589,6 @@ export function SceneEditPage() {
               </Button>
               <Button
                 className="px-3 py-2 text-xs"
-                onClick={() => setIsCutContextOpen(true)}
-                disabled={!canOpenCutContext}
-              >
-                cut_context
-              </Button>
-              <Button
-                className="px-3 py-2 text-xs"
                 onClick={() => void setCurrentAsFirstCut()}
                 disabled={selectedCutId === null || isUpdatingLinks}
               >
@@ -964,27 +921,6 @@ export function SceneEditPage() {
         </ModalBackdrop>
       ) : null}
 
-      {isCutContextOpen ? (
-        <ModalBackdrop role="presentation" topAligned>
-          <Panel
-            role="dialog"
-            aria-modal="true"
-            className="max-h-[calc(100dvh-3rem)] w-[min(48rem,calc(100vw-2rem))] overflow-y-auto"
-          >
-            <PanelHeader>
-              <h2 className="text-base font-semibold text-[#fff7ef]">cut_context</h2>
-              <Button className="px-3 py-2 text-xs" onClick={() => setIsCutContextOpen(false)}>
-                닫기
-              </Button>
-            </PanelHeader>
-            <SectionBody>
-              <pre className="min-h-72 whitespace-pre-wrap rounded-[8px] border border-[rgba(255,196,214,0.28)] bg-[rgba(9,3,14,0.76)] p-4 text-sm leading-6 text-[var(--app-text)]">
-                {cutContextText || '표시할 cut_context가 없습니다.'}
-              </pre>
-            </SectionBody>
-          </Panel>
-        </ModalBackdrop>
-      ) : null}
     </div>
   );
 }
