@@ -4,8 +4,8 @@ import { PROMPT_COLUMNS } from './constants';
 const GENERATED_PROMPT_ITEM_KEYS = [
   'prompt_situation',
   'prompt_hero',
-  'prompt_camera',
   'prompt_detail',
+  'prompt_camera',
   'prompt_negative',
 ] as const;
 
@@ -42,8 +42,8 @@ function normalizeGeneratedPromptItems(parsedAnswer: unknown): GeneratedPromptIt
   const nextGeneratedPrompt: GeneratedPromptItems = {
     prompt_situation: '',
     prompt_hero: '',
-    prompt_camera: '',
     prompt_detail: '',
+    prompt_camera: '',
     prompt_negative: '',
   };
 
@@ -75,13 +75,13 @@ export async function generatePromptItemsFromScript(script: string): Promise<Gen
     system_message: (
       'You convert cut scripts into English image prompt tags. ' +
       'Return only one valid JSON object with exactly these string fields: ' +
-      'prompt_situation, prompt_hero, prompt_camera, prompt_detail, prompt_negative. ' +
+      'prompt_situation, prompt_hero, prompt_detail, prompt_camera, prompt_negative. ' +
       'Every value must be concise English comma-separated image prompt tags. ' +
-      'The combined word count of prompt_situation, prompt_hero, prompt_camera, and prompt_detail must be 20 words or fewer. ' +
+      'The combined word count of prompt_situation, prompt_hero, prompt_detail, and prompt_camera must be 20 words or fewer. ' +
       'Use prompt_situation for story context and background. ' +
       'Use prompt_hero for visible character appearance, pose and action. ' +
-      'Use prompt_camera for shot size, angle, lens, composition, lighting and mood. ' +
       'Use prompt_detail for props, clothing, texture, background details, and style details. ' +
+      'Use prompt_camera for shot size, angle, lens, composition, lighting and mood. ' +
       'Use prompt_negative for unwanted visual artifacts and exclusions. ' +
       'Do not include markdown, code fences, explanations, arrays, nested objects, or extra fields.'
     ),

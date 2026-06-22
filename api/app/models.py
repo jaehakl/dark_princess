@@ -111,8 +111,8 @@ class GenerateCutRequestBase(BaseModel):
     prompt_situation: Optional[str] = None
     prompt_instant_positive: Optional[str] = None
     prompt_hero: Optional[str] = None
-    prompt_camera: Optional[str] = None
     prompt_detail: Optional[str] = None
+    prompt_camera: Optional[str] = None
     prompt_instant_negative: Optional[str] = None
     prompt_negative: Optional[str] = None
 
@@ -147,8 +147,8 @@ class CutBase(BaseModel):
     status_change: Dict[str, Any] = Field(default_factory=dict)
     prompt_situation: Optional[str] = None
     prompt_hero: Optional[str] = None
-    prompt_camera: Optional[str] = None
     prompt_detail: Optional[str] = None
+    prompt_camera: Optional[str] = None
     prompt_negative: Optional[str] = None
 
 

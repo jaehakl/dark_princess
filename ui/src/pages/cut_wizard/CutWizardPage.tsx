@@ -15,8 +15,8 @@ const EMPTY_INITIAL_CUT: CutRecord = {
   status_change: { turn: 1 },
   prompt_situation: null,
   prompt_hero: null,
-  prompt_camera: null,
   prompt_detail: null,
+  prompt_camera: null,
   prompt_negative: null,
 };
 

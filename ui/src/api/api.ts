@@ -40,8 +40,8 @@ export const dbTables = {
       status_change: { label: '상태 변화', type: 'dict-list' },
       prompt_situation: { label: '상황 프롬프트', type: 'text' },
       prompt_hero: { label: '주인공 프롬프트', type: 'text' },
-      prompt_camera: { label: '카메라 프롬프트', type: 'text' },
       prompt_detail: { label: '디테일 프롬프트', type: 'text' },
+      prompt_camera: { label: '카메라 프롬프트', type: 'text' },
       prompt_negative: { label: 'Negative 프롬프트', type: 'text' },
     },
     listRows: (listRequest: GetListRequest) =>

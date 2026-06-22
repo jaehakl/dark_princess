@@ -148,8 +148,8 @@ class Cut(Base):
     status_change: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     prompt_situation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     prompt_hero: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    prompt_camera: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     prompt_detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    prompt_camera: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     prompt_negative: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     image: Mapped[Optional["Image"]] = relationship(

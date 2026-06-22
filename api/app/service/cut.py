@@ -710,8 +710,8 @@ async def generate_cut_image(
         column_values["prompt_situation"],
         prompt_instant_positive,
         column_values["prompt_hero"],
-        column_values["prompt_camera"],
         column_values["prompt_detail"],
+        column_values["prompt_camera"],
         resolved_settings.prompt_default_positive,
     ]
     negative_prompt_parts = [

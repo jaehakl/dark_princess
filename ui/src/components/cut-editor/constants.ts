@@ -6,16 +6,16 @@ import type {
 export const PROMPT_COLUMNS = [
   { key: 'prompt_situation', label: '상황' },
   { key: 'prompt_hero', label: '주인공' },
-  { key: 'prompt_camera', label: '카메라' },
   { key: 'prompt_detail', label: '디테일' },
+  { key: 'prompt_camera', label: '카메라' },
 ] as const;
 
 export const PROMPT_EDITOR_COLUMNS = [
   { key: 'prompt_situation', label: '상황', kind: 'stored' },
   { key: 'prompt_instant_positive', label: 'instant positive', kind: 'instant' },
   { key: 'prompt_hero', label: '주인공', kind: 'stored' },
-  { key: 'prompt_camera', label: '카메라', kind: 'stored' },
   { key: 'prompt_detail', label: '디테일', kind: 'stored' },
+  { key: 'prompt_camera', label: '카메라', kind: 'stored' },
   { key: 'prompt_instant_negative', label: 'instant negative', kind: 'instant' },
   { key: 'prompt_negative', label: 'negative', kind: 'negative' },
 ] as const;
@@ -23,8 +23,8 @@ export const PROMPT_EDITOR_COLUMNS = [
 export const EMPTY_PROMPT_DRAFT: Record<PromptColumnName, string> = {
   prompt_situation: '',
   prompt_hero: '',
-  prompt_camera: '',
   prompt_detail: '',
+  prompt_camera: '',
 };
 
 export const EMPTY_INSTANT_PROMPT_DRAFT = {

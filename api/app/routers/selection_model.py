@@ -98,8 +98,8 @@ def cut_to_base(cut) -> CutBase:
         status_change=cut.status_change,
         prompt_situation=cut.prompt_situation,
         prompt_hero=cut.prompt_hero,
-        prompt_camera=cut.prompt_camera,
         prompt_detail=cut.prompt_detail,
+        prompt_camera=cut.prompt_camera,
         prompt_negative=cut.prompt_negative,
     )
 

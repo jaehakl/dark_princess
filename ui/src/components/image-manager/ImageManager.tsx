@@ -31,8 +31,8 @@ import {
 const AUTO_PROMPT_CUT_FIELDS = [
   'prompt_situation',
   'prompt_hero',
-  'prompt_camera',
   'prompt_detail',
+  'prompt_camera',
 ] as const;
 
 const AUTO_PROMPT_CUT_LIST_REQUEST: GetListRequest = {

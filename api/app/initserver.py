@@ -12,21 +12,6 @@ from settings import settings
 from utils.local_storage import object_key_from_public_url
 
 
-CUT_SQLITE_BACKFILL_COLUMNS = {
-    "scene_id": "ALTER TABLE cuts ADD COLUMN scene_id INTEGER REFERENCES scenes(id) ON DELETE SET NULL",
-    "prev_cut_id": "ALTER TABLE cuts ADD COLUMN prev_cut_id INTEGER REFERENCES cuts(id) ON DELETE SET NULL",
-}
-
-
-async def ensure_sqlite_schema(conn) -> None:
-    result = await conn.execute(text("PRAGMA table_info(cuts)"))
-    existing_columns = {row._mapping["name"] for row in result}
-
-    for column_name, statement in CUT_SQLITE_BACKFILL_COLUMNS.items():
-        if column_name not in existing_columns:
-            await conn.execute(text(statement))
-
-
 def server():
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -66,7 +51,6 @@ def server():
         app.state.progress = 0
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-            await ensure_sqlite_schema(conn)
         print("service is started.")
 
     def shutdown():

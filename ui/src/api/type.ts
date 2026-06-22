@@ -74,8 +74,8 @@ export type GenerateCutRequest = {
   prompt_situation?: string | null;
   prompt_instant_positive?: string | null;
   prompt_hero?: string | null;
-  prompt_camera?: string | null;
   prompt_detail?: string | null;
+  prompt_camera?: string | null;
   prompt_instant_negative?: string | null;
   prompt_negative?: string | null;
 };
@@ -103,7 +103,7 @@ export type UpdateSceneFirstCutRequest = {
   cut_id: number | null;
 };
 
-export type PromptColumnName = 'prompt_situation' | 'prompt_hero' | 'prompt_camera' | 'prompt_detail';
+export type PromptColumnName = 'prompt_situation' | 'prompt_hero' | 'prompt_detail' | 'prompt_camera';
 
 export type CutRecord = {
   id?: number | null;
@@ -117,8 +117,8 @@ export type CutRecord = {
   status_change: Record<string, unknown>;
   prompt_situation?: string | null;
   prompt_hero?: string | null;
-  prompt_camera?: string | null;
   prompt_detail?: string | null;
+  prompt_camera?: string | null;
   prompt_negative?: string | null;
 };
 

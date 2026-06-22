@@ -55,8 +55,8 @@ function cutToPromptDraft(cut: CutRecord): Record<PromptColumnName, string> {
   return {
     prompt_situation: cut.prompt_situation ?? '',
     prompt_hero: cut.prompt_hero ?? '',
-    prompt_camera: cut.prompt_camera ?? '',
     prompt_detail: cut.prompt_detail ?? '',
+    prompt_camera: cut.prompt_camera ?? '',
   };
 }
 
@@ -77,8 +77,8 @@ function promptColumnsToCutPayload(
   return {
     prompt_situation: promptColumns.prompt_situation.trim() || null,
     prompt_hero: promptColumns.prompt_hero.trim() || null,
-    prompt_camera: promptColumns.prompt_camera.trim() || null,
     prompt_detail: promptColumns.prompt_detail.trim() || null,
+    prompt_camera: promptColumns.prompt_camera.trim() || null,
     prompt_negative: promptNegative.trim() || null,
   };
 }
@@ -358,8 +358,8 @@ export function CutEditComponent({
       setPromptDraft({
         prompt_situation: nextGeneratedPrompt.prompt_situation,
         prompt_hero: nextGeneratedPrompt.prompt_hero,
-        prompt_camera: nextGeneratedPrompt.prompt_camera,
         prompt_detail: nextGeneratedPrompt.prompt_detail,
+        prompt_camera: nextGeneratedPrompt.prompt_camera,
       });
       setPromptNegativeDraft(nextGeneratedPrompt.prompt_negative);
     } catch (generateError) {
@@ -808,8 +808,8 @@ export function CutEditComponent({
       status_change: { ...statusChange },
       prompt_situation: promptDraft.prompt_situation,
       prompt_hero: promptDraft.prompt_hero,
-      prompt_camera: promptDraft.prompt_camera,
       prompt_detail: promptDraft.prompt_detail,
+      prompt_camera: promptDraft.prompt_camera,
       prompt_negative: promptNegativeDraft,
     });
   }
