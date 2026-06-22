@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { WheelEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { dbTables } from '../../api/api';
@@ -156,6 +156,7 @@ export function PlayPage() {
   const [isAutoPlaying, setIsAutoPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isAdvancing, setIsAdvancing] = useState(false);
+  const isAdvancingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [scriptLineState, setScriptLineState] = useState<ScriptLineState>({
     cutId: null,
@@ -182,9 +183,31 @@ export function PlayPage() {
   const currentScriptLine = scriptLines[visibleScriptLineIndex] ?? null;
   const canReverseScript = visibleScriptLineIndex > 0;
   const canAdvanceScript = visibleScriptLineIndex < scriptLines.length - 1;
-  const canNavigateScript = canReverseScript || canAdvanceScript;
   const singleNextCut = nextCuts.length === 1 ? nextCuts[0] ?? null : null;
   const isAtScriptEnd = !canAdvanceScript;
+  const sameSceneSingleNextCut =
+    singleNextCut &&
+    typeof singleNextCut.id === 'number' &&
+    typeof scene?.id === 'number' &&
+    singleNextCut.scene_id === scene.id
+      ? singleNextCut
+      : null;
+  const canAdvanceToSameSceneSingleNextCut = Boolean(
+    sameSceneSingleNextCut &&
+    cut?.id &&
+    status?.id &&
+    isAtScriptEnd &&
+    !isLoading &&
+    !isAdvancing &&
+    !error,
+  );
+  const canAdvancePlayback = canAdvanceScript || canAdvanceToSameSceneSingleNextCut;
+  const canNavigateScript = canReverseScript || canAdvancePlayback;
+  const playbackActionLabel = canAdvanceScript
+    ? '다음 대사'
+    : canAdvanceToSameSceneSingleNextCut
+      ? '다음 Cut'
+      : undefined;
   const canShowProgressControls = Boolean(!isLoading && !error && cut?.id && isAtScriptEnd);
   const canStartAutoPlay = Boolean(
     cut?.id &&
@@ -322,10 +345,11 @@ export function PlayPage() {
   }, [parsedStatusId, enterCut]);
 
   const advanceToCut = useCallback(async (nextCut: CutRecord): Promise<boolean> => {
-    if (!status || !scene || !nextCut.id || isAdvancing) {
+    if (!status || !scene || !nextCut.id || isAdvancingRef.current) {
       return false;
     }
 
+    isAdvancingRef.current = true;
     setIsAdvancing(true);
     setError(null);
     try {
@@ -336,16 +360,18 @@ export function PlayPage() {
       setError(getErrorMessage(advanceError));
       return false;
     } finally {
+      isAdvancingRef.current = false;
       setIsAdvancing(false);
     }
-  }, [enterCut, isAdvancing, lastOptionText, scene, status]);
+  }, [enterCut, lastOptionText, scene, status]);
 
   async function submitSceneOption() {
-    if (!status?.id || !scene?.id || !cut?.id || isAdvancing) {
+    if (!status?.id || !scene?.id || !cut?.id || isAdvancingRef.current) {
       return;
     }
 
     const submittedOptionText = optionText.trim();
+    isAdvancingRef.current = true;
     setIsAdvancing(true);
     setError(null);
     try {
@@ -361,6 +387,7 @@ export function PlayPage() {
       setIsAutoPlaying(false);
       setError(getErrorMessage(recommendError));
     } finally {
+      isAdvancingRef.current = false;
       setIsAdvancing(false);
     }
   }
@@ -383,7 +410,12 @@ export function PlayPage() {
   }, [currentCutId, currentScript, lastScriptLineIndex, visibleScriptLineIndex]);
 
   function advanceScriptLine() {
-    moveScriptLine(1);
+    if (moveScriptLine(1)) {
+      return;
+    }
+    if (canAdvanceToSameSceneSingleNextCut && sameSceneSingleNextCut) {
+      void advanceToCut(sameSceneSingleNextCut);
+    }
   }
 
   function toggleAutoPlay() {
@@ -396,12 +428,18 @@ export function PlayPage() {
     }
 
     const direction = event.deltaY > 0 ? 1 : -1;
-    const canMove = direction > 0 ? canAdvanceScript : canReverseScript;
-    if (!canMove) {
+    if (direction > 0 && !canAdvancePlayback) {
+      return;
+    }
+    if (direction < 0 && !canReverseScript) {
       return;
     }
 
     event.preventDefault();
+    if (direction > 0) {
+      advanceScriptLine();
+      return;
+    }
     moveScriptLine(direction);
   }
 
@@ -471,13 +509,13 @@ export function PlayPage() {
                 'relative mx-auto w-full rounded-[8px] border border-[rgba(255,218,228,0.22)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_24px_80px_rgba(5,0,10,0.46)]',
                 canNavigateScript && 'cursor-pointer',
               )}
-              role={canAdvanceScript ? 'button' : undefined}
-              tabIndex={canAdvanceScript ? 0 : undefined}
-              aria-label={canAdvanceScript ? '다음 대사' : undefined}
+              role={canAdvancePlayback ? 'button' : undefined}
+              tabIndex={canAdvancePlayback ? 0 : undefined}
+              aria-label={playbackActionLabel}
               onClick={advanceScriptLine}
               onWheel={handleScriptWheel}
               onKeyDown={(event) => {
-                if (canAdvanceScript && (event.key === 'Enter' || event.key === ' ')) {
+                if (canAdvancePlayback && (event.key === 'Enter' || event.key === ' ')) {
                   event.preventDefault();
                   advanceScriptLine();
                 }
@@ -691,13 +729,13 @@ export function PlayPage() {
                 'relative flex min-h-28 w-full items-center justify-start rounded-[8px] border border-[rgba(255,218,228,0.36)] bg-[linear-gradient(135deg,rgba(255,245,232,0.12),transparent_55%),rgba(12,4,17,0.74)] px-5 py-[1.15rem] text-left text-[1.05rem] leading-[1.65] font-bold text-[#fff7ef] shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_18px_45px_rgba(5,0,10,0.34)] max-[640px]:min-h-32 max-[640px]:p-4',
                 canNavigateScript && 'cursor-pointer',
               )}
-              role={error ? 'alert' : canAdvanceScript ? 'button' : undefined}
-              tabIndex={canAdvanceScript ? 0 : undefined}
-              aria-label={canAdvanceScript ? '다음 대사' : undefined}
+              role={error ? 'alert' : canAdvancePlayback ? 'button' : undefined}
+              tabIndex={canAdvancePlayback ? 0 : undefined}
+              aria-label={playbackActionLabel}
               onClick={advanceScriptLine}
               onWheel={handleScriptWheel}
               onKeyDown={(event) => {
-                if (canAdvanceScript && (event.key === 'Enter' || event.key === ' ')) {
+                if (canAdvancePlayback && (event.key === 'Enter' || event.key === ' ')) {
                   event.preventDefault();
                   advanceScriptLine();
                 }
@@ -721,7 +759,7 @@ export function PlayPage() {
             </div>
           ) : null}
 
-          {canShowProgressControls && singleNextCut ? (
+          {canShowProgressControls && singleNextCut && !sameSceneSingleNextCut ? (
             <div className="mt-4 grid gap-2">
               <FieldLabel>다음 Cut</FieldLabel>
               <Button
