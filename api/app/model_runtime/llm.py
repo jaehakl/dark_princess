@@ -307,7 +307,7 @@ def _add_llm_dll_directories() -> None:
                         _llm_dll_directory_handles.append(os.add_dll_directory(str(dll_path)))
 
     load_kwargs = {"mode": ctypes.RTLD_GLOBAL} if hasattr(ctypes, "RTLD_GLOBAL") else {}
-    for dll_name in ("libcublasLt.so.13", "libcublas.so.13", "cublas64_13.dll"):
+    for dll_name in ("libcudart.so.13", "cudart64_13.dll", "libcublasLt.so.13", "libcublas.so.13", "cublas64_13.dll"):
         for dll_path in nvidia_lib_paths:
             full_path = dll_path / dll_name
             if full_path.exists():

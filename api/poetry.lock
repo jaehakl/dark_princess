@@ -952,6 +952,19 @@ files = [
 ]
 
 [[package]]
+name = "nvidia-cuda-runtime"
+version = "13.1.80"
+description = "CUDA Runtime native Libraries"
+optional = false
+python-versions = ">=3"
+groups = ["main"]
+files = [
+    {file = "nvidia_cuda_runtime-13.1.80-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:5f1aa8fd779cae1a78aa8fdbaa5e4f245300baff120099d9b5ee84e3f4506a29"},
+    {file = "nvidia_cuda_runtime-13.1.80-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:dac25b52e69050e5a7a84957e6df470a85b185f8f648a99a1ab1dfce027576cf"},
+    {file = "nvidia_cuda_runtime-13.1.80-py3-none-win_amd64.whl", hash = "sha256:00db7158108d3ec7fe213fa78e2640d664b5b1b6b85485007dde29ccaa6abef6"},
+]
+
+[[package]]
 name = "nvidia-cuda-runtime-cu12"
 version = "12.8.57"
 description = "CUDA Runtime native Libraries"
@@ -2488,4 +2501,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.15"
-content-hash = "f7809b19fb9788b5c1a9f8aec981a56f8b7b714ea110fe7e2fb7a3628f2a0b12"
+content-hash = "dde8707e972ed7ffbfc41cbc515a0cbbbc6fa0ccd294f9750aec078d32a5b0ae"
