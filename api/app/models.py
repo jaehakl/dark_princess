@@ -33,12 +33,6 @@ class ImageDeleteResponseBase(BaseModel):
     skipped_cut_linked_ids: List[int]
 
 
-class NextCutRequestBase(BaseModel):
-    cut_id: Optional[int] = None
-    status_id: int
-    option_text: str
-
-
 class UpdateCutContextRequestBase(BaseModel):
     status_id: int
     cut_id: int
@@ -137,17 +131,6 @@ class LlmAskRequestBase(BaseModel):
     temperature: Optional[float] = None
 
 
-class GenerateSelectionModelRequestBase(BaseModel):
-    model_id: Optional[int] = None
-    name: str
-    parameters: Dict[str, Any] = Field(default_factory=dict)
-
-
-class AdjustSelectionModelRequestBase(NextCutRequestBase):
-    target_cut_id: int
-    learn_rate: float
-
-
 class CutBase(BaseModel):
     id: Optional[int] = None
     image_id: Optional[int] = None
@@ -206,15 +189,8 @@ class ImageListItemBase(ImageBase):
     family_image_count: int = 0
 
 
-class SelectionModelBase(BaseModel):
-    id: Optional[int] = None
-    name: str
-    file_url: Optional[str] = None
-
-
 class StatusBase(BaseModel):
     id: Optional[int] = None
-    selection_model_id: Optional[int] = None
     name: str
     turn: int
     cash: int

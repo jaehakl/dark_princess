@@ -19,22 +19,38 @@ from models import (
     UpdateSceneFirstCutRequestBase,
     UpsertResponseBase,
 )
-from service.selection_model import (
-    STATUS_NORMALIZATION,
-    STATUS_NUMERIC_FIELDS,
-    cosine_distance,
-    normalize_status_value,
-)
 from settings import settings
 from utils.crud_helpers import CrudSpec, delete_items, get_list_response
 from utils.local_storage import public_file_url_from_reference
 from utils.router_helpers import field_ids, require_existing_ids
-from utils.vector import VECTOR_DIMENSION, validate_embedding
+from utils.vector import VECTOR_DIMENSION, cosine_distance, validate_embedding
 
 
 SCENE_READ_ONLY_FIELDS = {"first_cut_image_url", "cut_count"}
 SCENE_TEXT_WEIGHT = 0.8
 SCENE_STATUS_WEIGHT = 0.2
+STATUS_NUMERIC_FIELDS = (
+    "turn",
+    "cash",
+    "strength",
+    "agility",
+    "intelligence",
+    "sense",
+    "attractiveness",
+    "toughness",
+    "stress",
+)
+STATUS_NORMALIZATION = {
+    "turn": {"min": 0.0, "max": 1000.0},
+    "cash": {"min": 0.0, "max": 100.0},
+    "strength": {"min": 0.0, "max": 100.0},
+    "agility": {"min": 0.0, "max": 100.0},
+    "intelligence": {"min": 0.0, "max": 100.0},
+    "sense": {"min": 0.0, "max": 100.0},
+    "attractiveness": {"min": 0.0, "max": 100.0},
+    "toughness": {"min": 0.0, "max": 100.0},
+    "stress": {"min": 0.0, "max": 100.0},
+}
 
 SCENE_LOAD_OPTIONS = (
     selectinload(Scene.cuts),
@@ -249,6 +265,15 @@ def calculate_status_distance(left: list[float], right: list[float]) -> float:
         return 1.0
     squared_distance = sum((left_value - right_value) ** 2 for left_value, right_value in zip(left, right))
     return math.sqrt(squared_distance / len(left))
+
+
+def normalize_status_value(value: float, config: dict[str, float]) -> float:
+    min_value = config["min"]
+    max_value = config["max"]
+    if max_value <= min_value:
+        return 0.0
+    normalized = (value - min_value) / (max_value - min_value)
+    return min(1.0, max(0.0, normalized))
 
 
 async def update_scene_first_cut(

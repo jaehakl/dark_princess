@@ -25,7 +25,6 @@ from models import (
     CutBase,
 )
 from settings import settings
-from service.selection_model import cosine_distance
 from service.image_util_constants import (
     GEN_IMAGE_CFG,
     GEN_IMAGE_HEIGHT,
@@ -53,7 +52,7 @@ from utils.local_storage import (
     upload_fileobj,
 )
 from model_runtime import encode_cut_text, generate_images_batch
-from utils.vector import VECTOR_DIMENSION, validate_embedding
+from utils.vector import VECTOR_DIMENSION, cosine_distance, validate_embedding
 
 CUT_EMBEDDING_PROMPT_FIELDS = ("prompt_situation", "prompt_hero")
 

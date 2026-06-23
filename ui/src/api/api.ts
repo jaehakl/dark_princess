@@ -2,21 +2,17 @@
 
 import { API_URL, request, requestResponse } from './http';
 import type {
-  AdjustSelectionModelRequest,
   GenerateImageRequest,
-  GenerateSelectionModelRequest,
   GetListRequest,
   GetListResponse,
   ImageDeleteResponse,
   ImageGenerationSettings,
   ImageRecord,
   LlmAskRequest,
-  NextCutRequest,
   RecommendSceneRequest,
   CutRecord,
   SceneRecord,
   SceneRecommendation,
-  SelectionModelRecord,
   StatusRecord,
   UpdateCutContextRequest,
   UpdateCutFavoriteRequest,
@@ -114,29 +110,10 @@ export const dbTables = {
     deleteRows: (ids: number[]) => request<ImageDeleteResponse>('delete', '/image/', ids),
   },
 
-  SelectionModel: {
-    label: '선택 모델',
-    columns: {
-      id: { label: 'ID', type: 'id' },
-      name: { label: '이름', type: 'text', required: true },
-      file_url: { label: '파일 URL', type: 'text' },
-    },
-    listRows: (listRequest: GetListRequest) =>
-      request<GetListResponse<SelectionModelRecord>>('post', '/selection_model/list', listRequest),
-    upsertRow: (items: SelectionModelRecord[]) => request<UpsertResponse[]>('post', '/selection_model/upsert', items),
-    generateModel: (item: GenerateSelectionModelRequest) =>
-      request<SelectionModelRecord>('post', '/selection_model/generate', item),
-    adjustModel: (item: AdjustSelectionModelRequest) =>
-      request<SelectionModelRecord>('post', '/selection_model/adjust', item),
-    nextCut: (item: NextCutRequest) => request<CutRecord>('post', '/selection_model/next', item),
-    deleteRows: (ids: number[]) => request<null>('delete', '/selection_model/', ids).then(() => undefined),
-  },
-
   Status: {
     label: '상태',
     columns: {
       id: { label: 'ID', type: 'id' },
-      selection_model_id: { label: '선택 모델', type: 'fk', targetTable: 'SelectionModel' },
       name: { label: '이름', type: 'text', required: true },
       turn: { label: '턴', type: 'int', required: true },
       cash: { label: '현금', type: 'int', required: true },

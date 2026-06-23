@@ -12,7 +12,7 @@ from sqlalchemy import Text, and_, cast, delete as sa_delete, func, inspect, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from db import Image as StoredImage, SelectionModel
+from db import Image as StoredImage
 from models import GetListResponseBase, UpsertResponseBase
 from utils.datetime_utils import db_datetime_to_utc, parse_api_datetime_to_utc
 from utils.local_storage import (
@@ -42,7 +42,6 @@ FILE_REFERENCE_COLUMNS = (
     StoredImage.image_object_key,
     StoredImage.scribble_object_key,
     StoredImage.pose_object_key,
-    SelectionModel.file_url,
 )
 
 

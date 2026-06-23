@@ -128,7 +128,6 @@ async def api_update_cut_context(
     updated_status = await update_cut_context(db, request)
     return StatusBase(
         id=updated_status.id,
-        selection_model_id=updated_status.selection_model_id,
         name=updated_status.name,
         turn=updated_status.turn,
         cash=updated_status.cash,

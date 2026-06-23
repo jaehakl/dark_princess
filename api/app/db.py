@@ -188,25 +188,10 @@ class Cut(Base):
         return self.image.pose_object_key if self.image is not None else None
 
 
-class SelectionModel(Base):
-    __tablename__ = "selection_models"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(Text, nullable=False)
-    file_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-
-    statuses: Mapped[List["Status"]] = relationship("Status", back_populates="selection_model")
-
-
 class Status(Base):
     __tablename__ = "statuses"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    selection_model_id: Mapped[Optional[int]] = mapped_column(
-        Integer,
-        ForeignKey("selection_models.id", ondelete="SET NULL"),
-        nullable=True,
-    )
     name: Mapped[str] = mapped_column(Text, nullable=False)
     turn: Mapped[int] = mapped_column(Integer, nullable=False)
     cash: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -218,8 +203,3 @@ class Status(Base):
     toughness: Mapped[int] = mapped_column(Integer, nullable=False)
     stress: Mapped[int] = mapped_column(Integer, nullable=False)
     context_embedding: Mapped[Optional[List[float]]] = mapped_column(JSON, nullable=True)
-
-    selection_model: Mapped[Optional["SelectionModel"]] = relationship(
-        "SelectionModel",
-        back_populates="statuses",
-    )

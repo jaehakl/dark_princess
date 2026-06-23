@@ -173,37 +173,13 @@ export type ImageRecord = {
   family_image_count?: number | null;
 };
 
-export type NextCutRequest = {
-  cut_id: number | null;
-  status_id: number;
-  option_text: string;
-};
-
-export type AdjustSelectionModelRequest = NextCutRequest & {
-  target_cut_id: number;
-  learn_rate: number;
-};
-
 export type UpdateCutContextRequest = {
   status_id: number;
   cut_id: number;
 };
 
-export type GenerateSelectionModelRequest = {
-  model_id?: number | null;
-  name: string;
-  parameters: Record<string, unknown>;
-};
-
-export type SelectionModelRecord = {
-  id?: number | null;
-  name: string;
-  file_url?: string | null;
-};
-
 export type StatusRecord = {
   id?: number | null;
-  selection_model_id?: number | null;
   name: string;
   turn: number;
   cash: number;
@@ -220,5 +196,4 @@ export type DbTableName =
   | 'Cut'
   | 'Scene'
   | 'Image'
-  | 'SelectionModel'
   | 'Status';

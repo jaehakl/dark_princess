@@ -9,11 +9,6 @@ from .llm import (
     generate_prompt_with_llm,
     reset_llm_runtime_for_tests,
 )
-from .selection import (
-    _reset_selection_runtime_for_tests,
-    predict_target_cut_embedding,
-    update_selection_model,
-)
 from .wd14 import _reset_wd14_runtime_for_tests, predict_wd14_tags
 
 __all__ = [
@@ -24,16 +19,13 @@ __all__ = [
     "generate_images_batch",
     "generate_prompt_with_llm",
     "get_available_cuda_device_ids",
-    "predict_target_cut_embedding",
     "predict_wd14_tags",
     "reset_llm_runtime_for_tests",
     "reset_model_runtime_for_tests",
-    "update_selection_model",
 ]
 
 
 def reset_model_runtime_for_tests() -> None:
     _reset_embedding_runtime_for_tests()
     _reset_image_runtime_for_tests()
-    _reset_selection_runtime_for_tests()
     _reset_wd14_runtime_for_tests()
