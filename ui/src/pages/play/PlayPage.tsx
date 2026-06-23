@@ -14,9 +14,11 @@ import {
   FieldLabel,
   FormControl,
   ImageFrame,
+  ModalBackdrop,
   Panel,
   PanelHeader,
   SectionBody,
+  Spinner,
   cx,
 } from '../../components/ui';
 
@@ -50,6 +52,7 @@ type ScriptLineState = {
 
 const AUTO_PLAY_INTERVAL_MS = 2000;
 const SCRIPT_WHEEL_THRESHOLD = 20;
+const SCENE_PICKER_PAGE_SIZE = 100;
 const STATUS_CHART_CENTER = 110;
 const STATUS_CHART_RADIUS = 68;
 const STATUS_CHART_LABEL_RADIUS = 95;
@@ -92,6 +95,10 @@ function getCutChoiceLabel(cut: CutRecord): string {
     return firstLine;
   }
   return `Cut #${cut.id ?? '-'}`;
+}
+
+function getSceneTitle(scene: SceneRecord): string {
+  return scene.title.trim() || `Scene #${scene.id ?? '-'}`;
 }
 
 function clampStatusValue(value: number): number {
@@ -163,12 +170,19 @@ export function PlayPage() {
     script: '',
     index: 0,
   });
+  const [isScenePickerOpen, setIsScenePickerOpen] = useState(false);
+  const [scenePickerScenes, setScenePickerScenes] = useState<SceneRecord[]>([]);
+  const [scenePickerSearchText, setScenePickerSearchText] = useState('');
+  const [scenePickerSubmittedSearchText, setScenePickerSubmittedSearchText] = useState('');
+  const [scenePickerPage, setScenePickerPage] = useState(1);
+  const [scenePickerTotalRows, setScenePickerTotalRows] = useState(0);
+  const [isScenePickerLoading, setIsScenePickerLoading] = useState(false);
+  const [isSceneReplacing, setIsSceneReplacing] = useState(false);
+  const [scenePickerError, setScenePickerError] = useState<string | null>(null);
 
   const currentCutId = cut?.id ?? null;
   const currentCutLabel = currentCutId ? `Cut #${currentCutId}` : 'Cut 없음';
-  const currentSceneLabel = scene
-    ? scene.title.trim() || `Scene #${scene.id ?? '-'}`
-    : 'Scene 없음';
+  const currentSceneLabel = scene ? getSceneTitle(scene) : 'Scene 없음';
   const currentScript = cut?.script ?? '';
   const scriptLines = useMemo(
     () => toScriptLines(currentScript),
@@ -224,6 +238,10 @@ export function PlayPage() {
       )
     : [];
   const coreStatusPolygon = pointList(coreStatusChartPoints);
+  const scenePickerTotalPages = Math.max(
+    1,
+    Math.ceil(scenePickerTotalRows / SCENE_PICKER_PAGE_SIZE),
+  );
 
   useEffect(() => {
     setCurrentCut(cut);
@@ -275,6 +293,51 @@ export function PlayPage() {
       index: 0,
     });
   }, [loadNextCutsForCut, setCurrentCut]);
+
+  useEffect(() => {
+    if (!isScenePickerOpen) {
+      return undefined;
+    }
+
+    let isActive = true;
+
+    async function loadScenePickerScenes() {
+      setIsScenePickerLoading(true);
+      setScenePickerError(null);
+      try {
+        const response = await dbTables.Scene.listRows(
+          createListRequest({
+            offset: (scenePickerPage - 1) * SCENE_PICKER_PAGE_SIZE,
+            limit: SCENE_PICKER_PAGE_SIZE,
+            search_text: scenePickerSubmittedSearchText || null,
+            sort: ['id', 'desc'],
+          }),
+        );
+        if (!isActive) {
+          return;
+        }
+        setScenePickerScenes(response.items);
+        setScenePickerTotalRows(response.total);
+      } catch (loadError) {
+        if (!isActive) {
+          return;
+        }
+        setScenePickerScenes([]);
+        setScenePickerTotalRows(0);
+        setScenePickerError(getErrorMessage(loadError));
+      } finally {
+        if (isActive) {
+          setIsScenePickerLoading(false);
+        }
+      }
+    }
+
+    void loadScenePickerScenes();
+
+    return () => {
+      isActive = false;
+    };
+  }, [isScenePickerOpen, scenePickerPage, scenePickerSubmittedSearchText]);
 
   useEffect(() => {
     let isActive = true;
@@ -392,6 +455,54 @@ export function PlayPage() {
     }
   }
 
+  function openScenePicker() {
+    setScenePickerError(null);
+    setIsScenePickerOpen(true);
+  }
+
+  async function replaceSceneDirectly(nextScene: SceneRecord) {
+    const nextSceneId = nextScene.id;
+    const firstCutId = nextScene.first_cut_id;
+    if (
+      !status ||
+      typeof nextSceneId !== 'number' ||
+      typeof firstCutId !== 'number' ||
+      isAdvancingRef.current
+    ) {
+      return;
+    }
+
+    isAdvancingRef.current = true;
+    setIsAdvancing(true);
+    setIsSceneReplacing(true);
+    setIsAutoPlaying(false);
+    setScenePickerError(null);
+    try {
+      const cutResponse = await dbTables.Cut.listRows(
+        createListRequest({
+          limit: 1,
+          selected_ids: [firstCutId],
+        }),
+      );
+      const firstCut = cutResponse.items[0] ?? null;
+      if (!firstCut) {
+        throw new Error('첫 Cut을 찾을 수 없습니다.');
+      }
+      if (firstCut.scene_id !== nextSceneId) {
+        throw new Error('첫 Cut이 선택한 Scene에 연결되어 있지 않습니다.');
+      }
+
+      await enterCut(nextScene, firstCut, status, null);
+      setIsScenePickerOpen(false);
+    } catch (replaceError) {
+      setScenePickerError(getErrorMessage(replaceError));
+    } finally {
+      isAdvancingRef.current = false;
+      setIsAdvancing(false);
+      setIsSceneReplacing(false);
+    }
+  }
+
   const moveScriptLine = useCallback((direction: -1 | 1): boolean => {
     const nextIndex = Math.min(
       lastScriptLineIndex,
@@ -502,6 +613,13 @@ export function PlayPage() {
                 {currentCutLabel}
               </p>
             </div>
+            <Button
+              className="shrink-0 px-3 py-2 text-xs"
+              onClick={openScenePicker}
+              disabled={isLoading || isAdvancing || !status?.id}
+            >
+              Scene 교체
+            </Button>
           </PanelHeader>
           <SectionBody className="grid place-items-center p-0">
             <ImageFrame
@@ -823,6 +941,192 @@ export function PlayPage() {
           ) : null}
         </Panel>
       </div>
+
+      {isScenePickerOpen ? (
+        <ModalBackdrop role="presentation">
+          <Panel
+            className="flex h-[calc(100dvh-3rem)] w-[min(88rem,calc(100vw-2rem))] flex-col overflow-hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="scene-picker-title"
+          >
+            <PanelHeader>
+              <div className="min-w-0">
+                <p className="text-[0.85rem] tracking-[0.16em] text-[var(--app-muted)] uppercase">Scene archive</p>
+                <h2
+                  id="scene-picker-title"
+                  className="truncate text-lg font-semibold text-[#fff7ef]"
+                >
+                  Scene 교체
+                </h2>
+              </div>
+              <Button
+                variant="danger"
+                className="px-3 py-2 text-xs"
+                onClick={() => setIsScenePickerOpen(false)}
+                disabled={isSceneReplacing}
+              >
+                닫기
+              </Button>
+            </PanelHeader>
+
+            <SectionBody className="min-h-0 flex-1 space-y-4 overflow-y-auto">
+              <form
+                className="flex flex-col gap-3"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  setScenePickerPage(1);
+                  setScenePickerSubmittedSearchText(scenePickerSearchText.trim());
+                }}
+              >
+                <div className="mx-auto flex w-full max-w-2xl min-w-0 flex-col gap-2 sm:flex-row">
+                  <FormControl
+                    id="scene-picker-search"
+                    value={scenePickerSearchText}
+                    onChange={(event) => setScenePickerSearchText(event.target.value)}
+                    className="h-11 min-w-0 flex-1 px-3"
+                    placeholder="Scene 제목/context 검색"
+                  />
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    className="h-11 px-4 py-2 text-xs"
+                    disabled={isScenePickerLoading || isSceneReplacing}
+                  >
+                    검색
+                  </Button>
+                  {scenePickerSubmittedSearchText ? (
+                    <Button
+                      className="h-11 px-4 py-2 text-xs"
+                      onClick={() => {
+                        setScenePickerSearchText('');
+                        setScenePickerSubmittedSearchText('');
+                        setScenePickerPage(1);
+                      }}
+                      disabled={isScenePickerLoading || isSceneReplacing}
+                    >
+                      목록
+                    </Button>
+                  ) : null}
+                </div>
+                <div className="text-center text-xs font-semibold text-[var(--app-muted)]">
+                  {scenePickerScenes.length} / {scenePickerTotalRows}
+                  {scenePickerSubmittedSearchText ? ` · 검색: ${scenePickerSubmittedSearchText}` : ''}
+                </div>
+              </form>
+
+              {scenePickerError ? (
+                <p className="rounded-[8px] border border-[rgba(255,133,165,0.32)] bg-[rgba(96,18,46,0.32)] px-3 py-2 text-sm font-semibold text-[#ff9ab8]">
+                  {scenePickerError}
+                </p>
+              ) : null}
+
+              {isScenePickerLoading ? (
+                <div className="flex min-h-72 items-center justify-center gap-3 text-sm font-semibold text-[var(--app-muted)]">
+                  <Spinner aria-hidden="true" />
+                  <span>Scene을 불러오는 중</span>
+                </div>
+              ) : scenePickerScenes.length === 0 ? (
+                <div className="grid min-h-72 place-items-center text-sm font-semibold text-[var(--app-muted)]">
+                  Scene 없음
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                  {scenePickerScenes.map((pickerScene, index) => {
+                    const pickerSceneId = pickerScene.id ?? null;
+                    const title = getSceneTitle(pickerScene);
+                    const isCurrentScene =
+                      typeof pickerSceneId === 'number' && pickerSceneId === scene?.id;
+                    const hasFirstCut = typeof pickerScene.first_cut_id === 'number';
+                    const isSelectable =
+                      !isCurrentScene &&
+                      hasFirstCut &&
+                      !isSceneReplacing &&
+                      !isAdvancing &&
+                      Boolean(status?.id);
+                    const unavailableLabel = isCurrentScene
+                      ? '현재 Scene'
+                      : hasFirstCut
+                        ? null
+                        : 'first cut 없음';
+
+                    return (
+                      <button
+                        key={pickerSceneId ?? `scene-${index}`}
+                        type="button"
+                        className={cx(
+                          'group relative aspect-square min-w-0 rounded-[8px] border bg-[rgba(11,4,16,0.72)] p-1 text-left transition-[border-color,filter,transform,box-shadow]',
+                          isSelectable
+                            ? 'border-[rgba(255,218,228,0.22)] hover:-translate-y-px hover:border-[rgba(255,226,186,0.82)] hover:brightness-[1.06]'
+                            : 'cursor-not-allowed border-[rgba(255,218,228,0.14)] opacity-55',
+                        )}
+                        title={`Scene #${pickerSceneId ?? '-'}\n${title}`}
+                        aria-label={`Scene #${pickerSceneId ?? '-'}: ${title}`}
+                        disabled={!isSelectable}
+                        onClick={() => void replaceSceneDirectly(pickerScene)}
+                      >
+                        <ImageFrame className="relative h-full w-full rounded-[6px] border border-[rgba(255,218,228,0.18)] bg-[linear-gradient(135deg,rgba(255,224,235,0.12),transparent_46%),rgba(12,5,18,0.82)]">
+                          {pickerScene.first_cut_image_url ? (
+                            <img
+                              src={pickerScene.first_cut_image_url}
+                              alt={title}
+                              className="absolute inset-0 h-full w-full object-contain"
+                              draggable={false}
+                            />
+                          ) : null}
+                        </ImageFrame>
+                        <span className="pointer-events-none absolute right-2 bottom-2 left-2 min-w-0 rounded-[7px] border border-[rgba(255,218,228,0.26)] bg-[rgba(8,2,13,0.78)] px-2 py-1 shadow-[0_10px_22px_rgba(0,0,0,0.32)] backdrop-blur-[8px]">
+                          <span className="block truncate text-sm font-extrabold text-[#fff7ef]">
+                            {title}
+                          </span>
+                          <span className="mt-1 flex min-w-0 flex-wrap gap-1">
+                            <span className="inline-flex rounded-full border border-[rgba(255,226,121,0.62)] bg-[rgba(128,91,18,0.72)] px-1.5 py-0.5 text-[0.62rem] leading-none font-extrabold text-[#fff4c7]">
+                              Cut {pickerScene.cut_count ?? 0}
+                            </span>
+                            {unavailableLabel ? (
+                              <span className="inline-flex rounded-full border border-[rgba(255,133,165,0.42)] bg-[rgba(96,18,46,0.62)] px-1.5 py-0.5 text-[0.62rem] leading-none font-extrabold text-[#ffc2d1]">
+                                {unavailableLabel}
+                              </span>
+                            ) : null}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--app-border)] pt-4">
+                <span className="text-xs font-semibold text-[var(--app-muted)]">
+                  {scenePickerPage} / {scenePickerTotalPages}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    className="px-4 py-2 text-xs"
+                    onClick={() => setScenePickerPage((current) => Math.max(1, current - 1))}
+                    disabled={scenePickerPage <= 1 || isScenePickerLoading || isSceneReplacing}
+                  >
+                    이전
+                  </Button>
+                  <Button
+                    className="px-4 py-2 text-xs"
+                    onClick={() =>
+                      setScenePickerPage((current) => Math.min(scenePickerTotalPages, current + 1))
+                    }
+                    disabled={
+                      scenePickerPage >= scenePickerTotalPages ||
+                      isScenePickerLoading ||
+                      isSceneReplacing
+                    }
+                  >
+                    다음
+                  </Button>
+                </div>
+              </div>
+            </SectionBody>
+          </Panel>
+        </ModalBackdrop>
+      ) : null}
     </div>
   );
 }

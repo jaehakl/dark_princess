@@ -1,6 +1,7 @@
 import {
   useLayoutEffect,
   useRef,
+  useState,
 } from 'react';
 import type {
   Dispatch,
@@ -64,6 +65,59 @@ function adjustPromptKeywordWeight(value: string, cursorPosition: number, direct
   };
 }
 
+function parsePromptClipboardText(text: string) {
+  const values = new Map<PromptEditorColumnName, string>();
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  let currentColumnIndex = -1;
+  let currentLines: string[] = [];
+
+  function commitCurrentSection() {
+    if (currentColumnIndex < 0) {
+      return;
+    }
+    const currentColumn = PROMPT_EDITOR_COLUMNS[currentColumnIndex];
+    values.set(currentColumn.key, currentLines.join('\n').trim());
+  }
+
+  for (const line of lines) {
+    const headerMatch = line.match(/^\[([^\]]+)\]\s*$/);
+    if (headerMatch) {
+      const label = headerMatch[1].trim();
+      const nextColumnIndex = PROMPT_EDITOR_COLUMNS.findIndex((column) => column.label === label);
+      if (nextColumnIndex !== currentColumnIndex + 1) {
+        return null;
+      }
+
+      commitCurrentSection();
+      currentColumnIndex = nextColumnIndex;
+      currentLines = [];
+      continue;
+    }
+
+    if (currentColumnIndex < 0) {
+      if (line.trim()) {
+        return null;
+      }
+      continue;
+    }
+
+    currentLines.push(line);
+  }
+
+  commitCurrentSection();
+  if (values.size !== PROMPT_EDITOR_COLUMNS.length) {
+    return null;
+  }
+
+  return PROMPT_EDITOR_COLUMNS.reduce(
+    (draft, column) => {
+      draft[column.key] = values.get(column.key) ?? '';
+      return draft;
+    },
+    {} as Record<PromptEditorColumnName, string>,
+  );
+}
+
 type CutPromptPanelProps = {
   script: string;
   promptDraft: Record<PromptColumnName, string>;
@@ -114,7 +168,22 @@ export function CutPromptPanel({
   onTranslatePromptColumns,
 }: CutPromptPanelProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const [clipboardStatus, setClipboardStatus] = useState<string | null>(null);
   const isInputDisabled = isLoadingCut || Boolean(savingMode) || isGeneratingScript || isGeneratingPromptItems;
+
+  function getPromptValue(column: (typeof PROMPT_EDITOR_COLUMNS)[number]) {
+    if (column.kind === 'stored') {
+      return promptDraft[column.key];
+    }
+    if (column.kind === 'negative') {
+      return promptNegativeDraft;
+    }
+    return instantPromptDraft[column.key];
+  }
+
+  const canCopyPromptClipboard = PROMPT_EDITOR_COLUMNS.some(
+    (column) => getPromptValue(column).trim().length > 0,
+  );
 
   useLayoutEffect(() => {
     const textareas = panelRef.current?.querySelectorAll<HTMLTextAreaElement>(
@@ -154,6 +223,62 @@ export function CutPromptPanel({
         prompt_camera: currentText ? `${currentText}, ${trimmedSample}` : trimmedSample,
       };
     });
+  }
+
+  async function copyPromptClipboard() {
+    const clipboard = navigator.clipboard;
+    if (!clipboard) {
+      setClipboardStatus('클립보드를 사용할 수 없습니다.');
+      return;
+    }
+
+    const clipboardText = PROMPT_EDITOR_COLUMNS
+      .map((column) => `[${column.label}]\n${getPromptValue(column)}`)
+      .join('\n\n');
+
+    try {
+      await clipboard.writeText(clipboardText);
+      setClipboardStatus('전체 프롬프트 복사 완료');
+    } catch {
+      setClipboardStatus('클립보드 복사에 실패했습니다.');
+    }
+  }
+
+  async function pastePromptClipboard() {
+    const clipboard = navigator.clipboard;
+    if (!clipboard) {
+      setClipboardStatus('클립보드를 사용할 수 없습니다.');
+      return;
+    }
+
+    try {
+      const clipboardText = await clipboard.readText();
+      if (!clipboardText.trim()) {
+        setClipboardStatus('클립보드가 비어 있습니다.');
+        return;
+      }
+
+      const parsedPrompt = parsePromptClipboardText(clipboardText);
+      if (!parsedPrompt) {
+        setClipboardStatus('프롬프트 형식이 올바르지 않습니다.');
+        return;
+      }
+
+      setPromptDraft({
+        prompt_situation: parsedPrompt.prompt_situation,
+        prompt_hero: parsedPrompt.prompt_hero,
+        prompt_detail: parsedPrompt.prompt_detail,
+        prompt_camera: parsedPrompt.prompt_camera,
+      });
+      setInstantPromptDraft({
+        prompt_instant_positive: parsedPrompt.prompt_instant_positive,
+        prompt_instant_negative: parsedPrompt.prompt_instant_negative,
+      });
+      setPromptNegativeDraft(parsedPrompt.prompt_negative);
+      setClipboardStatus('전체 프롬프트 붙여넣기 완료');
+    } catch {
+      setClipboardStatus('클립보드 붙여넣기에 실패했습니다.');
+    }
   }
 
   function handlePromptValueKeyDown(
@@ -213,6 +338,20 @@ export function CutPromptPanel({
           <div className="flex flex-wrap items-center gap-2">
             <Button
               className="inline-flex items-center gap-2 px-3 py-2 text-xs"
+              onClick={() => void copyPromptClipboard()}
+              disabled={!canCopyPromptClipboard}
+            >
+              전체 복사
+            </Button>
+            <Button
+              className="inline-flex items-center gap-2 px-3 py-2 text-xs"
+              onClick={() => void pastePromptClipboard()}
+              disabled={isInputDisabled}
+            >
+              전체 붙여넣기
+            </Button>
+            <Button
+              className="inline-flex items-center gap-2 px-3 py-2 text-xs"
               onClick={onGeneratePromptItems}
               disabled={!canGeneratePromptItems}
             >
@@ -229,13 +368,14 @@ export function CutPromptPanel({
             </Button>
           </div>
         </div>
+        {clipboardStatus ? (
+          <p aria-live="polite" className="text-xs font-semibold text-[#ffd8b0]">
+            {clipboardStatus}
+          </p>
+        ) : null}
         <div className="overflow-hidden rounded-[8px] border border-[rgba(255,208,222,0.24)] bg-[rgba(12,5,18,0.46)]">
           {PROMPT_EDITOR_COLUMNS.map((column) => {
-            const value = column.kind === 'stored'
-              ? promptDraft[column.key]
-              : column.kind === 'negative'
-                ? promptNegativeDraft
-                : instantPromptDraft[column.key];
+            const value = getPromptValue(column);
             const isCameraColumn = column.key === 'prompt_camera';
             const cameraSampleGroups = Object.entries(cameraSamples)
               .map(([groupName, samplesByTag]) => ({
