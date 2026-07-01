@@ -133,6 +133,7 @@ type CutPromptPanelProps = {
   canGenerateScript: boolean;
   canTranslatePromptColumns: boolean;
   canGeneratePromptItems: boolean;
+  canOpenScriptVoice: boolean;
   setScript: (script: string) => void;
   setPromptDraft: Dispatch<SetStateAction<Record<PromptColumnName, string>>>;
   setInstantPromptDraft: Dispatch<SetStateAction<Record<InstantPromptName, string>>>;
@@ -141,6 +142,7 @@ type CutPromptPanelProps = {
   onGenerateScript: () => void;
   onGeneratePromptItems: () => void;
   onTranslatePromptColumns: () => void;
+  onOpenScriptVoice: () => void;
 };
 
 export function CutPromptPanel({
@@ -158,6 +160,7 @@ export function CutPromptPanel({
   canGenerateScript,
   canTranslatePromptColumns,
   canGeneratePromptItems,
+  canOpenScriptVoice,
   setScript,
   setPromptDraft,
   setInstantPromptDraft,
@@ -166,6 +169,7 @@ export function CutPromptPanel({
   onGenerateScript,
   onGeneratePromptItems,
   onTranslatePromptColumns,
+  onOpenScriptVoice,
 }: CutPromptPanelProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [clipboardStatus, setClipboardStatus] = useState<string | null>(null);
@@ -312,14 +316,23 @@ export function CutPromptPanel({
       <div className="block space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <FieldLabel>컷 스크립트</FieldLabel>
-          <Button
-            className="inline-flex items-center gap-2 px-3 py-2 text-xs"
-            onClick={onGenerateScript}
-            disabled={!canGenerateScript}
-          >
-            {isGeneratingScript ? <Spinner aria-hidden="true" /> : null}
-            {isGeneratingScript ? '생성 중' : '스크립트 생성'}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              className="inline-flex items-center gap-2 px-3 py-2 text-xs"
+              onClick={onOpenScriptVoice}
+              disabled={!canOpenScriptVoice}
+            >
+              일본어 음성
+            </Button>
+            <Button
+              className="inline-flex items-center gap-2 px-3 py-2 text-xs"
+              onClick={onGenerateScript}
+              disabled={!canGenerateScript}
+            >
+              {isGeneratingScript ? <Spinner aria-hidden="true" /> : null}
+              {isGeneratingScript ? '생성 중' : '스크립트 생성'}
+            </Button>
+          </div>
         </div>
         <FormControl
           as="textarea"

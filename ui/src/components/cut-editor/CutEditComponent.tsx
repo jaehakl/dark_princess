@@ -33,6 +33,7 @@ import { CutEditorHeader } from './CutEditorHeader';
 import { CutImagePanel } from './CutImagePanel';
 import { CutImportModal } from './CutImportModal';
 import { CutPromptPanel } from './CutPromptPanel';
+import { CutVoicevoxModal } from './CutVoicevoxModal';
 import { buildCutContext } from './cutContext';
 import { generatePromptItemsFromScript } from './promptGeneration';
 import { generateCutScript } from './scriptGeneration';
@@ -140,6 +141,7 @@ export function CutEditComponent({
   const [error, setError] = useState<string | null>(null);
   const [isCutContextOpen, setIsCutContextOpen] = useState(false);
   const [isCutImportOpen, setIsCutImportOpen] = useState(false);
+  const [voiceScriptSnapshot, setVoiceScriptSnapshot] = useState<string | null>(null);
   const [isLoadingCutContext, setIsLoadingCutContext] = useState(false);
   const [cutContextText, setCutContextText] = useState('');
   const [cutContextError, setCutContextError] = useState<string | null>(null);
@@ -188,6 +190,7 @@ export function CutEditComponent({
       (column) => column.key !== 'prompt_camera' && translationDraft[column.key].trim().length > 0,
     );
   const canGeneratePromptItems = canEdit && script.trim().length > 0 && !isBusy;
+  const canOpenScriptVoice = canEdit && script.trim().length > 0 && !isBusy;
   const cameraSamples = imageSettingsDefaults?.camera_samples ?? imageSettings?.camera_samples ?? {};
   const displayedImageId = selectedImageOverride?.id ?? activeCut?.image_id ?? null;
   const displayedBaseImageUrl = selectedImageOverride
@@ -222,6 +225,7 @@ export function CutEditComponent({
     setIsGeneratingScript(false);
     setIsCutContextOpen(false);
     setIsCutImportOpen(false);
+    setVoiceScriptSnapshot(null);
     setIsLoadingCutContext(false);
     setCutContextText('');
     setCutContextError(null);
@@ -591,6 +595,17 @@ export function CutEditComponent({
     }
   }
 
+  function openScriptVoiceModal() {
+    const scriptSnapshot = script.trim();
+    if (!scriptSnapshot) {
+      setError('음성으로 만들 컷 스크립트를 입력해 주세요.');
+      return;
+    }
+
+    setVoiceScriptSnapshot(scriptSnapshot);
+    setError(null);
+  }
+
   async function toggleFavorite() {
     const currentCut = activeCut;
     if (!currentCut) {
@@ -925,6 +940,7 @@ export function CutEditComponent({
                 canGenerateScript={canEdit && typeof activeCut?.scene_id === 'number' && !isBusy}
                 canTranslatePromptColumns={canTranslatePromptColumns}
                 canGeneratePromptItems={canGeneratePromptItems}
+                canOpenScriptVoice={canOpenScriptVoice}
                 setScript={setScript}
                 setPromptDraft={setPromptDraft}
                 setInstantPromptDraft={setInstantPromptDraft}
@@ -933,6 +949,7 @@ export function CutEditComponent({
                 onGenerateScript={() => void handleGenerateScript()}
                 onGeneratePromptItems={() => void handleGeneratePromptItemsFromScript()}
                 onTranslatePromptColumns={() => void translatePromptColumns()}
+                onOpenScriptVoice={openScriptVoiceModal}
               />
 
               <CutImagePanel
@@ -1003,6 +1020,12 @@ export function CutEditComponent({
           currentCutId={cutId}
           onClose={() => setIsCutImportOpen(false)}
           onSelect={importCutDraft}
+        />
+      ) : null}
+      {voiceScriptSnapshot !== null ? (
+        <CutVoicevoxModal
+          script={voiceScriptSnapshot}
+          onClose={() => setVoiceScriptSnapshot(null)}
         />
       ) : null}
     </>
