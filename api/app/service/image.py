@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import undefer
 
 from db import Image, Cut
 from models import (
@@ -40,7 +41,7 @@ from utils.local_storage import (
     public_file_url_from_reference,
     upload_fileobj,
 )
-from utils.vector import VECTOR_DIMENSION
+from utils.vector import VECTOR_DIMENSION, cosine_distance, validate_embedding
 
 
 IMAGE_LIST_SORT_FIELDS = {"id", "cut_count", "family_root_image_id"}
@@ -388,6 +389,60 @@ async def get_image_list_response(
         )
 
     return GetListResponseBase(total=total, items=items)
+
+
+async def get_similar_images(db: AsyncSession, text: str) -> list[ImageBase]:
+    query_text = text.strip()
+    if not query_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text is required")
+
+    model_name = settings.CUT_EMBEDDING_MODEL_NAME.strip()
+    if not model_name:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="cut embedding model name is required",
+        )
+
+    text_embedding = await encode_cut_text(model_name, f"query: {query_text}")
+    if len(text_embedding) != VECTOR_DIMENSION:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"cut embedding model must return {VECTOR_DIMENSION} dimensions",
+        )
+
+    images = (
+        await db.execute(
+            select(Image).options(undefer(Image.positive_prompt_embedding))
+        )
+    ).scalars().all()
+    image_distances = []
+    for image in images:
+        try:
+            image_embedding = validate_embedding(image.positive_prompt_embedding, "image.positive_prompt_embedding")
+        except HTTPException:
+            continue
+
+        distance = cosine_distance(text_embedding, image_embedding)
+        if distance is None:
+            continue
+        image_distances.append((image, distance))
+
+    return [
+        ImageBase(
+            id=image.id,
+            image_object_key=public_file_url_from_reference(image.image_object_key),
+            scribble_object_key=public_file_url_from_reference(image.scribble_object_key),
+            pose_object_key=public_file_url_from_reference(image.pose_object_key),
+            positive_prompt=image.positive_prompt,
+            negative_prompt=image.negative_prompt,
+            seed_image_id=image.seed_image_id,
+            model_parameters=image.model_parameters,
+        )
+        for image, _distance in sorted(
+            image_distances,
+            key=lambda item: (item[1], item[0].id or 0),
+        )
+    ]
 
 
 async def get_image_rows_with_cut_counts(

@@ -18,6 +18,7 @@ from service.image import (
     get_image_delete_targets,
     get_image_lineage_ids,
     get_image_list_response,
+    get_similar_images,
 )
 from utils.crud_helpers import CrudSpec, delete_items, upsert_items
 from utils.router_helpers import field_ids, require_existing_ids
@@ -61,6 +62,14 @@ async def api_upsert_image_list(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
     )
     return await upsert_items(db, items, IMAGE_CRUD_SPEC)
+
+
+@router.post("/similar", response_model=List[ImageBase])
+async def api_get_similar_images(
+    text: str = Body(..., embed=True),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_similar_images(db, text)
 
 
 @router.get("/{image_id}/lineage", response_model=List[int])

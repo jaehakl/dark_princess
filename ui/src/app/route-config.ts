@@ -8,6 +8,7 @@ import {
 import type { RouteObject } from 'react-router-dom';
 import { AppLayout } from './layout';
 import { ImageManagerPage } from '../pages/image-manager/ImageManagerPage';
+import { InstantPlayPage } from '../pages/instant-play/InstantPlayPage';
 import { LandingPage } from '../pages/landing/LandingPage';
 import { PlayPage } from '../pages/play/PlayPage';
 import { CutWizardPage } from '../pages/cut_wizard/CutWizardPage';
@@ -44,6 +45,14 @@ export const routeObjects: RouteObject[] = [
         handle: {
           breadcrumb: 'Play',
           pageTitle: 'Play',
+        },
+      },
+      {
+        path: 'instant-play',
+        element: createElement(InstantPlayPage),
+        handle: {
+          breadcrumb: 'Instant Play',
+          pageTitle: 'Instant Play',
         },
       },
       {
